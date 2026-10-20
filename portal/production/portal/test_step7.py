@@ -384,7 +384,7 @@ class ConcurrentQuotationTests(TransactionTestCase):
     def test_simultaneous_approve_reject_has_one_winner_and_one_notification(self):
         from concurrent.futures import ThreadPoolExecutor
         from threading import Barrier
-        from django.db import close_old_connections
+        from django.db import close_old_connections, connections
         from django.test import Client
         agency=Agency.objects.create(name='Concurrent agency',phone='test',area='test')
         pm=User.objects.create_user(username='race-pm@example.test',email='race-pm@example.test')
@@ -402,7 +402,9 @@ class ConcurrentQuotationTests(TransactionTestCase):
                     json.dumps(dict(status=status,reason='Concurrent decision',version=1)),content_type='application/json',
                     HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())).status_code
             finally:
-                close_old_connections()
+                # Worker threads own their connections; healthy persistent connections
+                # must also close before Django drops the isolated PostgreSQL test DB.
+                connections.close_all()
         with ThreadPoolExecutor(max_workers=2) as executor:
             results=list(executor.map(run,('approved','rejected')))
         self.assertEqual(sorted(results),[200,409])
