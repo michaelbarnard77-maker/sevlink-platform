@@ -97,7 +97,7 @@ SEVLINK_BROWSER_TESTS=1 bash scripts/check.sh
 
 If using a system Chromium, also set `SEVLINK_CHROMIUM_PATH` to its executable. The optional browser test uses Django's isolated temporary test database and test sessions. It creates no production accounts and leaves no runtime database fixtures. Default runs skip that one test when browser tooling is unavailable.
 
-Local result: **25 Django tests passed including the browser workflow**, comprising six original onboarding tests, eighteen maintenance/API tests and one browser test. Both original Node demo suites, all JavaScript syntax checks, Django system checks and migration consistency passed. Chromium covers tenant submission, PM update, logout/new tenant session, Super Admin view, mobile navigation/layout, loaded assets and absence of demo role switching/IndexedDB use in live mode.
+Initial implementation result: **25 Django tests passed including the browser workflow**. The verification follow-up adds permission/reassignment and migration-preservation coverage; see [verification guide](PHASE-1-VERIFICATION.md) and the latest PR checks for current results. Both original Node demo suites, all JavaScript syntax checks, Django system checks and migration consistency passed. Chromium covers tenant submission, PM update, logout/new tenant session, Super Admin view, mobile navigation/layout, loaded assets and absence of demo role switching/IndexedDB use in live mode.
 
 Maintenance API coverage includes agency/PM/cotenant isolation, invalid memberships and inactive users, forged ownership/status/private fields, invalid/malformed input, pagination, CSRF, method restrictions, status transitions, stale writes, transaction rollback, private-field serialization and protected parent records. Local tests use SQLite. CI additionally runs Django tests against PostgreSQL 17 and a separate SQLite/Chromium job; check the branch's Actions run for remote results.
 
@@ -111,3 +111,5 @@ Maintenance API coverage includes agency/PM/cotenant isolation, invalid membersh
 - Deployment/staging validation, PostgreSQL concurrent-load tests, Docker/Caddy testing, proxy-aware throttling, backups/restore, monitoring and production security/operational review.
 
 No production deployment, paid AWS service or merge to main is part of this phase.
+
+For step-by-step local accounts and a manual checklist, see [Phase 1 verification](PHASE-1-VERIFICATION.md).

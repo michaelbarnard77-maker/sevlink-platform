@@ -286,3 +286,28 @@ class MaintenanceTests(TestCase):
             self.assertNotContains(response, sample)
         self.assertIn('no-store', response['Cache-Control'])
         self.assertIn('no-store', self.client.get(self.collection)['Cache-Control'])
+
+    def test_legacy_dashboard_fails_closed_for_staff_and_unknown_roles(self):
+        for user in [self.staff, self.invalid_role, self.nonmember]:
+            self.login(user)
+            response = self.client.get('/')
+            self.assertEqual(response.status_code, 403)
+            self.assertNotContains(response, self.other_agency.name, status_code=403)
+        self.login(self.superadmin)
+        self.assertContains(self.client.get('/'), self.other_agency.name)
+
+    def test_pm_reassignment_before_write_prevents_status_mutation(self):
+        self.create_report()
+        self.login(self.pm)
+        from .maintenance import payload
+
+        def reassign_before_update(request, allowed):
+            data = payload(request, allowed)
+            Property.objects.filter(pk=self.home.pk).update(manager=self.pm2)
+            return data
+
+        with patch('portal.maintenance.payload', side_effect=reassign_before_update):
+            self.assertEqual(self.update('reviewed').status_code, 409)
+        self.assertEqual(MaintenanceRequest.objects.get().status, 'awaiting_review')
+        self.assertEqual(MaintenanceStatusEvent.objects.count(), 1)
+        self.assertEqual(self.client.get(self.detail_url).status_code, 404)

@@ -92,7 +92,8 @@ PM/agency status review, persistent status history and Super Admin visibility.
 After migrating and signing in, open `/maintenance/`. The authenticated workspace
 reuses the existing portal layout/CSS and reads scoped Django APIs; the original
 static demo and public site remain unchanged. See [Phase 1 workflow](docs/PHASE-1-WORKFLOW.md)
-for permissions, endpoints, setup, tests and unfinished features. This is not a
+for permissions, endpoints, setup, tests and unfinished features.
+Use [Phase 1 verification](docs/PHASE-1-VERIFICATION.md) for local review accounts and a manual checklist. This is not a
 production deployment or a completed port of every demo feature.
 
 The earlier export description and review document the baseline before this phase.

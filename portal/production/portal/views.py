@@ -39,7 +39,9 @@ def properties_for(m):
         return Property.objects.filter(agency=m.agency)
     if m.role == Membership.PM:
         return Property.objects.filter(agency=m.agency,manager=m.user)
-    return Property.objects.filter(agency=m.agency,tenancy__user=m.user,tenancy__active=True).distinct()
+    if m.role == Membership.TENANT:
+        return Property.objects.filter(agency=m.agency,tenancy__user=m.user,tenancy__active=True).distinct()
+    return Property.objects.none()
 def form_page(request,form,title):
     return render(request,'portal/form.html',{'form':form,'title':title})
 @sensitive_post_parameters('password1','password2')
@@ -69,8 +71,10 @@ def register(request):
 def dashboard(request):
     m = member(request)
     if not m:
-        if request.user.is_staff:
+        if request.user.is_superuser:
             return render(request,'portal/staff.html',{'agencies':Agency.objects.all(),'property_count':Property.objects.count(),'tenant_count':Tenancy.objects.filter(active=True).count()})
+        return HttpResponseForbidden('No workspace access. Contact Sevlink.')
+    if m.role not in (Membership.ADMIN, Membership.PM, Membership.TENANT):
         return HttpResponseForbidden('No workspace access. Contact Sevlink.')
     props = properties_for(m).select_related('manager')
     tenants = Tenancy.objects.filter(property__in=props,active=True)

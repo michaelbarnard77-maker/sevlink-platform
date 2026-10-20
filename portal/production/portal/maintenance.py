@@ -191,7 +191,9 @@ def detail(request, job_id):
     if data['status'] not in TRANSITIONS[job.status]:
         return JsonResponse({'error': 'Invalid status transition.'}, status=400)
     with transaction.atomic():
-        updated = MaintenanceRequest.objects.filter(pk=job.pk, version=data['version']).update(
+        updated = MaintenanceRequest.objects.filter(
+            pk=job.pk, version=data['version'], property__in=properties_for(request.user)
+        ).update(
             status=data['status'], version=F('version') + 1, updated_at=timezone.now())
         if not updated:
             return JsonResponse({'error': 'This request changed. Refresh before updating.'}, status=409)
