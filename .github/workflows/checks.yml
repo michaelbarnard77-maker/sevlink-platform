@@ -1,0 +1,20 @@
+name: Source checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: portal/production/requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: pip install -r portal/production/requirements.lock
+      - run: bash scripts/check.sh

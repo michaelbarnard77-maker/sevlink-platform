@@ -1,0 +1,17 @@
+Sevlink source export manifest
+
+portal/dist/index.html
+portal/dist/*.js
+portal/dist/*.css
+portal/dist/sevlink-logo.png
+portal/tests/*.cjs
+portal/production/ (Django backend foundation, templates, migrations, Docker/Caddy/configuration)
+public-site/dist/index.html
+public-site/dist/app.js
+public-site/dist/styles.css
+public-site/README.md
+
+Excluded generated/private state:
+- .git directories
+- Python __pycache__ and *.pyc
+- portal/production/development.sqlite3

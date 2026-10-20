@@ -1,0 +1,8 @@
+.env
+*.sqlite3
+__pycache__
+**/__pycache__
+*.pyc
+collected-static
+uploads
+backups

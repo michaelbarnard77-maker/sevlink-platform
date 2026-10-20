@@ -1,0 +1,33 @@
+# Secrets and local configuration (retain documented examples)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+# Runtime state and private business data
+*.sqlite3
+*.sqlite3-*
+*.db
+uploads/
+media/
+backups/
+*.log
+collected-static/
+# Dependencies and generated caches
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+# Workstation files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# Hosting configuration is retained; project IDs are not credentials.
+# Do not ignore dist/: it is the supplied frontend source.

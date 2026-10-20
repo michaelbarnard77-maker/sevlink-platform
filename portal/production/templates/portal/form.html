@@ -1,0 +1,1 @@
+{% extends 'portal/base.html' %}{% block content %}<section class="panel form"><span class="eyebrow">YOUR PROPERTY. OUR PRIORITY.</span><h1>{{ title }}</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button>Save & continue</button></form></section>{% endblock %}
