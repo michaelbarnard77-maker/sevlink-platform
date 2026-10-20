@@ -7,14 +7,58 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: portal/production/requirements.lock
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
       - run: pip install -r portal/production/requirements.lock
-      - run: bash scripts/check.sh
+      - name: Install browser test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sevlink-browser" --no-save playwright@1.62.1
+          "$RUNNER_TEMP/sevlink-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check source and browser workflow
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/sevlink-browser/node_modules"
+          export SEVLINK_BROWSER_TESTS=1
+          bash scripts/check.sh
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sevlink_ci
+          POSTGRES_USER: sevlink_ci
+          # Ephemeral CI database only; no production credentials.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sevlink_ci -d sevlink_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DEBUG: '1'
+      DB_HOST: 127.0.0.1
+      DB_NAME: sevlink_ci
+      DB_USER: sevlink_ci
+      DB_PORT: '5432'
+      SMTP_DELIVERY_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install -r portal/production/requirements.lock
+      - name: Django checks and tests against PostgreSQL
+        working-directory: portal/production
+        run: |
+          export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          python manage.py check
+          python manage.py migrate --noinput
+          python manage.py test portal

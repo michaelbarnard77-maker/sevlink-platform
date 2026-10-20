@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-for script in portal/dist/*.js public-site/dist/*.js portal/tests/*.cjs; do
+for script in portal/dist/*.js public-site/dist/*.js portal/production/static/*.js portal/tests/*.cjs scripts/*.cjs; do
   node --check "$script"
 done
 (cd portal && node tests/full-repair-flow.cjs && node tests/operations-calendar.cjs)

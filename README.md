@@ -85,6 +85,18 @@ The hosted demos were private review sites at the time of export. The custom dom
 - Public site repository: `/workspace/sites/sevlink-public-demo`
 - The export excludes `.git` directories, Python cache files and `portal/production/development.sqlite3` (local generated database state).
 
+## Phase 1 development workflow
+
+On `development/phase-1-foundations`, Django now supports tenant maintenance reports,
+PM/agency status review, persistent status history and Super Admin visibility.
+After migrating and signing in, open `/maintenance/`. The authenticated workspace
+reuses the existing portal layout/CSS and reads scoped Django APIs; the original
+static demo and public site remain unchanged. See [Phase 1 workflow](docs/PHASE-1-WORKFLOW.md)
+for permissions, endpoints, setup, tests and unfinished features. This is not a
+production deployment or a completed port of every demo feature.
+
+The earlier export description and review document the baseline before this phase.
+
 ## Repository preparation and review
 
 - [Architecture and review](docs/PROJECT-REVIEW.md): current components, boundaries and launch gaps.

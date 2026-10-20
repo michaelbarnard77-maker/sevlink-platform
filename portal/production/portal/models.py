@@ -64,3 +64,42 @@ class RateBucket(models.Model):
     key = models.CharField(max_length=64,primary_key=True)
     start = models.DateTimeField()
     count = models.PositiveIntegerField(default=0)
+
+
+class MaintenanceRequest(models.Model):
+    class Status(models.TextChoices):
+        AWAITING_REVIEW = 'awaiting_review', 'Awaiting property manager review'
+        REVIEWED = 'reviewed', 'Reviewed'
+        IN_PROGRESS = 'in_progress', 'In progress'
+        COMPLETED = 'completed', 'Completed'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name='maintenance_requests')
+    reported_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='maintenance_requests')
+    title = models.CharField(max_length=180)
+    description = models.TextField(max_length=2500)
+    category = models.CharField(max_length=80)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.AWAITING_REVIEW)
+    version = models.PositiveIntegerField(default=1)
+    # Deliberately never included in the public API or portal payload.
+    internal_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['property', 'status'], name='maintenance_property_status')]
+        constraints = [models.CheckConstraint(condition=models.Q(status__in=[
+            'awaiting_review', 'reviewed', 'in_progress', 'completed', 'cancelled'
+        ]), name='maintenance_valid_status')]
+
+
+class MaintenanceStatusEvent(models.Model):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='status_events')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    status = models.CharField(max_length=24, choices=MaintenanceRequest.Status.choices)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['at', 'id']

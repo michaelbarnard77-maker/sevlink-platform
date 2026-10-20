@@ -60,3 +60,7 @@ X_FRAME_OPTIONS = 'DENY'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO','https')
 
 PASSWORD_RESET_TIMEOUT = 3600
+
+# Source checkout and container layouts both retain the original portal assets.
+PORTAL_UI_DIR = BASE_DIR / 'frontend' if (BASE_DIR / 'frontend').exists() else BASE_DIR.parent / 'dist'
+STATICFILES_DIRS += [('maintenance-ui', PORTAL_UI_DIR)]

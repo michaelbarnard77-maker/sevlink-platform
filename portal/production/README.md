@@ -1,3 +1,9 @@
+> Development branch update: Phase 1 now includes persistent maintenance requests,
+> authenticated API endpoints and a portal adapter at `/maintenance/`. See
+> [Phase 1 workflow](../../docs/PHASE-1-WORKFLOW.md) for current behavior and tests.
+> The baseline notes below describe the original onboarding implementation; the
+> remaining repair/financial/operations features are still incomplete. Not deployed.
+
 # Sevlink server application — first implementation stage
 
 This is real server-side account and property setup code for a future xneelo

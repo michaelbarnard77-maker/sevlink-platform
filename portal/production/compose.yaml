@@ -14,7 +14,9 @@ services:
       timeout: 5s
       retries: 10
   web:
-    build: .
+    build:
+      context: ../..
+      dockerfile: portal/production/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:

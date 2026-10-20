@@ -1,0 +1,11 @@
+.git
+**/.env
+**/.env.*
+**/*.sqlite3*
+**/__pycache__
+**/*.pyc
+**/.venv
+**/node_modules
+**/uploads
+**/backups
+**/collected-static
