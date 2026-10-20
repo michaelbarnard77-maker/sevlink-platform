@@ -13,6 +13,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 from pypdf import PdfWriter
+from pypdf.generic import NameObject, DictionaryObject, ArrayObject
 
 from .attachment_storage import PrivateAttachmentStorage
 from .attachments import MAX_BYTES, attachment_data, storage
@@ -110,7 +111,6 @@ class AttachmentTests(TestCase):
             self.assertIn('sandbox', response['Content-Security-Policy'])
             self.assertIn('no-store', response['Cache-Control'])
             self.assertEqual(response['Cross-Origin-Resource-Policy'], 'same-origin')
-            response.close()
 
     def test_cross_agency_cotenant_and_unassigned_pm_cannot_access_or_add(self):
         attachment = self.uploaded()
@@ -146,7 +146,7 @@ class AttachmentTests(TestCase):
         self.client.force_login(self.other_pm)
         response = self.client.get(attachment['download_url'])
         self.assertEqual(response.status_code, 200)
-        response.close()
+        b''.join(response.streaming_content)
 
     def test_file_cannot_be_downloaded_through_another_job(self):
         attachment = self.uploaded()
@@ -165,7 +165,9 @@ class AttachmentTests(TestCase):
     def test_active_encrypted_and_malformed_pdfs_are_rejected(self):
         active = PdfWriter(); active.add_blank_page(width=100, height=100); active.add_js('app.alert("not allowed")')
         encrypted = PdfWriter(); encrypted.add_blank_page(width=100, height=100); encrypted.encrypt('test-fixture-only')
-        files = [document(active), document(encrypted),
+        media = PdfWriter(); media.add_blank_page(width=100, height=100)
+        media.pages[0][NameObject('/Annots')] = ArrayObject([DictionaryObject({NameObject('/Subtype'): NameObject('/RichMedia')})])
+        files = [document(active), document(encrypted), document(media),
                  SimpleUploadedFile('bad.pdf', b'%PDF-1.4\nnot a real PDF\n%%EOF', 'application/pdf')]
         for file in files:
             self.assertEqual(self.upload([file]).status_code, 400)
@@ -199,7 +201,7 @@ class AttachmentTests(TestCase):
         self.assertEqual(self.upload().status_code, 400)
         response = self.client.get(attachment_data(MaintenanceAttachment.objects.first())['download_url'])
         self.assertEqual(response.status_code, 200)
-        response.close()
+        b''.join(response.streaming_content)
 
     def test_uuid_storage_names_prevent_traversal_and_filename_collisions(self):
         self.assertEqual(self.upload([photo('../../secret.png'), photo('C:\\private\\secret.png')]).status_code, 201)

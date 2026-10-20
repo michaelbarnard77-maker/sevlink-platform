@@ -100,7 +100,8 @@ def validate_pdf(data):
         if reader.is_encrypted or not 1 <= len(reader.pages) <= 100:
             raise UploadRejected('PDF must be unencrypted with 1–100 pages.')
         prohibited = {'/OpenAction', '/AA', '/JS', '/JavaScript', '/Launch', '/EmbeddedFiles',
-                      '/EF', '/RichMedia', '/XFA', '/AcroForm', '/A'}
+                      '/EF', '/RichMedia', '/RichMediaContent', '/RichMediaSettings', '/Movie', '/Sound',
+                      '/3DD', '/XFA', '/AcroForm', '/A'}
         seen = set()
         stack = [reader.trailer]
         visited = 0
@@ -116,7 +117,9 @@ def validate_pdf(data):
                 seen.add(ref)
                 stack.append(obj.get_object())
             elif isinstance(obj, DictionaryObject):
-                if prohibited.intersection(obj.keys()):
+                if (prohibited.intersection(obj.keys()) or
+                        obj.get('/Subtype') in ('/RichMedia', '/Movie', '/Sound', '/Screen', '/3D', '/Widget') or
+                        obj.get('/S') in ('/JavaScript', '/Launch', '/SubmitForm', '/ImportData', '/GoToR', '/GoToE')):
                     raise UploadRejected('PDF forms, actions and embedded content are not supported.')
                 stack.extend(obj.values())
             elif isinstance(obj, ArrayObject):
