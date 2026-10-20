@@ -67,12 +67,16 @@ class EventWorkflowTests(TestCase):
         self.client.force_login(self.ops)
         response = self.post(self.quote_url, {'title': 'Repair quotation', 'scope': 'Replace the leaking tap.', 'amount': '1250.50'}, key)
         self.assertEqual(response.status_code, 201, response.content)
-        return JobQuotation.objects.get(pk=response.json()['id'])
+        quote = JobQuotation.objects.get(pk=response.json()['id'])
+        sent = self.post(reverse('maintenance_quote_action', args=[self.job.pk, quote.pk, 'send']), {'version': quote.version})
+        self.assertEqual(sent.status_code, 200, sent.content)
+        quote.refresh_from_db()
+        return quote
 
     def decision(self, quote, status='approved', key=None):
         self.client.force_login(self.pm)
         return self.post(reverse('maintenance_quote_decision', args=[self.job.pk, quote.pk]),
-            {'status': status, 'reason': 'Please revise scope.' if status == 'rejected' else '', 'version': 1}, key)
+            {'status': status, 'reason': 'Please revise scope.' if status == 'rejected' else 'Approved scope.', 'version': quote.version}, key)
 
     def status(self, status, version):
         self.client.force_login(self.pm)
@@ -173,7 +177,7 @@ class EventWorkflowTests(TestCase):
             self.client.force_login(user)
             self.assertEqual(self.post(self.comment_url, {'text':'Not authorized'}).status_code, 404)
             self.assertEqual(self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote.pk]),
-                {'status':'approved','reason':'','version':1}).status_code, 404)
+                {'status':'approved','reason':'Approved scope.','version':quote.version}).status_code, 404)
         self.assertEqual(JobComment.objects.count(), 0)
         self.assertEqual(OperationsNotification.objects.count(), 1)
 
@@ -182,10 +186,10 @@ class EventWorkflowTests(TestCase):
         for user in [self.tenant, self.ops]:
             self.client.force_login(user)
             self.assertEqual(self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote.pk]),
-                {'status':'approved','reason':'','version':1}).status_code, 403)
+                {'status':'approved','reason':'Approved scope.','version':quote.version}).status_code, 403)
         self.client.force_login(self.admin)
         response = self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote.pk]),
-            {'status':'approved','reason':'','version':1})
+            {'status':'approved','reason':'Approved scope.','version':quote.version})
         self.assertEqual(response.status_code, 200)
 
     def test_cancellation_completion_and_all_status_changes_are_recorded(self):
@@ -224,9 +228,9 @@ class EventWorkflowTests(TestCase):
                      {'status':'approved','version':'1'}, {'status':'pending','version':1}]:
             self.assertEqual(self.post(url,body).status_code,400)
         self.assertEqual(self.post(reverse('maintenance_quote_decision',args=[self.job.pk,uuid.uuid4()]),
-            {'status':'approved','reason':'','version':1}).status_code,404)
+            {'status':'approved','reason':'Approved scope.','version':quote.version}).status_code,404)
         self.assertEqual(self.status('cancelled',1).status_code,200)
-        self.assertEqual(self.post(url,{'status':'approved','reason':'','version':1}).status_code,400)
+        self.assertEqual(self.post(url,{'status':'approved','reason':'Approved scope.','version':quote.version}).status_code,409)
         self.client.force_login(self.ops)
         self.assertEqual(self.post(self.quote_url,{'title':'Test','scope':'Test','amount':'10'}).status_code,400)
 

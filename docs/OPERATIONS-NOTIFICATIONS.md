@@ -1,3 +1,5 @@
+> Step 7 now extends quotations to drafts/lines/VAT/revisions/PDFs, adds private notes/files and a persistent Operations inbox. See [the current implementation and test guide](STEP-7-QUOTATIONS-AND-OPERATIONS.md). Email remains local-only.
+
 # Saved job events and Operations notifications
 
 Implemented on `development/phase-1-foundations`. The default Operations recipient is **maintenance@sevlink.co.za**. Every supported important backend mutation creates a durable notification entry immediately in the same database transaction as its job activity. No mail delivery runs in the browser or job HTTP transaction.
@@ -12,25 +14,17 @@ Implemented on `development/phase-1-foundations`. The default Operations recipie
 | Tenant or assigned PM adds a shared comment | Comment text, actor and timestamp | Yes |
 | Agency administrator adds a shared comment | Comment text, actor and timestamp | Yes |
 | Sevlink Super Admin adds a shared comment | Comment text, actor and timestamp | No self-notification loop |
-| Sevlink Super Admin issues a quotation | Public scope/amount and issuing Operations actor | No; agency-facing email is not implemented |
-| Assigned PM or agency administrator approves/rejects a quotation | Decision, reason, actor and timestamp | Yes |
+| Sevlink Operations creates/edits/sends/revises a quotation | Revision/action/actor/time history, private draft activity | No; agency-facing email is not implemented |
+| Assigned PM or agency administrator approves/rejects/requests revision of a quotation | Decision, reason, actor and timestamp | Yes |
 | Job marked reviewed or in progress | New status, actor and timestamp | No |
 | Job cancelled or completed | New status, actor and timestamp | Yes |
 | Browser-local demo actions | None | Never |
 
 These comment and quotation notifications are backed by real models and saved authenticated API workflows. They are no longer simulated actions in the Django workspace. The standalone static demo remains unchanged and separate.
 
-## Shared comments and basic quotations
+## Quotations and conversations
 
-A shared comment belongs to a maintenance request and is visible to everyone permitted to read that request: the reporting tenant with active tenancy, assigned PM, agency administrator and Super Admin. A cotenant or unrelated property/agency user cannot read or add it. Comments are immutable in this slice and may be added after completion for follow-up discussion. They are not a channel for private Operations/subcontractor notes.
-
-Super Admin can issue a basic quotation with a title, public scope and total amount in ZAR. Only the authorized PM or agency administrator can decide it; tenants and Operations cannot approve it on the agency's behalf. Rejection requires a reason. A quotation can move from pending to approved or rejected once, with version checks; decisions cannot be silently overwritten. Closed requests reject new quotations/decisions.
-
-Tenants do not receive quotation payloads or quotation activity entries. Agency-facing serializers do not expose internal user IDs, staff names, uploader identities, subcontractor records, private job notes or private property access instructions. Operations authors are labelled “Sevlink Operations”; responsible user IDs remain in the protected database. Actor names/roles are snapshotted at the time of the event/comment so later account changes cannot expose previously hidden staff identities.
-
-The authenticated portal uses existing quote-card, comment, timeline and form styles. No original demo HTML/CSS/JavaScript, public-site design or assets were changed. Job details show shared comments and quotes appropriate to the account and an actor/timestamp activity timeline. An email's `/maintenance/?job=<uuid>` link opens that job after normal sign-in, and all permission checks still apply. It contains no bearer or login token.
-
-This is a basic quotation foundation, not the complete demo finance system: there are no line-item/tax calculations, quote document links, revisions/expiry workflows, budgets/deposits, contractor dispatch, payments or invoices. Quote approval does not automatically authorize spending, schedule work or advance the job status.
+The authenticated workspace now provides real draft/send/revision/approval/rejection/revision-request quotation actions, Decimal/VAT totals, public PDFs and separate private costing. Comments support shared threads and private Operations notes/files, with explicit per-job tenant conversation permissions. Full rules, APIs, current testing and remaining limits are in [Step 7](STEP-7-QUOTATIONS-AND-OPERATIONS.md).
 
 ## Central event and outbox architecture
 
@@ -62,7 +56,7 @@ Mail is sent only to the configured Operations address. New domain notifications
 
 Operations summaries include job number, property/name/address, agency, event type, relevant summary, actor role, timestamp with timezone and a sign-in link. They exclude comment bodies, tenant email/phone, private access instructions, attachment names/contents, internal job notes, subcontractor identities and private supplier costs. Quote decisions include the public quoted total and decision, not private costing or free-text rejection reasons. Free-form property/title values are normalized to a single line in the message.
 
-All content posted into shared comments, public quote scope and shared attachments is intentionally readable by authorized job participants. The system cannot redact private information someone deliberately pastes into a shared field. Staff-only comments and automatic content redaction remain future work.
+All content posted into shared comments, public quote scope and shared attachments is intentionally readable by authorized job participants. The system cannot redact private information someone deliberately pastes into a shared field. Staff-only notes/files are implemented in Step 7; automatic content redaction is not.
 
 ## Local automatic delivery testing
 
@@ -108,22 +102,8 @@ The recipient must be one valid address. SITE_URL must not contain credentials, 
 
 SES can later use Django's SMTP backend with a verified From identity and the appropriate regional SES SMTP endpoint/TLS credentials through existing `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and TLS settings. No AWS SDK, IAM user, SES account, SMTP credential or DNS record has been created here. Sender verification, sandbox exit/recipient rules, DKIM/SPF/DMARC, least-privilege credentials, encrypted transport, bounce/complaint handling, monitoring and a staging delivery test must precede activation. No live flags or credentials are enabled by this change.
 
-## APIs and migrations
+## APIs, migrations and current validation
 
-- Existing report POST: optional UUID `Idempotency-Key`, JSON or multipart supported.
-- `POST /api/maintenance/requests/<job>/comments/`: JSON `text` plus required UUID `Idempotency-Key`.
-- `POST /api/maintenance/requests/<job>/quotations/`: Super Admin JSON `title`, `scope`, `amount` plus required UUID key.
-- `POST /api/maintenance/requests/<job>/quotations/<quote>/decision/`: authorized PM/admin JSON `status` (`approved`/`rejected`), integer `version`, optional `reason` (required for rejection), plus UUID key.
-- Existing detail/list API adds public `comments`, role-filtered `quotations` and `activity`; internal delivery state is never serialized.
+See [Step 7](STEP-7-QUOTATIONS-AND-OPERATIONS.md) for current API contracts, migrations 0007–0009, manual checklist and feature coverage. Earlier migrations 0001–0006 remain unchanged. Existing event/outbox delivery guarantees above continue to apply.
 
-All mutations use existing Django sessions, CSRF and agency/property scoping. New migrations 0004–0006 add comments/quotes/events/delivery records, backfill legacy activity without mail, and add report deduplication metadata. They do not modify migrations 0001–0003. Rolling back new tables would lose their records, so production migration/backup planning remains necessary.
-
-## Validation and remaining work
-
-Local result: **72 Django/API/outbox/migration/browser tests passed**, plus both original Node demo suites, JavaScript syntax, system checks and migration consistency. Tests cover every required notification event, saved-only/rollback behavior, configurable recipient, privacy, secure links, actor snapshots, permission/agency isolation, idempotent replays, failed delivery/backoff/exhaustion, worker leases/recovery, local previews, live-delivery gates and upgrade preservation. Chromium covers real shared comments, Operations quote issue, PM approval and deep links alongside existing uploads/status tests.
-
-GitHub Actions also runs PostgreSQL 17 and SQLite/Chromium checks; see the current development branch/draft PR checks for remote results.
-
-Still unfinished: actual SES/SMTP activation and deliverability; worker deployment/supervision and dead-letter alert/replay UI; provider delivery/bounce feedback; retention and scalability/pagination/quotas; staff-only communications; full quote revisions, documents/tax/budget/finance/dispatch workflows; production concurrent-load/security/backup validation. Earlier private-upload malware/retention requirements still apply.
-
-Main, production deployment, paid services and manual verification remain untouched/deferred as instructed.
+Actual SMTP/SES activation, mailbox setup, deployed worker supervision, provider delivery/bounce feedback, dead-letter monitoring/replay and production backup/load validation remain unfinished. No deployment, paid service, main merge or owner manual verification was performed.

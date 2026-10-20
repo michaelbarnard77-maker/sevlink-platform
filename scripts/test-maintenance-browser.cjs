@@ -83,16 +83,32 @@ process.stdin.on('end', async () => {
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
     await page.locator('#quoteForm [name=title]').fill('Browser quotation');
     await page.locator('#quoteForm [name=scope]').fill('Replace kitchen tap and test.');
-    await page.locator('#quoteForm [name=amount]').fill('1250.00');
-    await page.getByRole('button', {name:'Issue quotation', exact:true}).click();
+    await page.locator('#quoteForm [data-field=description]').fill('Kitchen tap replacement');
+    await page.locator('#quoteForm [data-field=unit_price]').fill('1250.00');
+    await page.getByRole('button', {name:'Save quotation draft', exact:true}).click();
     await page.locator('.card h2').filter({hasText:'Browser quotation'}).waitFor();
+    await page.getByRole('button', {name:'Send for approval', exact:true}).click();
+    await page.locator('.card .badge').filter({hasText:'sent'}).waitFor();
+    await page.locator('#commentForm [name=visibility]').selectOption('internal');
+    await page.locator('#commentForm [name=text]').fill('PRIVATE Operations supplier note.');
+    await page.getByRole('button', {name:'Add comment', exact:true}).click();
+    await page.locator('.comment').filter({hasText:'PRIVATE Operations supplier note.'}).waitFor();
+    await page.getByRole('button', {name:'Close', exact:true}).click();
+    await page.getByRole('button', {name:'Operations notifications', exact:true}).click();
+    await page.getByRole('heading', {name:'Operations notifications', exact:true}).waitFor();
+    await page.getByRole('button', {name:'Mark read', exact:true}).first().click();
+    await page.getByRole('button', {name:'Mark unread', exact:true}).first().waitFor();
+    await page.getByRole('button', {name:'Open job', exact:true}).first().click();
+    await page.locator('#commentForm').waitFor();
     await context.close();
 
     ({context, page} = await signedIn('pm'));
     const jobId = new URL(downloadUrl, url).pathname.split('/')[4];
     await page.goto(url + '/maintenance/?job=' + jobId);
     await page.locator('.quoteDecision').waitFor();
+    assert.equal(await page.locator('#modal').innerText().then(t => /PRIVATE Operations supplier note|cost_total|commission_total/.test(t)), false);
     await page.locator('.quoteDecision [name=status]').selectOption('approved');
+    await page.locator('.quoteDecision [name=reason]').fill('Approved as quoted.');
     await page.getByRole('button', {name:'Save quotation decision', exact:true}).click();
     await page.locator('.card .badge').filter({hasText:'approved'}).waitFor();
     await page.locator('#commentForm [name=text]').fill('Approved. Please coordinate access.');
@@ -100,6 +116,6 @@ process.stdin.on('end', async () => {
     await page.locator('.comment').filter({hasText:'Approved. Please coordinate access.'}).waitFor();
     await context.close();
     assert.deepEqual(errors, []); assert.deepEqual(failedAssets, []);
-    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin quote issue, authorized PM approval and saved tenant/PM comments, secure deep link, mobile layout, CSRF, no demo role switch or IndexedDB.');
+    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin draft/send, private notes and notification read/open, authorized PM approval and saved tenant/PM comments, secure deep link, mobile layout, CSRF, no demo role switch or IndexedDB.');
   } finally { await browser.close(); }
 });

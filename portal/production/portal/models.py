@@ -3,6 +3,33 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models.functions import Lower
 from django.utils import timezone
+class AppendOnlyQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError('Audit and conversation records are append-only.')
+
+    def delete(self):
+        from django.core.exceptions import ValidationError
+        raise ValidationError('Audit and conversation records cannot be deleted.')
+
+
+class AppendOnlyModel(models.Model):
+    objects = AppendOnlyQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if not self._state.adding:
+            raise ValidationError('Audit and conversation records are append-only.')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        raise ValidationError('Audit and conversation records cannot be deleted.')
+
+
 class User(AbstractUser):
     email = models.EmailField(unique=True)
     class Meta:
@@ -83,6 +110,7 @@ class MaintenanceRequest(models.Model):
     category = models.CharField(max_length=80)
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.AWAITING_REVIEW)
     version = models.PositiveIntegerField(default=1)
+    tenant_comments_allowed = models.BooleanField(default=True)
     submission_key = models.UUIDField(null=True, blank=True, unique=True)
     submission_fingerprint = models.CharField(max_length=64, blank=True)
     # Deliberately never included in the public API or portal payload.
@@ -111,6 +139,8 @@ class MaintenanceStatusEvent(models.Model):
 class MaintenanceAttachment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='attachments')
+    comment = models.ForeignKey('JobComment', null=True, blank=True, on_delete=models.PROTECT, related_name='attachments')
+    visibility = models.CharField(max_length=10, choices=[('shared', 'Shared'), ('internal', 'Operations only')], default='shared')
     uploaded_by = models.ForeignKey(User, on_delete=models.PROTECT)
     storage_key = models.CharField(max_length=200, unique=True)
     filename = models.CharField(max_length=160)
@@ -123,13 +153,15 @@ class MaintenanceAttachment(models.Model):
         ordering = ['created_at', 'id']
 
 
-class JobComment(models.Model):
+class JobComment(AppendOnlyModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='comments')
     author = models.ForeignKey(User, on_delete=models.PROTECT)
     author_name = models.CharField(max_length=300)
     author_role = models.CharField(max_length=20)
     text = models.TextField(max_length=2500)
+    visibility = models.CharField(max_length=10, choices=[('shared', 'Shared'), ('internal', 'Operations only')], default='shared')
+    fingerprint = models.CharField(max_length=64, blank=True)
     idempotency_key = models.UUIDField(unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -144,7 +176,17 @@ class JobQuotation(models.Model):
     title = models.CharField(max_length=180)
     scope = models.TextField(max_length=3000)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    status = models.CharField(max_length=12, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending')
+    status = models.CharField(max_length=24, choices=[('draft', 'Draft'), ('sent', 'Sent for Approval'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('revision_requested', 'Revision Requested'), ('superseded', 'Superseded')], default='draft')
+    series_id = models.UUIDField(default=uuid.uuid4, editable=False)
+    revision = models.PositiveIntegerField(default=1)
+    previous = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT, related_name='next_revision')
+    tax_treatment = models.CharField(max_length=12, default='none')
+    vat_rate = models.DecimalField(max_digits=7, decimal_places=6, default=0)
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    vat_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    public_snapshot = models.JSONField(default=dict)
+    creation_fingerprint = models.CharField(max_length=64, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
     creation_key = models.UUIDField(unique=True)
     decision_key = models.UUIDField(null=True, blank=True, unique=True)
@@ -157,16 +199,86 @@ class JobQuotation(models.Model):
         ordering = ['created_at', 'id']
         constraints = [
             models.CheckConstraint(condition=models.Q(amount__gt=0), name='quotation_positive_amount'),
-            models.CheckConstraint(condition=models.Q(status__in=['pending', 'approved', 'rejected']), name='quotation_valid_status'),
+            models.CheckConstraint(condition=models.Q(status__in=['draft', 'sent', 'approved', 'rejected', 'revision_requested', 'superseded']), name='quotation_valid_status'),
+            models.UniqueConstraint(fields=['series_id', 'revision'], name='quotation_revision_unique'),
         ]
 
 
-class JobActivity(models.Model):
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        old = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        if old and old.status != 'draft':
+            fields = ['title','scope','amount','tax_treatment','vat_rate','subtotal','vat_total','public_snapshot','series_id','revision','previous_id','sent_at']
+            if any(getattr(old, name) != getattr(self, name) for name in fields):
+                raise ValidationError('Sent quotation content is immutable; create a revision.')
+            if old.status == 'approved' and any(getattr(old, field.attname) != getattr(self, field.attname) for field in self._meta.fields):
+                raise ValidationError('Approved quotation is immutable.')
+        return super().save(*args, **kwargs)
+
+
+class QuotationLine(models.Model):
+    quote = models.ForeignKey(JobQuotation, on_delete=models.PROTECT, related_name='lines')
+    position = models.PositiveIntegerField()
+    description = models.CharField(max_length=180)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    unit = models.CharField(max_length=20)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    net = models.DecimalField(max_digits=12, decimal_places=2)
+    vat = models.DecimalField(max_digits=12, decimal_places=2)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        ordering = ['position']
+        constraints = [models.UniqueConstraint(fields=['quote','position'],name='quotation_line_position_unique')]
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if not JobQuotation.objects.filter(pk=self.quote_id, status='draft').exists():
+            raise ValidationError('Sent quotation lines are immutable.')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if not JobQuotation.objects.filter(pk=self.quote_id, status='draft').exists():
+            raise ValidationError('Sent quotation lines are immutable.')
+        return super().delete(*args, **kwargs)
+
+
+class QuotationPrivate(models.Model):
+    quote = models.OneToOneField(JobQuotation, on_delete=models.PROTECT, related_name='private_details')
+    cost_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    commission_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True, max_length=3000)
+
+
+class QuotationAction(AppendOnlyModel):
+    quote = models.ForeignKey(JobQuotation, on_delete=models.PROTECT, related_name='actions')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    kind = models.CharField(max_length=24)
+    key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+    reason = models.TextField(blank=True, max_length=1000)
+    snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['created_at','id']
+
+
+class JobActivity(AppendOnlyModel):
     class Kind(models.TextChoices):
         SUBMITTED = 'job_submitted', 'Maintenance request submitted'
         STATUS = 'status_changed', 'Status changed'
         COMMENT = 'comment_added', 'Shared comment added'
-        QUOTE_CREATED = 'quote_created', 'Quotation issued'
+        QUOTE_CREATED = 'quote_created', 'Quotation draft created'
+        QUOTE_EDITED = 'quote_edited', 'Quotation draft edited'
+        QUOTE_SENT = 'quote_sent', 'Quotation sent for approval'
+        QUOTE_REVISED = 'quote_revised', 'Quotation revision created'
+        QUOTE_SUPERSEDED = 'quote_superseded', 'Quotation superseded'
+        QUOTE_REVISION = 'quote_revision_requested', 'Quotation revision requested'
+        CONVERSATION_PERMISSION = 'conversation_permission', 'Tenant conversation permission changed'
+        INTERNAL_NOTE = 'internal_note', 'Internal Operations note'
+        NOTIFICATION_STATE = 'notification_state', 'Notification state changed'
         QUOTE_APPROVED = 'quote_approved', 'Quotation approved'
         QUOTE_REJECTED = 'quote_rejected', 'Quotation rejected'
         CANCELLED = 'job_cancelled', 'Job cancelled'
@@ -178,6 +290,7 @@ class JobActivity(models.Model):
     actor_name = models.CharField(max_length=300)
     actor_role = models.CharField(max_length=20)
     kind = models.CharField(max_length=24, choices=Kind.choices)
+    visibility = models.CharField(max_length=10, default='shared')
     dedup_key = models.CharField(max_length=200, unique=True)
     details = models.JSONField(default=dict)
     job_title = models.CharField(max_length=180)
@@ -217,3 +330,20 @@ class OperationsDeliveryAttempt(models.Model):
     class Meta:
         ordering = ['number']
         constraints = [models.UniqueConstraint(fields=['notification', 'number'], name='operations_attempt_number_unique')]
+
+
+class OperationsInboxItem(models.Model):
+    event = models.OneToOneField(JobActivity, on_delete=models.PROTECT, related_name='inbox_item')
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-created_at','-id']
+
+
+class OperationsInboxReceipt(models.Model):
+    item = models.ForeignKey(OperationsInboxItem, on_delete=models.PROTECT, related_name='receipts')
+    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['item','user'],name='operations_inbox_receipt_unique')]

@@ -103,7 +103,9 @@ def property_data(prop):
 def serialize(job, user):
     from .attachments import attachment_data
     from .events import activity_data
-    from .collaboration import comment_data, quote_data
+    from .collaboration import comment_data
+    from .quotations import quote_data
+    from .attachments import visible_attachments
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
     return {
@@ -111,11 +113,12 @@ def serialize(job, user):
         'property': property_data(job.property), 'title': job.title,
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),
-        'attachments': [attachment_data(a) for a in job.attachments.all()],
-        'comments': [comment_data(c, user) for c in job.comments.all()],
-        'quotations': [quote_data(q) for q in job.quotations.all()] if role != Membership.TENANT else [],
+        'attachments': [attachment_data(a) for a in visible_attachments(job, user)],
+        'tenant_comments_allowed': job.tenant_comments_allowed,
+        'comments': [comment_data(c, user) for c in job.comments.all() if (user.is_superuser or c.visibility == 'shared') and (role != Membership.TENANT or job.tenant_comments_allowed)],
+        'quotations': [quote_data(q, user) for q in job.quotations.all() if user.is_superuser or q.status != 'draft'] if role != Membership.TENANT else [],
         'activity': [activity_data(e, user) for e in job.activities.all()
-                     if role != Membership.TENANT or not e.kind.startswith('quote_')],
+                     if (user.is_superuser or e.visibility == 'shared') and (role != Membership.TENANT or (not e.kind.startswith('quote_') and (job.tenant_comments_allowed or e.kind != 'comment_added')))],
         'version': job.version, 'created_at': job.created_at.isoformat(),
         'updated_at': job.updated_at.isoformat(),
         'allowed_statuses': [{'value': s, 'label': S(s).label} for s in TRANSITIONS[job.status]] if can_update else [],

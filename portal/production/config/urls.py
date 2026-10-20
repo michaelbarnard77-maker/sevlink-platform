@@ -1,10 +1,15 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
-from portal import views, maintenance, attachments, collaboration
+from portal import views, maintenance, attachments, collaboration, quotations, operations
 urlpatterns = [
+    path('api/maintenance/requests/<uuid:job_id>/conversation-permissions/', operations.conversation_permissions, name='maintenance_conversation_permissions'),
+    path('api/maintenance/notifications/', operations.feed, name='operations_notifications'),
+    path('api/maintenance/notifications/<int:item_id>/', operations.state, name='operations_notification_state'),
+    path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/pdf/', quotations.pdf, name='maintenance_quote_pdf'),
     path('api/maintenance/requests/<uuid:job_id>/comments/', collaboration.add_comment, name='maintenance_comment'),
-    path('api/maintenance/requests/<uuid:job_id>/quotations/', collaboration.create_quote, name='maintenance_quote'),
-    path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/decision/', collaboration.decide_quote, name='maintenance_quote_decision'),
+    path('api/maintenance/requests/<uuid:job_id>/quotations/', quotations.create, name='maintenance_quote'),
+    path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/decision/', quotations.mutate, {'operation': 'decision'}, name='maintenance_quote_decision'),
+    path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/<str:operation>/', quotations.mutate, name='maintenance_quote_action'),
     path('api/maintenance/requests/<uuid:job_id>/attachments/', attachments.upload, name='maintenance_attachment_upload'),
     path('api/maintenance/requests/<uuid:job_id>/attachments/<uuid:attachment_id>/', attachments.download, name='maintenance_attachment_download'),
     path('maintenance/', maintenance.workspace, name='maintenance_workspace'),

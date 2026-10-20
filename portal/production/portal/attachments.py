@@ -200,8 +200,8 @@ def cleanup(keys):
             logger.error('Private attachment rollback cleanup failed; storage reconciliation required.')
 
 
-def save_files(job, actor, prepared, saved_keys):
-    if job.attachments.count() + len(prepared) > MAX_PER_JOB:
+def save_files(job, actor, prepared, saved_keys, comment=None, visibility="shared"):
+    if job.attachments.filter(visibility=visibility).count() + len(prepared) > MAX_PER_JOB:
         raise UploadRejected('Maximum ten attachments per maintenance request.')
     for item in prepared:
         attachment_id = uuid.uuid4()
@@ -214,10 +214,21 @@ def save_files(job, actor, prepared, saved_keys):
         if saved != key:
             raise UploadStorageError('Storage must preserve server-generated attachment keys.')
         MaintenanceAttachment.objects.create(id=attachment_id, request=job, uploaded_by=actor,
-            storage_key=key, filename=item['filename'], content_type=item['content_type'],
+            comment=comment, visibility=visibility, storage_key=key, filename=item['filename'], content_type=item['content_type'],
             size=len(item['data']), sha256=hashlib.sha256(item['data']).hexdigest())
         Audit.objects.create(agency=job.property.agency, actor=actor,
             action='Maintenance attachment uploaded', object_id=str(attachment_id))
+
+
+def visible_attachments(job, user):
+    qs = job.attachments.all()
+    if user.is_superuser:
+        return qs
+    qs = qs.filter(visibility='shared').exclude(comment__visibility='internal')
+    membership = getattr(user, 'membership', None)
+    if membership and membership.role == 'tenant' and not job.tenant_comments_allowed:
+        qs = qs.filter(comment__isnull=True)
+    return qs
 
 
 def attachment_data(attachment):
@@ -253,14 +264,14 @@ def upload(request, job_id):
     except Exception:
         cleanup(keys)
         raise
-    return JsonResponse({'attachments': [attachment_data(a) for a in MaintenanceAttachment.objects.filter(request=job)]}, status=201)
+    return JsonResponse({'attachments': [attachment_data(a) for a in visible_attachments(job, request.user)]}, status=201)
 
 
 @api_access
 @require_GET
 def download(request, job_id, attachment_id):
     job = get_object_or_404(requests_for(request.user), pk=job_id)
-    attachment = get_object_or_404(MaintenanceAttachment, pk=attachment_id, request=job)
+    attachment = get_object_or_404(visible_attachments(job, request.user), pk=attachment_id)
     try:
         source = storage().open(attachment.storage_key, 'rb')
     except FileNotFoundError:

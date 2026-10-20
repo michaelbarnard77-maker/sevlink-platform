@@ -6,7 +6,7 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import JobActivity, OperationsNotification
+from .models import JobActivity, OperationsNotification, OperationsInboxItem
 
 
 def actor_identity(user):
@@ -30,21 +30,25 @@ def record(job, actor, kind, dedup_key, details=None):
         'comment_added': {'comment_id', 'text'}, 'quote_created': {'quote_id', 'title', 'amount'},
         'quote_approved': {'quote_id', 'amount', 'status', 'reason'}, 'quote_rejected': {'quote_id', 'amount', 'status', 'reason'},
     }
+    fields.update({kind: {'quote_id', 'amount', 'status', 'reason'} for kind in ('quote_edited', 'quote_sent', 'quote_revised', 'quote_superseded', 'quote_revision_requested')})
+    fields.update({'conversation_permission': {'tenant_comments_allowed'}, 'internal_note': {'comment_id', 'text'}, 'notification_state': {'notification_id', 'read'}})
     if set(details or {}) != fields[kind] or any(not isinstance(value, str) for value in (details or {}).values()):
         raise ValueError('Unexpected event detail fields.')
     event, created = JobActivity.objects.get_or_create(dedup_key=dedup_key, defaults={
         'request': job, 'actor': actor, 'actor_name': name, 'actor_role': role, 'kind': kind,
         'details': details or {}, 'job_title': job.title,
+        'visibility': 'internal' if kind in ('conversation_permission', 'internal_note', 'quote_created', 'quote_edited', 'quote_revised', 'notification_state') else 'shared',
         'property_name': job.property.name, 'property_address': job.property.address,
         'agency_name': job.property.agency.name,
     })
     if not created and (event.request_id != job.pk or event.actor_id != actor.pk or event.kind != kind or event.details != (details or {})):
         raise ValueError('Event key conflicts with an existing event.')
     notify_kinds = {JobActivity.Kind.SUBMITTED, JobActivity.Kind.COMMENT, JobActivity.Kind.QUOTE_APPROVED,
-                    JobActivity.Kind.QUOTE_REJECTED, JobActivity.Kind.CANCELLED, JobActivity.Kind.COMPLETED}
+                    JobActivity.Kind.QUOTE_REJECTED, JobActivity.Kind.QUOTE_REVISION, JobActivity.Kind.CANCELLED, JobActivity.Kind.COMPLETED}
     should_notify = kind in notify_kinds and (kind != JobActivity.Kind.COMMENT or role in ('tenant', 'pm', 'admin'))
     if created and should_notify:
         OperationsNotification.objects.create(event=event, recipient=settings.OPERATIONS_NOTIFICATION_EMAIL)
+        OperationsInboxItem.objects.create(event=event)
     return event
 
 
@@ -67,7 +71,7 @@ def notification_message(event):
         summary = 'New report: ' + one_line(event.job_title)
     elif event.kind == JobActivity.Kind.COMMENT:
         summary = 'A shared comment was added. Sign in to read the comment.'
-    elif event.kind in (JobActivity.Kind.QUOTE_APPROVED, JobActivity.Kind.QUOTE_REJECTED):
+    elif event.kind in (JobActivity.Kind.QUOTE_APPROVED, JobActivity.Kind.QUOTE_REJECTED, JobActivity.Kind.QUOTE_REVISION):
         summary = f'Quotation {details["quote_id"]}: ZAR {details["amount"]}; {details["status"]}.'
     else:
         summary = 'Job status: ' + details.get('status', event.kind)

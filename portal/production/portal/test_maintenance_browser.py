@@ -55,5 +55,6 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(MaintenanceRequest.objects.get().status, 'reviewed')
         self.assertEqual(MaintenanceRequest.objects.get().attachments.count(), 2)
         self.assertEqual(JobQuotation.objects.get().status, 'approved')
-        self.assertEqual(JobComment.objects.count(), 2)
+        self.assertEqual(JobComment.objects.filter(visibility='shared').count(), 2)
+        self.assertEqual(JobComment.objects.filter(visibility='internal').count(), 1)
         self.assertEqual(OperationsNotification.objects.count(), 4)

@@ -165,7 +165,7 @@ class MaintenanceTests(TestCase):
             detail = self.client.get(self.detail_url)
             data = detail.json()
             self.assertEqual(set(data), {'id', 'reference', 'property', 'title', 'description', 'category',
-                                        'status', 'status_label', 'version', 'created_at', 'updated_at', 'allowed_statuses', 'history', 'attachments', 'comments', 'quotations', 'activity'})
+                                        'status', 'status_label', 'version', 'created_at', 'updated_at', 'allowed_statuses', 'history', 'attachments', 'comments', 'quotations', 'activity', 'tenant_comments_allowed'})
             for url in [self.detail_url, self.collection, self.context_url]:
                 content = self.client.get(url).content.decode()
                 for secret in ['PRIVATE SUBCONTRACTOR', 'PRIVATE ACCESS CODE', 'internal_notes', 'reported_by', 'actor_id']:
