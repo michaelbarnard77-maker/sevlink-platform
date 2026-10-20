@@ -1,3 +1,5 @@
+> Development update: quotations and invoices are prepared externally and uploaded as PDFs. The Django workspace supports quotation decisions/revisions and manual invoice payment records; it does not calculate line items or generate documents. See [current commercial document workflows](docs/STEP-7-QUOTATIONS-AND-OPERATIONS.md). Older source-export/demo descriptions below are historical.
+
 # Sevlink source export for Codex
 
 This archive contains the complete source currently available for the Sevlink work completed in the hosted demos and the available backend foundation. It preserves the existing design, branding, pages, navigation, styling, assets, tests and demo behaviour.

@@ -200,9 +200,10 @@ def cleanup(keys):
             logger.error('Private attachment rollback cleanup failed; storage reconciliation required.')
 
 
-def save_files(job, actor, prepared, saved_keys, comment=None, visibility="shared"):
-    if job.attachments.filter(visibility=visibility).count() + len(prepared) > MAX_PER_JOB:
+def save_files(job, actor, prepared, saved_keys, comment=None, visibility="shared", purpose="general"):
+    if purpose == "general" and job.attachments.filter(visibility=visibility, purpose="general").count() + len(prepared) > MAX_PER_JOB:
         raise UploadRejected('Maximum ten attachments per maintenance request.')
+    saved_files = []
     for item in prepared:
         attachment_id = uuid.uuid4()
         key = f'maintenance/{job.pk}/{attachment_id}.{item["suffix"]}'
@@ -213,15 +214,17 @@ def save_files(job, actor, prepared, saved_keys, comment=None, visibility="share
         saved_keys.append(saved)
         if saved != key:
             raise UploadStorageError('Storage must preserve server-generated attachment keys.')
-        MaintenanceAttachment.objects.create(id=attachment_id, request=job, uploaded_by=actor,
-            comment=comment, visibility=visibility, storage_key=key, filename=item['filename'], content_type=item['content_type'],
+        attachment = MaintenanceAttachment.objects.create(id=attachment_id, request=job, uploaded_by=actor,
+            comment=comment, visibility=visibility, purpose=purpose, storage_key=key, filename=item['filename'], content_type=item['content_type'],
             size=len(item['data']), sha256=hashlib.sha256(item['data']).hexdigest())
+        saved_files.append(attachment)
         Audit.objects.create(agency=job.property.agency, actor=actor,
             action='Maintenance attachment uploaded', object_id=str(attachment_id))
+    return saved_files
 
 
 def visible_attachments(job, user):
-    qs = job.attachments.all()
+    qs = job.attachments.filter(purpose='general')
     if user.is_superuser:
         return qs
     qs = qs.filter(visibility='shared').exclude(comment__visibility='internal')
@@ -272,6 +275,11 @@ def upload(request, job_id):
 def download(request, job_id, attachment_id):
     job = get_object_or_404(requests_for(request.user), pk=job_id)
     attachment = get_object_or_404(visible_attachments(job, request.user), pk=attachment_id)
+    return file_response(attachment)
+
+
+def file_response(attachment):
+    """Private streaming helper; callers must first authorize the specific document."""
     try:
         source = storage().open(attachment.storage_key, 'rb')
     except FileNotFoundError:

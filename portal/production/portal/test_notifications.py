@@ -15,6 +15,7 @@ from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .test_attachments import document
 from .checks import operations_configuration
 from .events import record, notification_message
 from .models import (Agency, Audit, JobActivity, JobComment, JobQuotation, MaintenanceRequest,
@@ -49,6 +50,19 @@ class EventWorkflowTests(TestCase):
             Tenancy.objects.create(property=cls.home, user=tenant, name=tenant.first_name, email=tenant.email, phone='PRIVATE PHONE')
         cls.collection = reverse('maintenance_collection')
 
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory(prefix='sevlink-commercial-test-')
+        self.addCleanup(directory.cleanup)
+        aliases = {**settings.STORAGES, 'maintenance_private': {
+            'BACKEND': 'portal.attachment_storage.PrivateAttachmentStorage', 'OPTIONS': {'location': directory.name}}}
+        override = override_settings(PRIVATE_ATTACHMENT_ROOT=directory.name, STORAGES=aliases)
+        override.enable(); self.addCleanup(override.disable)
+
+    def upload_quote(self, key=None):
+        return self.client.post(self.quote_url, {'reference':'Q-TEST', 'title':'Repair quotation',
+            'scope':'Replace the leaking tap.', 'amount':'1250.50', 'attachments':document(name='quotation.pdf')},
+            HTTP_IDEMPOTENCY_KEY=str(key or uuid.uuid4()))
+
     def post(self, url, body, key=None):
         return self.client.post(url, json.dumps(body), content_type='application/json', HTTP_IDEMPOTENCY_KEY=str(key or uuid.uuid4()))
 
@@ -65,7 +79,7 @@ class EventWorkflowTests(TestCase):
 
     def new_quote(self, key=None):
         self.client.force_login(self.ops)
-        response = self.post(self.quote_url, {'title': 'Repair quotation', 'scope': 'Replace the leaking tap.', 'amount': '1250.50'}, key)
+        response = self.upload_quote(key)
         self.assertEqual(response.status_code, 201, response.content)
         quote = JobQuotation.objects.get(pk=response.json()['id'])
         sent = self.post(reverse('maintenance_quote_action', args=[self.job.pk, quote.pk, 'send']), {'version': quote.version})
@@ -159,7 +173,7 @@ class EventWorkflowTests(TestCase):
         self.new_job()
         key = uuid.uuid4()
         self.new_quote(key)
-        replay = self.post(self.quote_url, {'title':'Repair quotation','scope':'Replace the leaking tap.','amount':'1250.50'}, key)
+        replay = self.upload_quote(key)
         self.assertEqual(replay.status_code, 200)
         self.assertEqual(JobQuotation.objects.count(), 1)
         self.assertEqual(OperationsNotification.objects.count(), 1)

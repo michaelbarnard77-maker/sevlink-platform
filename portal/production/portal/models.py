@@ -137,6 +137,8 @@ class MaintenanceStatusEvent(models.Model):
 
 
 class MaintenanceAttachment(models.Model):
+    # Commercial documents are never returned by the general job attachment API.
+    purpose = models.CharField(max_length=12, default='general', choices=[('general', 'Job attachment'), ('quotation', 'Quotation PDF'), ('invoice', 'Invoice PDF')])
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='attachments')
     comment = models.ForeignKey('JobComment', null=True, blank=True, on_delete=models.PROTECT, related_name='attachments')
@@ -151,6 +153,20 @@ class MaintenanceAttachment(models.Model):
 
     class Meta:
         ordering = ['created_at', 'id']
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        old = type(self).objects.filter(pk=self.pk).first()
+        if old and old.purpose != 'general' and any(
+                getattr(old, f.attname) != getattr(self, f.attname) for f in self._meta.fields):
+            raise ValidationError('Uploaded commercial documents are immutable.')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if self.purpose != 'general':
+            raise ValidationError('Commercial documents must be retained in job history.')
+        return super().delete(*args, **kwargs)
 
 
 class JobComment(AppendOnlyModel):
@@ -170,6 +186,8 @@ class JobComment(AppendOnlyModel):
 
 
 class JobQuotation(models.Model):
+    reference = models.CharField(max_length=80, blank=True)
+    document = models.OneToOneField(MaintenanceAttachment, null=True, blank=True, on_delete=models.PROTECT, related_name='quotation')
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='quotations')
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='+')
@@ -208,7 +226,7 @@ class JobQuotation(models.Model):
         from django.core.exceptions import ValidationError
         old = type(self).objects.filter(pk=self.pk).first() if self.pk else None
         if old and old.status != 'draft':
-            fields = ['title','scope','amount','tax_treatment','vat_rate','subtotal','vat_total','public_snapshot','series_id','revision','previous_id','sent_at']
+            fields = ['reference','document_id','title','scope','amount','tax_treatment','vat_rate','subtotal','vat_total','public_snapshot','series_id','revision','previous_id','sent_at']
             if any(getattr(old, name) != getattr(self, name) for name in fields):
                 raise ValidationError('Sent quotation content is immutable; create a revision.')
             if old.status == 'approved' and any(getattr(old, field.attname) != getattr(self, field.attname) for field in self._meta.fields):
@@ -216,7 +234,60 @@ class JobQuotation(models.Model):
         return super().save(*args, **kwargs)
 
 
+class JobInvoice(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='invoices')
+    document = models.OneToOneField(MaintenanceAttachment, on_delete=models.PROTECT, related_name='invoice')
+    number = models.CharField(max_length=80)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    due_date = models.DateField()
+    visibility = models.CharField(max_length=10, choices=[('shared', 'Agency invoice'), ('internal', 'Private supplier invoice')], default='internal')
+    uploaded_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    creation_key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payment_status = models.CharField(max_length=16, choices=[('unpaid','Unpaid'), ('partially_paid','Partially paid'), ('paid','Paid')], default='unpaid')
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name='invoice_positive_amount'),
+            models.CheckConstraint(condition=models.Q(paid_amount__gte=0) & models.Q(paid_amount__lte=models.F('amount')), name='invoice_payment_bounds'),
+            models.CheckConstraint(condition=(models.Q(payment_status='unpaid', paid_amount=0) |
+                models.Q(payment_status='paid', paid_amount=models.F('amount')) |
+                models.Q(payment_status='partially_paid', paid_amount__gt=0, paid_amount__lt=models.F('amount'))), name='invoice_payment_state'),
+            models.UniqueConstraint(fields=['request', 'visibility', 'number'], name='invoice_job_number_unique'),
+        ]
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        old = type(self).objects.filter(pk=self.pk).first()
+        if old and any(getattr(old, field) != getattr(self, field) for field in (
+                'request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
+            raise ValidationError('Invoice PDF and recorded invoice details are immutable.')
+        return super().save(*args, **kwargs)
+
+
+class InvoicePayment(AppendOnlyModel):
+    invoice = models.ForeignKey(JobInvoice, on_delete=models.PROTECT, related_name='payments')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_on = models.DateField()
+    reference = models.CharField(max_length=180, blank=True)
+    note = models.TextField(max_length=1000, blank=True)
+    key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name='manual_payment_positive')]
+
+
 class QuotationLine(models.Model):
+    """Historical development rows only; current workflows do not create/calculate lines."""
     quote = models.ForeignKey(JobQuotation, on_delete=models.PROTECT, related_name='lines')
     position = models.PositiveIntegerField()
     description = models.CharField(max_length=180)
@@ -270,6 +341,8 @@ class JobActivity(AppendOnlyModel):
         SUBMITTED = 'job_submitted', 'Maintenance request submitted'
         STATUS = 'status_changed', 'Status changed'
         COMMENT = 'comment_added', 'Shared comment added'
+        INVOICE_UPLOADED = 'invoice_uploaded', 'Invoice PDF uploaded'
+        PAYMENT_RECORDED = 'invoice_payment', 'Manual invoice payment recorded'
         QUOTE_CREATED = 'quote_created', 'Quotation draft created'
         QUOTE_EDITED = 'quote_edited', 'Quotation draft edited'
         QUOTE_SENT = 'quote_sent', 'Quotation sent for approval'

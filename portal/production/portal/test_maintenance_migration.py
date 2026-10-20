@@ -7,7 +7,7 @@ from django.test import TransactionTestCase
 class MaintenanceMigrationTests(TransactionTestCase):
     def test_upgrade_preserves_existing_agency_property_and_tenancy(self):
         old = [('portal', '0001_initial')]
-        new = [('portal', '0009_alter_jobactivity_kind')]
+        new = [('portal', '0010_jobquotation_document_jobquotation_reference_and_more')]
         try:
             executor = MigrationExecutor(connection)
             executor.migrate(old)
@@ -53,7 +53,7 @@ class QuotationUpgradeTests(TransactionTestCase):
         import uuid
         from django.utils import timezone
         old = [('portal', '0006_maintenancerequest_submission_fingerprint_and_more')]
-        new = [('portal', '0009_alter_jobactivity_kind')]
+        new = [('portal', '0010_jobquotation_document_jobquotation_reference_and_more')]
         try:
             executor = MigrationExecutor(connection); executor.migrate(old)
             apps = executor.loader.project_state(old).apps
@@ -79,7 +79,10 @@ class QuotationUpgradeTests(TransactionTestCase):
             quotes=list(apps.get_model('portal','JobQuotation').objects.filter(pk__in=quote_ids))
             self.assertEqual(len({q.series_id for q in quotes}),4)
             self.assertEqual(sorted(q.status for q in quotes),['approved','rejected','sent','sent'])
+            self.assertEqual(apps.get_model('portal','JobInvoice').objects.count(),0)
             for quote in quotes:
+                self.assertIsNone(quote.document_id)
+                self.assertEqual(quote.reference,'')
                 self.assertEqual(str(quote.amount),'1234.50')
                 self.assertEqual(quote.public_snapshot['amount'],'1234.50')
                 self.assertEqual(quote.public_snapshot['scope'],'Preserve scope')

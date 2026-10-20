@@ -1,5 +1,7 @@
 """Optional real-browser workflow test; uses Django's isolated temporary test DB."""
 import json
+import base64
+from .test_attachments import document
 import os
 from pathlib import Path
 import subprocess
@@ -9,8 +11,9 @@ from unittest import skipUnless
 from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import Client, override_settings
+from django.utils import timezone
 
-from .models import Agency, Membership, Property, Tenancy, User, MaintenanceRequest, JobQuotation, JobComment, OperationsNotification
+from .models import Agency, Membership, Property, Tenancy, User, MaintenanceRequest, JobQuotation, JobComment, OperationsNotification, JobInvoice, InvoicePayment
 
 
 @skipUnless(os.environ.get('SEVLINK_BROWSER_TESTS') == '1', 'Set SEVLINK_BROWSER_TESTS=1 with Node Playwright installed.')
@@ -48,13 +51,15 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         sessions['tenantAgain'] = fresh_client.cookies[settings.SESSION_COOKIE_NAME].value
         Tenancy.objects.create(property=prop, user=tenant, name='Test tenant', email=tenant.email, phone='test')
         script = Path(settings.BASE_DIR).parents[1] / 'scripts' / 'test-maintenance-browser.cjs'
-        result = subprocess.run(['node', str(script)], input=json.dumps({'url': self.live_server_url, 'sessions': sessions}),
+        result = subprocess.run(['node', str(script)], input=json.dumps({'url': self.live_server_url, 'sessions': sessions, 'pdf':base64.b64encode(document().read()).decode(), 'today':timezone.localdate().isoformat()}),
                                 text=True, capture_output=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('PASS', result.stdout)
         self.assertEqual(MaintenanceRequest.objects.get().status, 'reviewed')
-        self.assertEqual(MaintenanceRequest.objects.get().attachments.count(), 2)
+        self.assertEqual(MaintenanceRequest.objects.get().attachments.filter(purpose='general').count(), 2)
         self.assertEqual(JobQuotation.objects.get().status, 'approved')
         self.assertEqual(JobComment.objects.filter(visibility='shared').count(), 2)
         self.assertEqual(JobComment.objects.filter(visibility='internal').count(), 1)
         self.assertEqual(OperationsNotification.objects.count(), 4)
+        self.assertEqual(JobInvoice.objects.get().payment_status, 'partially_paid')
+        self.assertEqual(InvoicePayment.objects.get().amount, 250)

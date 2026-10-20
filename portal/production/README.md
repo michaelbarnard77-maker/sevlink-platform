@@ -1,3 +1,5 @@
+> Current development workflow: manually uploaded quotation/invoice PDFs, PM quotation decisions and Operations manual payment records. No PDF generation, quote line-item calculations or payment gateway. See [the current guide](../../docs/STEP-7-QUOTATIONS-AND-OPERATIONS.md); older exported-backend descriptions below are historical.
+
 > Development branch update: Phase 1 now includes persistent maintenance requests,
 > authenticated API endpoints and a portal adapter at `/maintenance/`. See
 > [Phase 1 workflow](../../docs/PHASE-1-WORKFLOW.md) for current behavior and tests.

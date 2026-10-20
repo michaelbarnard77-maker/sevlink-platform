@@ -105,6 +105,7 @@ def serialize(job, user):
     from .events import activity_data
     from .collaboration import comment_data
     from .quotations import quote_data
+    from .invoices import invoice_data
     from .attachments import visible_attachments
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
@@ -117,8 +118,9 @@ def serialize(job, user):
         'tenant_comments_allowed': job.tenant_comments_allowed,
         'comments': [comment_data(c, user) for c in job.comments.all() if (user.is_superuser or c.visibility == 'shared') and (role != Membership.TENANT or job.tenant_comments_allowed)],
         'quotations': [quote_data(q, user) for q in job.quotations.all() if user.is_superuser or q.status != 'draft'] if role != Membership.TENANT else [],
+        'invoices': [invoice_data(i, user) for i in job.invoices.select_related('document').prefetch_related('payments__actor') if user.is_superuser or i.visibility == 'shared'] if role != Membership.TENANT else [],
         'activity': [activity_data(e, user) for e in job.activities.all()
-                     if (user.is_superuser or e.visibility == 'shared') and (role != Membership.TENANT or (not e.kind.startswith('quote_') and (job.tenant_comments_allowed or e.kind != 'comment_added')))],
+                     if (user.is_superuser or e.visibility == 'shared') and (role != Membership.TENANT or (not e.kind.startswith(('quote_', 'invoice_')) and (job.tenant_comments_allowed or e.kind != 'comment_added')))],
         'version': job.version, 'created_at': job.created_at.isoformat(),
         'updated_at': job.updated_at.isoformat(),
         'allowed_statuses': [{'value': s, 'label': S(s).label} for s in TRANSITIONS[job.status]] if can_update else [],

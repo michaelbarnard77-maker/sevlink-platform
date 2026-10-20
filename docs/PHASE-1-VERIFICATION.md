@@ -1,4 +1,4 @@
-> Step 7 is now implemented on the development branch: real quotation drafts/lines/VAT/revisions/decisions/PDFs, private Operations conversations/files and notification bell/read receipts. See [the Step 7 checklist](STEP-7-QUOTATIONS-AND-OPERATIONS.md). Local setup and review accounts below still apply.
+> Step 7 is now implemented on the development branch: externally uploaded quotation PDFs/revisions/decisions and invoice PDFs/manual payment records, private Operations conversations/files and notification bell/read receipts. See [the Step 7 checklist](STEP-7-QUOTATIONS-AND-OPERATIONS.md). Local setup and review accounts below still apply.
 
 > Current development update: shared comments, basic quotation issue/decisions and
 > durable Operations notifications are now real Django workflows. Delivery remains

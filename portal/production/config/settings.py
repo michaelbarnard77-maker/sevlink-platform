@@ -87,7 +87,3 @@ OPERATIONS_NOTIFICATION_EMAIL = os.environ.get('OPERATIONS_NOTIFICATION_EMAIL', 
 OPERATIONS_EMAIL_DELIVERY_BACKEND = os.environ.get('OPERATIONS_EMAIL_DELIVERY_BACKEND', 'portal.mail.PrivatePreviewBackend')
 OPERATIONS_LIVE_DELIVERY_ENABLED = os.environ.get('OPERATIONS_LIVE_DELIVERY_ENABLED') == '1'
 EMAIL_FILE_PATH = BASE_DIR / 'private-email-preview'
-
-# VAT is a fraction (e.g. 0.15 in a test/configuration), never a hardcoded tax rate.
-# Empty means no VAT configuration; only 'none' treatment is permitted until set.
-SEVLINK_VAT_RATE = os.environ.get('SEVLINK_VAT_RATE', '')

@@ -19,7 +19,6 @@ from .models import (JobQuotation, QuotationLine, QuotationAction, JobActivity, 
                      OperationsInboxItem, OperationsInboxReceipt, OperationsNotification, MaintenanceAttachment,
                      User, Agency, Property, MaintenanceRequest, Membership)
 from .notifications import deliver
-from .quotations import content
 
 
 @contextmanager
@@ -32,22 +31,22 @@ def private_storage(directory):
 
 @override_settings(SECURE_SSL_REDIRECT=False, SESSION_COOKIE_SECURE=False, CSRF_COOKIE_SECURE=False,
                    ALLOWED_HOSTS=['testserver'], OPERATIONS_EMAIL_DELIVERY_BACKEND=fixtures.LOCAL,
-                   OPERATIONS_LIVE_DELIVERY_ENABLED=False, SEVLINK_VAT_RATE='0.125')
+                   OPERATIONS_LIVE_DELIVERY_ENABLED=False)
 class Step7Tests(TestCase):
     setUpTestData = classmethod(fixtures.EventWorkflowTests.setUpTestData.__func__)
     post = fixtures.EventWorkflowTests.post
     new_job = fixtures.EventWorkflowTests.new_job
 
     def setUp(self):
+        fixtures.EventWorkflowTests.setUp(self)
         self.new_job()
         self.client.force_login(self.ops)
 
     def draft(self, **changes):
-        data = dict(title='Public repair scope', scope='Agency-visible work.', tax_treatment='exclusive',
-            lines=[dict(description='Tap replacement', quantity='2.5', unit='hour', unit_price='100.05')],
-            internal=dict(cost_total='100', commission_total='25', notes='PRIVATE SUBCONTRACTOR IDENTITY'))
+        data = dict(reference='Q-STEP7', title='Public repair scope', scope='Agency-visible work.', amount='281.40',
+                    attachments=fixtures.document(name='quotation.pdf'))
         data.update(changes)
-        response = self.post(self.quote_url, data)
+        response = self.client.post(self.quote_url, data, HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(response.status_code, 201, response.content)
         return response.json()
 
@@ -69,80 +68,64 @@ class Step7Tests(TestCase):
         self.client.force_login(user)
         return self.client.get(self.detail_url).json()
 
-    def test_decimal_exclusive_inclusive_and_no_vat_rounding(self):
-        quote = self.draft()
-        self.assertEqual(Decimal(quote['subtotal']), Decimal('250.13'))
-        self.assertEqual(Decimal(quote['vat_total']), Decimal('31.27'))
-        self.assertEqual(Decimal(quote['amount']), Decimal('281.40'))
-        for treatment, expected in [('inclusive', ('222.34', '27.79', '250.13')), ('none', ('250.13', '0.00', '250.13'))]:
-            data = self.draft(tax_treatment=treatment)
-            self.assertEqual(tuple(Decimal(data[k]) for k in ('subtotal','vat_total','amount')), tuple(map(Decimal, expected)))
-        self.assertEqual(QuotationLine.objects.count(), 3)
+    def test_recorded_amount_and_pdf_are_not_calculated_or_generated(self):
+        quote = self.draft(amount='250.13')
+        self.assertEqual(quote['amount'], '250.13')
+        self.assertEqual(quote['reference'], 'Q-STEP7')
+        self.assertTrue(quote['document']['uploaded_at'])
+        self.assertNotIn('lines', quote)
+        self.assertNotIn('vat_total', quote)
+        self.assertEqual(QuotationLine.objects.count(), 0)
 
-    @override_settings(SEVLINK_VAT_RATE='')
-    def test_taxable_quotes_require_configuration(self):
-        response = self.post(self.quote_url, dict(title='VAT', amount='100', tax_treatment='exclusive'))
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(JobQuotation.objects.count(), 0)
-        self.assertEqual(Decimal(self.draft(tax_treatment='none')['vat_rate']), Decimal(0))
-
-    def test_reject_invalid_quantities_precision_rate_and_currency_overflow(self):
-        for qty, price in [('0','10'), ('1.0001','10'), ('1','1.001'), ('NaN','1'), ('1',True), ('999999999.999','9999999999.99')]:
-            response = self.post(self.quote_url, {'title':'Invalid','lines':[dict(description='Work',quantity=qty,unit='job',unit_price=price)]})
+    def test_quotation_requires_pdf_and_rejects_old_calculation_inputs(self):
+        for body in ({'title':'Old', 'amount':'100'}, {'title':'Old','lines':[],'tax_treatment':'exclusive'}):
+            self.assertEqual(self.post(self.quote_url,body).status_code,400)
+        for amount in ('0','-1','NaN','1.001','10000000000.00'):
+            response=self.client.post(self.quote_url,{'reference':'Invalid','amount':amount,'attachments':fixtures.document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
             self.assertEqual(response.status_code,400,response.content)
-        for rate in ('bad', '-0.01', '1.1', '0.1234567'):
-            with override_settings(SEVLINK_VAT_RATE=rate):
-                self.assertEqual(self.post(self.quote_url,dict(title='Test',amount='10',tax_treatment='exclusive')).status_code,400)
         self.assertEqual(JobQuotation.objects.count(),0)
 
     def test_drafts_hidden_and_internal_money_never_in_external_response(self):
-        quote = self.draft()
+        from .models import QuotationPrivate
+        quote=self.draft()
+        QuotationPrivate.objects.create(quote_id=quote['id'],cost_total='100',commission_total='25',notes='PRIVATE SUBCONTRACTOR IDENTITY')
         self.assertEqual(self.detail(self.pm)['quotations'], [])
-        self.assertFalse(any(e['type'].startswith('quote_') for e in self.detail(self.pm)['activity']))
         self.client.force_login(self.ops)
-        quote = self.mutate(quote,'send').json()
+        self.mutate(quote,'send')
         for user in (self.pm,self.admin):
-            data = self.detail(user)
+            data=self.detail(user)
             self.assertEqual(len(data['quotations']),1)
-            encoded = json.dumps(data)
             for secret in ('PRIVATE SUBCONTRACTOR','cost_total','commission_total','private_details','internal'):
-                self.assertNotIn(secret,encoded)
+                self.assertNotIn(secret,json.dumps(data))
         self.assertEqual(self.detail(self.tenant)['quotations'],[])
         self.assertEqual(self.detail(self.ops)['quotations'][0]['internal']['notes'],'PRIVATE SUBCONTRACTOR IDENTITY')
 
-    def test_edit_requires_version_draft_and_idempotency(self):
-        quote = self.draft()
-        edited = self.mutate(quote,'edit', title='Revised draft',amount='500',tax_treatment='none')
-        self.assertEqual(edited.status_code,200)
-        self.assertEqual(edited.json()['amount'],'500.00')
-        self.assertEqual(self.mutate(quote,'edit',title='Stale',amount='20').status_code,409)
-        quote = edited.json()
-        quote = self.mutate(quote,'send').json()
-        self.assertEqual(self.mutate(quote,'edit',title='Tamper',amount='20').status_code,409)
-        self.client.force_login(self.pm)
-        self.assertEqual(self.mutate(quote,'edit',title='Tamper',amount='20').status_code,403)
-
-    def test_saved_vat_snapshot_approval_and_approved_model_immutability(self):
-        quote = self.sent()
-        with override_settings(SEVLINK_VAT_RATE='0.2'):
-            response = self.decide(quote)
+    def test_draft_metadata_edit_never_replaces_uploaded_pdf(self):
+        quote=self.draft()
+        response=self.mutate(quote,'edit',reference='Q-UPDATED',title='Updated metadata',amount='500')
         self.assertEqual(response.status_code,200,response.content)
-        approved = JobQuotation.objects.get(pk=quote['id'])
-        self.assertEqual(approved.vat_rate,Decimal('.125'))
+        self.assertEqual(response.json()['document']['sha256'],quote['document']['sha256'])
+        self.assertEqual(self.mutate(quote,'edit',reference='Q-STALE',amount='20').status_code,409)
+        sent=self.mutate(response.json(),'send').json()
+        self.assertEqual(self.mutate(sent,'edit',reference='Tamper',amount='20').status_code,409)
+
+    def test_approval_preserves_pdf_and_amount_immutably(self):
+        quote=self.sent()
+        response=self.decide(quote)
+        self.assertEqual(response.status_code,200,response.content)
+        approved=JobQuotation.objects.get(pk=quote['id'])
+        self.assertEqual(approved.public_snapshot['document']['sha256'],quote['document']['sha256'])
         self.assertEqual(approved.public_snapshot['amount'],'281.40')
-        approved.amount = Decimal('1')
+        approved.amount=Decimal('1')
         with self.assertRaises(ValidationError):
             approved.save()
-        line = approved.lines.get()
-        line.unit_price = Decimal('1')
+        approved.document.filename='changed.pdf'
         with self.assertRaises(ValidationError):
-            line.save()
+            approved.document.save()
         with self.assertRaises(ValidationError):
-            line.delete()
+            approved.document.delete()
         self.client.force_login(self.ops)
-        self.assertEqual(self.mutate(response.json(),'revise').status_code,409)
         self.assertEqual(self.mutate(response.json(),'send').status_code,409)
-        self.assertEqual(QuotationAction.objects.filter(quote_id=quote['id']).count(),3)
 
     def test_revision_request_supersedes_and_stale_approval_fails(self):
         old = self.sent()
@@ -150,7 +133,7 @@ class Step7Tests(TestCase):
         self.assertEqual(decision.status_code,200,decision.content)
         self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),1)
         self.client.force_login(self.ops)
-        revised = self.mutate(decision.json(),'revise')
+        revised = self.client.post(reverse('maintenance_quote_action',args=[self.job.pk,old['id'],'revise']), {'version':decision.json()['version'],'reference':'Q-STEP7-R2','amount':'281.40','attachments':fixtures.document(name='revised.pdf')},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(revised.status_code,201,revised.content)
         new = revised.json()
         self.assertEqual((new['revision'],new['series_id'],new['status']),(2,old['series_id'],'draft'))
@@ -186,14 +169,10 @@ class Step7Tests(TestCase):
         for user, status in [(self.pm,200),(self.admin,200),(self.ops,200),(self.tenant,403),(self.foreign,404),(self.other_pm,404),(self.cotenant,404)]:
             self.client.force_login(user)
             response = self.client.get(url)
-            self.assertEqual(response.status_code,status,response.content[:100])
+            self.assertEqual(response.status_code,status,b'' if response.streaming else response.content[:100])
             if status == 200:
-                self.assertTrue(response.content.startswith(b'%PDF-'))
+                self.assertTrue(b''.join(response.streaming_content).startswith(b'%PDF-'))
                 self.assertIn('no-store',response['Cache-Control'])
-        # The PDF generator obtains only the public serializer; private records are never accessed.
-        self.client.force_login(self.pm)
-        with patch('portal.quotations.QuotationPrivate.objects.filter',side_effect=AssertionError('Private data in public PDF')):
-            self.assertEqual(self.client.get(url).status_code,200)
         for operation in ('send','edit','revise','decision'):
             self.client.force_login(self.foreign)
             self.assertEqual(self.mutate(quote,operation,status='approved',reason='OK').status_code,404)
@@ -392,7 +371,8 @@ class ConcurrentQuotationTests(TransactionTestCase):
         prop=Property.objects.create(agency=agency,manager=pm,name='Race home',address='Test')
         ops=User.objects.create_user(username='race-ops@example.test',email='race-ops@example.test',is_superuser=True)
         job=MaintenanceRequest.objects.create(property=prop,reported_by=pm,title='Race',description='Test',category='Plumbing')
-        quote=JobQuotation.objects.create(request=job,created_by=ops,creation_key=uuid.uuid4(),title='Race quote',scope='Test',amount='100',status='sent')
+        document=MaintenanceAttachment.objects.create(request=job,uploaded_by=ops,purpose='quotation',visibility='internal',storage_key='maintenance/race/quote.pdf',filename='quote.pdf',content_type='application/pdf',size=1,sha256='a'*64)
+        quote=JobQuotation.objects.create(document=document,request=job,created_by=ops,creation_key=uuid.uuid4(),title='Race quote',scope='Test',amount='100',status='sent')
         barrier=Barrier(2)
         def run(status):
             close_old_connections()

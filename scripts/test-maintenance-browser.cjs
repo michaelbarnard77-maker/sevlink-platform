@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 let input = '';
 process.stdin.on('data', chunk => input += chunk);
 process.stdin.on('end', async () => {
-  const {url, sessions} = JSON.parse(input);
+  const {url, sessions, pdf, today} = JSON.parse(input);
   const browser = await chromium.launch({headless:true,
     ...(process.env.SEVLINK_CHROMIUM_PATH ? {executablePath:process.env.SEVLINK_CHROMIUM_PATH} : {}), args:['--no-sandbox']});
   const errors = [], failedAssets = [];
@@ -83,8 +83,9 @@ process.stdin.on('end', async () => {
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
     await page.locator('#quoteForm [name=title]').fill('Browser quotation');
     await page.locator('#quoteForm [name=scope]').fill('Replace kitchen tap and test.');
-    await page.locator('#quoteForm [data-field=description]').fill('Kitchen tap replacement');
-    await page.locator('#quoteForm [data-field=unit_price]').fill('1250.00');
+    await page.locator('#quoteForm [name=reference]').fill('Q-BROWSER-001');
+    await page.locator('#quoteForm [name=amount]').fill('1250.00');
+    await page.locator('#quoteForm [name=attachments]').setInputFiles({name:'quotation.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
     await page.getByRole('button', {name:'Save quotation draft', exact:true}).click();
     await page.locator('.card h2').filter({hasText:'Browser quotation'}).waitFor();
     await page.getByRole('button', {name:'Send for approval', exact:true}).click();
@@ -100,12 +101,28 @@ process.stdin.on('end', async () => {
     await page.getByRole('button', {name:'Mark unread', exact:true}).first().waitFor();
     await page.getByRole('button', {name:'Open job', exact:true}).first().click();
     await page.locator('#commentForm').waitFor();
+    await page.locator('#invoiceForm [name=visibility]').selectOption('shared');
+    await page.locator('#invoiceForm [name=number]').fill('INV-BROWSER-001');
+    await page.locator('#invoiceForm [name=amount]').fill('1000.00');
+    await page.locator('#invoiceForm [name=due_date]').fill('2026-11-15');
+    await page.locator('#invoiceForm [name=attachments]').setInputFiles({name:'invoice.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
+    await page.getByRole('button', {name:'Upload invoice PDF',exact:true}).click();
+    await page.locator('.invoicePayment').waitFor();
+    await page.locator('.invoicePayment [name=amount]').fill('250.00');
+    await page.locator('.invoicePayment [name=paid_on]').fill(today);
+    await page.locator('.invoicePayment [name=reference]').fill('PRIVATE BANK RECEIPT');
+    await page.getByRole('button', {name:'Record manual payment',exact:true}).click();
+    await page.locator('.card .badge').filter({hasText:'partially_paid'}).waitFor();
     await context.close();
 
     ({context, page} = await signedIn('pm'));
     const jobId = new URL(downloadUrl, url).pathname.split('/')[4];
     await page.goto(url + '/maintenance/?job=' + jobId);
     await page.locator('.quoteDecision').waitFor();
+    await page.getByRole('link', {name:'Download invoice PDF',exact:true}).waitFor();
+    assert.equal(await page.locator('#modal').innerText().then(t => /PRIVATE BANK RECEIPT/.test(t)),false);
+    assert.equal(await page.locator('.invoicePayment').count(),0);
+    assert.equal(await page.locator('#invoiceForm').count(),0);
     assert.equal(await page.locator('#modal').innerText().then(t => /PRIVATE Operations supplier note|cost_total|commission_total/.test(t)), false);
     await page.locator('.quoteDecision [name=status]').selectOption('approved');
     await page.locator('.quoteDecision [name=reason]').fill('Approved as quoted.');
@@ -116,6 +133,6 @@ process.stdin.on('end', async () => {
     await page.locator('.comment').filter({hasText:'Approved. Please coordinate access.'}).waitFor();
     await context.close();
     assert.deepEqual(errors, []); assert.deepEqual(failedAssets, []);
-    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin draft/send, private notes and notification read/open, authorized PM approval and saved tenant/PM comments, secure deep link, mobile layout, CSRF, no demo role switch or IndexedDB.');
+    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin manual PDF draft/send, invoice PDF and manual partial payment, private notes and notification read/open, authorized PM approval and saved tenant/PM comments, secure deep link, mobile layout, CSRF, no demo role switch or IndexedDB.');
   } finally { await browser.close(); }
 });

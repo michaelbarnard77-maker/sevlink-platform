@@ -1,61 +1,72 @@
-# Step 7: quotations, conversations and Operations inbox
+# Quotations, invoices, conversations and Operations inbox
 
-Development branch: `development/phase-1-foundations`. Draft PR #1 remains unmerged. No deployment, paid service or live email activation is included. The original public website, demo, branding, styles and assets are preserved.
+Current business rule: **quotations and invoices are prepared externally and manually uploaded as PDFs**. This guide supersedes the earlier line-item/VAT/PDF-generation design. Work remains on `development/phase-1-foundations`; draft PR #1 is not merged. No deployment, payment gateway, live email or paid AWS service is activated.
 
-## What is connected to Django
+## Connected screens and permissions
 
-Use the existing `/login/` and `/maintenance/` workspace with separate tenant, property manager and Super Admin accounts. The static demo in `portal/dist/` still uses browser-local data; it never writes these models or triggers these notifications.
+The existing `/login/` and `/maintenance/` workspace uses Django authentication, CSRF and the configured database. The public website and original `portal/dist/` demo/assets/styles are unchanged.
 
-| Screen/control in authenticated workspace | Backend behaviour |
+| Authenticated screen/control | Saved backend behaviour |
 | --- | --- |
-| Report repair, photos/documents, repair register and detail | Persisted requests and private attachments, scoped by agency/property/tenant |
-| Status selector and timeline | Versioned saved status transitions and timestamped actor activity |
-| Operations quotation form | Saves editable drafts with 1–20 lines, quantities, units and ZAR prices |
-| Save draft changes / Send for approval | Locks job, checks quotation version, freezes public content on sending |
-| PM/agency Approve / Reject / Request revision | Mandatory decision comment, responsible user/time and idempotent decision |
-| Operations Create next revision | Supersedes sent/rejected/revision-requested revision; creates next numbered draft |
-| Download quotation PDF | Authenticated download rendered only from public quotation data |
-| Job conversation and files | Persistent chronological shared comments with protected files |
-| Operations-only note option | Private notes and files; server excludes them from all external responses/downloads |
-| Enable/disable tenant conversation access | Per-job persisted permission with version check and private audit activity |
-| Operations notification bell/feed | Persistent, paginated important-event inbox; per-operator read/unread state |
-| Open job from notification | Normal session authorization; no bearer/login token |
+| Report a repair, register, status and timeline | Existing requests, scoped property/tenant access and audit history |
+| Operations Upload quotation PDF | Reference, manually entered ZAR amount, optional title/scope, upload timestamp and revision number |
+| Send for approval | Makes the uploaded draft visible to the authorized PM/agency administrator |
+| Approve / Reject / Request revision | Required comment, acting user/time, permanent decision history, Operations inbox and local email queue |
+| Operations Upload revised quotation | A new PDF and numbered revision; supersedes the prior unapproved revision without replacing its file |
+| Download quotation PDF | Exact uploaded PDF bytes, authenticated and authorized; nothing is generated |
+| Operations Upload invoice PDF | Invoice number, manually entered ZAR amount, due date, upload timestamp and visibility |
+| Operations Record manual payment | Append-only payment amount/date/reference/private note; unpaid/partially paid/paid state and outstanding balance |
+| Invoice card and download | Authorized PM/agency administrator can view agency invoices and recorded payment progress; private supplier invoices are Operations-only |
+| Job conversation/files | Persistent shared comments and private Operations notes; per-job tenant conversation permission |
+| Super Admin bell/feed | Important events, agency/job/time/link, persistent per-user read/unread receipts |
 
-The existing account/property/invitation backend remains in place. Payments, deposits, invoices, budgets, scheduling, dispatch and subcontractor assignments shown in the standalone demo are **still simulated**, with no real finance/dispatch integration. Quote approval does not automatically move a job's status, spend money or schedule work.
+Operations access currently means an active Django Super Admin (`is_superuser`). Plain `is_staff` does not grant global access. PMs see their assigned properties, agency administrators their agency, and tenants only their own reports with matching agency and active tenancy. Other agencies, unrelated PMs and cotenants receive no job/document access.
 
-## Quotations and VAT
+Tenants do not receive quotations, invoices, payment records or commercial activity through API responses or direct downloads. They retain the existing reporting/status workflow and permitted shared conversation. Disabling tenant conversation access hides comment text/activity/comment files and blocks posting/downloading; original report attachments and job status remain accessible.
 
-States: **Draft → Sent for Approval → Approved / Rejected / Revision Requested**. Operations can supersede an unapproved sent/decided revision by creating the next draft; the preceding revision becomes **Superseded**. Approved revisions cannot be edited, resubmitted, superseded or decided again. A later amendment/cancellation of an approved commercial agreement needs a separate future workflow.
+## Uploaded quotations
 
-Every revision has its own UUID, series UUID, integer revision number, optimistic version, decision user/time/comment and chronological action history. The parent job and quotation are locked before mutation. Unique revision/action/idempotency keys prevent repeated logical actions; stale versions return 409. Authorization is checked again after taking the parent lock. Approved public content/amounts are frozen JSON snapshots; sent content and lines have model-level immutability guards. History/comments are append-only through the application. A database administrator still has direct database powers; this is not cryptographic/WORM archival storage.
+Each new quotation requires **exactly one validated PDF**, reference and recorded total in ZAR. Title and public scope are descriptive metadata. Values accept exact positive Decimal amounts with at most two decimal places, within the existing currency range. Sevlink does not read amounts from PDFs, calculate line items, calculate VAT or validate accounting/tax contents: Operations must ensure the entered amount/reference match the external document. No OCR, electronic signature or automatic tax invoice generation exists.
 
-VAT is **not hardcoded**. Set `SEVLINK_VAT_RATE` to the accounting-approved fractional rate in the local server environment. For arithmetic testing only, `SEVLINK_VAT_RATE=0.125` represents 12.5%; it is not a recommendation about Sevlink's legal tax obligations. An empty setting disables taxable quotations and allows “No VAT”. Restart the server after changing environment settings.
+Quotation states remain Draft, Sent for Approval, Approved, Rejected, Revision Requested and Superseded. Operations may edit draft reference/amount/title/scope before sending; the file itself cannot be replaced. A changed document requires a new revision with its own PDF. Rejected/revision-requested/sent unapproved quotations can be superseded by a newly uploaded revision. Revision numbers increase automatically within a series.
 
-Prices accept exact decimal strings (two decimal places), quantities up to three decimal places. Per-line calculations use Python Decimal and ROUND_HALF_UP to cents. Exclusive prices: net = rounded quantity × price, VAT = rounded net × configured rate. Inclusive prices: gross = rounded quantity × price, net = rounded gross ÷ (1 + rate), VAT = gross − net. Totals sum rounded lines. Snapshot the rate on draft calculation; sending/revision-copying and later decisions never silently recalculate it. Explicitly editing a taxable draft uses the currently configured rate. Zero/negative total, excessive precision, nonfinite values, overflow and >20 lines are rejected.
+Sending freezes public metadata and the document identity/SHA-256 in a saved snapshot. Only authorized PMs/agency administrators can decide the current sent revision, using its current version and a required comment. Decisions are idempotent and transactional. Row locks plus version checks prevent concurrent decisions or stale approvals. Operations cannot approve on an agency's behalf. Approved quotations cannot be edited, superseded or decided again; the original PDF remains downloadable in job history. No ordinary user has a document/history deletion endpoint.
 
-Private costs, commission totals and notes live in a separate `QuotationPrivate` model. Only Operations can write/read them. They are excluded from agency/PM/tenant payloads, public snapshots, quotation PDFs and notification messages. Internal supplier quotations/identities are not exposed or integrated. Staff must put confidential content in private fields, not deliberately paste it into shared scope/comments/files.
+All important decisions (approval, rejection, revision request) create exactly one job activity, Operations inbox item and durable email queue entry in the same transaction. Worker delivery sees only committed events. Failed delivery cannot undo the decision.
 
-PDFs use existing Pillow, require no new service or dependency, and are simple multipage raster documents. They are not tax invoices or an accessible/searchable typeset PDF system. Tenants cannot download quotations, drafts are Operations-only, and another agency gets 404.
+**Legacy preservation:** migration 0010 adds document/reference fields without deleting prior quotations, calculations, amounts, decisions, snapshots or action history. Historical line/VAT tables remain solely to preserve earlier development records; current APIs/forms never create or calculate those lines. No legacy PDF is fabricated. Records without uploaded PDFs are clearly labelled and cannot be approved, sent, edited or downloaded as if a document existed. An unapproved sent/rejected/revision-requested legacy record can receive a newly uploaded revision. Legacy drafts/approved records without files remain historical; start a new uploaded quotation for those records instead of silently attaching a document to an old approval. An approved amendment/cancellation workflow is future work.
 
-## Conversation rules and files
+## Uploaded invoices and manual payments
 
-Existing ownership rules remain: tenant access requires their own submitted job, active tenancy and matching agency; PM access requires the assigned portfolio; agency administrators see their agency; Super Admin sees all agencies. A cotenant is not automatically a participant. Plain `is_staff` grants no Operations access.
+Operations uploads an external PDF, invoice number, positive ZAR total and due date. Invoice visibility defaults to **Operations only — private subcontractor invoice**, both in the API and upload screen. Agency-facing Sevlink invoices require explicitly selecting **Agency-visible Sevlink invoice**. Visibility, PDF and recorded invoice header cannot be changed after upload, preventing a private invoice being accidentally republished later. Invoice numbers cannot be repeated for the same job/visibility, including case variants.
 
-`tenant_comments_allowed` defaults to true to preserve the existing reporting-tenant conversation behaviour. Operations can disable it for an individual job: comments, comment activity and comment-linked files then disappear for that tenant, and posting/downloading is forbidden server-side. Job status and original report attachments remain accessible under the existing rules.
+Invoices may be uploaded after job completion or cancellation, so manually received paperwork can be recorded without reopening the job. An invoice upload does not automatically create any payment, alter the job or notify Operations about its own upload.
 
-Only Operations can create internal notes. Notes and their attachments inherit server-enforced internal visibility. PMs/agencies/tenants cannot request internal visibility, enumerate these files or download guessed file URLs. Shared comments are readable by authorized participants. Visibility cannot be changed after posting. Text-only follow-up comments can be added to closed requests; new files and quotation actions cannot.
+Record received payments manually through the invoice card: amount, actual payment date, optional reference and private note. The server appends a user/timestamped ledger entry and updates recorded paid/outstanding amounts and payment status atomically. Unpaid means no recorded payments, Partially paid means some amount remains, and Paid means recorded payments equal the invoice total. Overpayments, nonpositive/excess-precision amounts, future payment dates, duplicate submissions and stale-version submissions are rejected. Two operators cannot record conflicting payments from the same stale invoice state.
 
-Comment uploads reuse the existing JPEG/PNG/WebP/PDF validator, size/type checks, sanitized UUID paths, private storage alias, authenticated downloads and rollback cleanup. Limits: five files per batch, 5 MiB each, ten shared files and ten internal files per job. Separate limits prevent hidden internal file counts reducing an external user's quota. Images are decoded/re-encoded to remove metadata; PDFs use conservative content checks. Antivirus/CDR, retention and automated orphan reconciliation are not implemented; do not treat validation as malware scanning.
+These are **manual records**, not bank verification, settlements or automatic payment collection. There is no payment gateway, bank feed, automatic invoice creation, invoice numbering service, receipt generator or automatic tax invoice. PMs/agency administrators cannot change invoices or mark them paid. They see only agency invoice/public payment progress, not private payment references/notes or internal staff identities. Invoice uploads/payments have permanent activity and ledger history; private invoice events are private too.
 
-## Operations inbox and local email
+Corrections, voids, refunds, credit notes, reversing erroneous payments and replacing mistaken invoice headers/PDFs require a future explicit audited workflow; existing ledger/header rows cannot be silently edited/deleted. Double-check manual entries before saving.
 
-Important events: saved job submission; shared tenant/PM/agency-admin comment; quotation approval, rejection or revision request; job cancellation or completion. Operations' own comments/internal notes do not cause self-notification loops. Quotation creation/edit/send/revision and all decisions remain in activity/action history.
+## Confidential subcontractor material and storage
 
-Each important event writes **one inbox item and one email outbox row in the same transaction**. Rollback removes all three. The separate worker sees only committed records; the request never sends email. Inbox records remain independent of delivery failures, retries or email configuration. Each Super Admin has separate persistent read receipts; marking read/unread adds private audit activity and never changes job status or version. No inbox API is available to external users, including agency administrators.
+Internal supplier quotations and cost/rate details belong in **Operations-only job notes**, with PDFs attached there. Existing private quotation costing/history is retained in `QuotationPrivate` and never included in external serializers. Supplier invoices use the explicit Operations-only invoice option. Private comments/files, invoice rows, payments and associated activity are absent from agency/PM/tenant API responses and direct-download access.
 
-Default recipient: configurable `OPERATIONS_NOTIFICATION_EMAIL=maintenance@sevlink.co.za`. Branded plain-text + HTML messages contain job number, agency, property, event summary, timestamp and authenticated job link. No tenant contacts, comment body, private notes, subcontractor identity, supplier costs or commissions are included. No agency-facing notification emails are introduced.
+Agency-visible quote uploads are intentionally external-facing. Sevlink cannot infer that someone uploaded the wrong private supplier PDF or pasted confidential costs into shared text. Operations must choose the correct visibility/channel and upload an agency-safe document. No automatic content redaction is claimed.
 
-**Actual Sevlink mailboxes and SMTP/SES delivery are not operational here.** Keep:
+Commercial documents reuse the existing `maintenance_private` storage alias, validator, UUID paths and protected streaming response. One PDF per upload, up to **5 MiB**; encrypted/active-content PDFs and unsupported types are rejected. Original accepted PDF bytes are preserved. File hashes and uploaded timestamps are recorded. Files have no public media/storage URL and are served with no-store, nosniff and sandbox headers. Filesystem storage uses exclusive creation and restrictive permissions; future S3 integration can reuse the alias but is not enabled.
+
+Quotation/invoice PDFs are separately classified and excluded from **all general job attachment lists and URLs**, including for Operations. Their dedicated download endpoints perform quotation/invoice authorization. Consequently draft quotation or private invoice files cannot bypass permissions through a tenant's attachment download URL. Commercial documents do not consume the tenant's general-photo quota. Failed transactions clean up newly stored files.
+
+Approved PDF retention is enforced in application workflows with protected relationships, immutable document/header guards and append-only history. Actual long-term durability still requires protected backups, restore testing and future object retention/versioning. Database/filesystem administrators retain direct powers; this is not WORM archival storage. Malware scanning/CDR, retention automation, storage-wide quotas and orphan reconciliation remain future work.
+
+## Operations inbox, comments and local email
+
+The existing notification bell, chronological/paginated feed and per-Super-Admin read receipts remain connected. Important events: job submitted; shared tenant/PM/agency-admin comment; quote approved/rejected/revision requested; job cancelled/completed. Private notes and Operations' own shared comments do not create self-notification loops. Invoice uploads/payments create safe activity history, not an Operations self-email.
+
+Read/unread changes create private audit activity and never change job status/version or mail state. Inbox records persist independently of the email queue. Ordinary portal users cannot access the inbox or alter audit/comment/action history.
+
+Email remains **local testing only**. Actual Sevlink mailboxes/SMTP/SES delivery are not active. Keep:
 
 ```bash
 export SMTP_DELIVERY_ENABLED=0
@@ -63,60 +74,51 @@ export OPERATIONS_LIVE_DELIVERY_ENABLED=0
 export OPERATIONS_EMAIL_DELIVERY_BACKEND=portal.mail.PrivatePreviewBackend
 ```
 
-With the same environment as the local server, run in a second terminal:
+The configurable Operations recipient defaults to `maintenance@sevlink.co.za`. In a second local terminal with the same Django environment, run:
 
 ```bash
 cd portal/production
 python manage.py send_operations_notifications --watch --interval 5
 ```
 
-Or process one batch with `python manage.py send_operations_notifications --limit 50`. Private MIME previews appear in `portal/production/private-email-preview/` (Git/Docker ignored, directories 0700/files 0600, not web-served). Open them locally in a mail client/editor to inspect both formats. The manual sequence below produces previews of **all seven event types** using real saved test-account actions; automated tests also inspect every type. No synthetic frontend action queues mail.
+Or run a batch with `python manage.py send_operations_notifications --limit 50`. Branded plain-text/HTML MIME previews appear under `portal/production/private-email-preview/`, ignored by Git/Docker and not served publicly. Messages contain safe job/property/agency/event/time/link context, excluding private supplier details, payment notes, tenant contacts and comment bodies. The existing leases, retry/backoff, stable Message-ID and delivery-attempt audit remain. Provider acceptance followed by a worker crash may still duplicate a message; exactly-once SMTP delivery is not claimed. No worker/service has been deployed.
 
-Existing leases, stable Message-ID, five delivery attempts, exponential backoff and sanitized attempt audit remain. The inbox does not depend on the worker running. No worker was deployed/scheduled. SMTP acceptance followed by a worker crash can still cause a duplicate; exactly-once delivery is not claimed. Future SES SMTP configuration can use the existing settings, after sender/DNS verification and delivery/bounce/complaint monitoring are implemented. No AWS resource or credential is created.
+## Run and manually verify later
 
-## Run and test locally
+Follow [the existing local setup and separate review-account instructions](PHASE-1-VERIFICATION.md). Existing local copies need the updated branch/dependencies and `python manage.py migrate`; do not recreate existing review accounts. Use separate browser profiles for tenant A, PM A, Super Admin and agency B. Owner manual acceptance testing remains deferred.
 
-Follow [the existing review-account setup](PHASE-1-VERIFICATION.md) to install dependencies, migrate, create synthetic accounts and start Django. Existing local review accounts need only `python manage.py migrate`, not recreation. Use distinct browser profiles for tenant A, PM A, Super Admin and agency B. Keep live mail disabled. No manual end-to-end testing was performed on the owner's accounts; that remains deferred.
+- [ ] Tenant A submits a job/photo. PM A reviews it, tenant signs in again and sees its status; agency B cannot obtain the job or photo.
+- [ ] Operations uploads an externally prepared quotation PDF with reference and matching ZAR amount. Confirm it is absent for PM A while Draft, then send it for approval.
+- [ ] PM A requests revision with a comment. Check activity, Operations bell and local email preview. Upload a new PDF revision as Operations; the old file remains in history. A stale approval must conflict.
+- [ ] On separate revisions/jobs, test Reject and Approve. Confirm each creates one Operations notification. Compare downloaded approved bytes/file hash with the original upload; approved metadata/PDF cannot be changed.
+- [ ] Operations uploads an agency invoice PDF with number/amount/due date and explicit agency visibility. PM A can download it; tenant/agency B cannot. Original quotation/invoice files never appear in the tenant's generic attachment list.
+- [ ] Operations records a partial payment, then the balance. PM A sees Partially paid then Paid after signing in again; private receipt references/notes stay hidden. Confirm job status does not change. No money is collected.
+- [ ] Upload a private supplier invoice and an Operations-only note with supplier quotation PDF/cost details. Check that PM A/tenant/agency B cannot retrieve their metadata, history or copied download URLs.
+- [ ] Test duplicate/stale submits, malformed/oversized/non-PDF files and payment overage. No duplicate documents, approvals, payments or emails should result.
+- [ ] Bell read/unread persists after sign-out/in and does not affect job or payment state. Original demo/website appearance and browser-local behaviour remain unchanged.
 
-- [ ] Tenant A submits a repair with a photo. Restart/sign in again and confirm persistence. Operations sees the submitted-job inbox item.
-- [ ] Tenant A and PM A each add a comment/file. Both persist and produce local Operations previews. Agency B cannot read the job or copied file URL.
-- [ ] Operations creates a quotation draft with multiple lines. Confirm it is absent for PM A. Edit it, then send for approval. Compare line totals, configured VAT and ZAR total.
-- [ ] PM A requests revision with a comment. Check the inbox and local revision-request email. Operations creates revision 2; old revision is Superseded. A stale revision-1 approval returns a conflict.
-- [ ] Send revision 2, reject it as PM A, and confirm the rejection event/preview. Create/send revision 3 and approve it. Confirm it cannot be edited/decided again. Download its PDF as PM A; agency B and tenants cannot download it.
-- [ ] Put a unique synthetic subcontractor/cost marker in private quotation fields and an internal note/file. Confirm these appear only for Operations and cannot be retrieved through external API/download URLs.
-- [ ] Disable tenant conversation access: tenant can still follow job status but cannot see/post conversation messages or obtain comment files. Re-enable to restore access.
-- [ ] Operations opens the bell, marks an item read, signs out/in and sees persisted state. Mark unread. Job status/version and email state must remain unchanged. Another Operations user has their own receipts.
-- [ ] Cancel one request; complete another via Reviewed → In progress → Completed. Confirm corresponding inbox items/previews. Keep the worker running to process saved events; no messages reach real mailboxes.
-- [ ] Original static demo appearance/workflows remain unchanged and never create Django records.
+## API contracts
 
-Automated checks from repo root, with venv activated:
+All paths below start `/api/maintenance/`. Existing Django session authentication/CSRF apply. Mutation actions require a UUID `Idempotency-Key`; commercial file uploads are multipart with exactly one `attachments` PDF part. `version` is an integer JSON value, or digit string in revision multipart forms.
 
-```bash
-bash scripts/check.sh
-# Enable existing optional Playwright/Chromium integration when installed:
-SEVLINK_BROWSER_TESTS=1 bash scripts/check.sh
-```
+- `POST requests/<job>/quotations/`: multipart `reference`, `amount`, optional `title`/`scope`, PDF.
+- `POST .../quotations/<quote>/edit/`: JSON `version`, `reference`, `amount`, optional `title`/`scope`; draft metadata only.
+- `POST .../quotations/<quote>/send/`: JSON `version`.
+- `POST .../quotations/<quote>/revise/`: multipart `version`, `reference`, `amount`, optional `title`/`scope`, **new PDF**.
+- `POST .../quotations/<quote>/decision/`: JSON `version`, `status` approved/rejected/revision_requested, required `reason`.
+- `GET .../quotations/<quote>/pdf/`: authorized original PDF; 404 if no uploaded document.
+- `POST requests/<job>/invoices/`: multipart `number`, `amount`, `due_date` YYYY-MM-DD, `visibility` shared/internal (defaults internal), PDF.
+- `POST .../invoices/<invoice>/payments/`: JSON `version`, `amount`, `paid_on` YYYY-MM-DD, optional private `reference`/`note`.
+- `GET .../invoices/<invoice>/pdf/`: authorized original invoice PDF.
 
-Local validation: **90 passed, one PostgreSQL-only concurrency test skipped (91 discovered)** with Chromium enabled. Both original demo Node suites, all JavaScript syntax checks, Django system checks, migration consistency and upgrade-preservation tests passed. Original public/demo assets have no diff.
+Job detail/list responses contain role-filtered `quotations` and `invoices`; no line-item/VAT calculation fields are returned. Uploaded document metadata includes date/hash/download URL, never storage keys. Existing comment, conversation-permission and Operations notification APIs are unchanged.
 
-SQLite cannot verify PostgreSQL row-lock concurrency: the concurrent approval/rejection test deliberately skips there. GitHub Actions runs the complete suite against PostgreSQL 17 and the browser workflow against SQLite/Chromium. See PR checks for actual results.
+## Validation and remaining work
 
-## API extensions and upgrade
+`scripts/check.sh` runs original demo suites, JS syntax, Django system checks, migration consistency and automated tests. Enable existing Playwright/Chromium coverage with `SEVLINK_BROWSER_TESTS=1 bash scripts/check.sh`. PostgreSQL CI tests concurrent decisions and manual payment entries; SQLite deliberately skips those row-lock tests. PostgreSQL skips the optional browser test, which runs in the SQLite/Chromium job.
 
-All use existing session authentication/CSRF. Create/edit/send/revise/decision/comment actions require UUID `Idempotency-Key`; stale writes return 409. Decimal values are strings in API responses.
+Local result with Chromium: **102 passed, two PostgreSQL-only concurrency tests skipped (104 discovered)**. Original demo suites, JS syntax, Django system checks, migration consistency and upgrade-preservation tests passed. See draft PR checks for PostgreSQL results.
 
-- `POST requests/<job>/quotations/`: `title`, `scope`, `lines` (description, quantity, unit, unit_price), `tax_treatment`, optional Operations `internal`. Legacy `amount` becomes a one-line **draft**, never auto-sent.
-- `POST .../quotations/<quote>/edit/`: complete draft content plus integer `version`.
-- `POST .../quotations/<quote>/send/` or `revise/`: integer `version`.
-- `POST .../quotations/<quote>/decision/`: integer `version`, `status` approved/rejected/revision_requested, required `reason`.
-- `GET .../quotations/<quote>/pdf/`: authorized private PDF.
-- `POST requests/<job>/comments/`: JSON or multipart `text`, `visibility` shared/internal, multipart `attachments`.
-- `POST requests/<job>/conversation-permissions/`: Operations-only integer job `version`, boolean `tenant_comments_allowed`.
-- `GET notifications/?before=<item-id>`: Operations-only newest-first feed, up to 50 items, unread count and next cursor.
-- `POST notifications/<item>/`: boolean `read`; only receipt/audit state changes.
+Coverage includes required PDF/amount/reference/date validation, exact-byte downloads and approved retention, numbered revision/stale decision/idempotency tests, all decision notifications, private supplier documents and payment receipts, tenant/agency/portfolio isolation, raw-attachment bypass attempts, invoice duplicates/immutability, partial/full payments, overpayment/stale/replay prevention, rollback/file cleanup, migration preservation, comments/inbox/local email queue tests and browser workflows.
 
-Paths above are under `/api/maintenance/`. External serializers explicitly filter drafts, internal notes/files/activity, private money and tenant financial data.
-
-Migrations 0007–0009 extend existing tables and backfill old quotations as single-line no-VAT snapshots, preserving amounts, decisions and timestamps. Each legacy quotation receives a distinct series UUID; pending becomes Sent for Approval. Existing outbox events become inbox items without queuing old email again. Upgrade tests cover multiple pending/approved/rejected records and the existing onboarding/status history. Back up before any eventual non-development migration; reverse migration with newly introduced states/data is not supported as a production rollback strategy.
-
-Remaining work beyond this step: owner manual acceptance testing; actual SMTP/SES/mailbox setup, worker supervision and dead-letter monitoring/replay; provider feedback; quote expiry/approved amendments and finance/budget/dispatch integration; file malware scanning/retention; production backup/restore, load validation and independent security review. No original demo finance or scheduling feature should be assumed real merely because quotations now persist.
+Remaining: owner manual acceptance testing; invoice correction/void/refund/credit-note and approved-quote amendment workflows; actual mailboxes/SMTP/SES activation, deployed worker supervision and dead-letter monitoring/replay; provider feedback; file malware scanning/retention/backups; production load/independent security validation. Deposits, bank verification, invoices/payments in the **original static demo**, scheduling, dispatch, budgets and subcontractor planner remain browser-local simulations. Only the authenticated Django upload/payment ledger workflow described here is real. No payment gateway, tax-document generation or paid service was introduced.

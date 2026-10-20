@@ -19,7 +19,7 @@ def actor_identity(user):
     return role, user.get_full_name()[:300] or label
 
 
-def record(job, actor, kind, dedup_key, details=None):
+def record(job, actor, kind, dedup_key, details=None, *, private=False):
     if not transaction.get_connection().in_atomic_block:
         raise RuntimeError('Job events must share the business transaction.')
     if kind not in JobActivity.Kind.values:
@@ -31,17 +31,18 @@ def record(job, actor, kind, dedup_key, details=None):
         'quote_approved': {'quote_id', 'amount', 'status', 'reason'}, 'quote_rejected': {'quote_id', 'amount', 'status', 'reason'},
     }
     fields.update({kind: {'quote_id', 'amount', 'status', 'reason'} for kind in ('quote_edited', 'quote_sent', 'quote_revised', 'quote_superseded', 'quote_revision_requested')})
+    fields.update({kind: {'invoice_id','number','amount','status'} for kind in ('invoice_uploaded','invoice_payment')})
     fields.update({'conversation_permission': {'tenant_comments_allowed'}, 'internal_note': {'comment_id', 'text'}, 'notification_state': {'notification_id', 'read'}})
     if set(details or {}) != fields[kind] or any(not isinstance(value, str) for value in (details or {}).values()):
         raise ValueError('Unexpected event detail fields.')
     event, created = JobActivity.objects.get_or_create(dedup_key=dedup_key, defaults={
         'request': job, 'actor': actor, 'actor_name': name, 'actor_role': role, 'kind': kind,
         'details': details or {}, 'job_title': job.title,
-        'visibility': 'internal' if kind in ('conversation_permission', 'internal_note', 'quote_created', 'quote_edited', 'quote_revised', 'notification_state') else 'shared',
+        'visibility': 'internal' if private or kind in ('conversation_permission', 'internal_note', 'quote_created', 'quote_edited', 'quote_revised', 'notification_state') else 'shared',
         'property_name': job.property.name, 'property_address': job.property.address,
         'agency_name': job.property.agency.name,
     })
-    if not created and (event.request_id != job.pk or event.actor_id != actor.pk or event.kind != kind or event.details != (details or {})):
+    if not created and (event.request_id != job.pk or event.actor_id != actor.pk or event.kind != kind or event.details != (details or {}) or (private and event.visibility != 'internal')):
         raise ValueError('Event key conflicts with an existing event.')
     notify_kinds = {JobActivity.Kind.SUBMITTED, JobActivity.Kind.COMMENT, JobActivity.Kind.QUOTE_APPROVED,
                     JobActivity.Kind.QUOTE_REJECTED, JobActivity.Kind.QUOTE_REVISION, JobActivity.Kind.CANCELLED, JobActivity.Kind.COMPLETED}

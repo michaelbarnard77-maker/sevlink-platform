@@ -1,4 +1,4 @@
-> Step 7 now extends quotations to drafts/lines/VAT/revisions/PDFs, adds private notes/files and a persistent Operations inbox. See [the current implementation and test guide](STEP-7-QUOTATIONS-AND-OPERATIONS.md). Email remains local-only.
+> Step 7 now extends quotations to externally uploaded quotation PDFs/revisions and invoice PDFs/manual payments, adds private notes/files and a persistent Operations inbox. See [the current implementation and test guide](STEP-7-QUOTATIONS-AND-OPERATIONS.md). Email remains local-only.
 
 # Saved job events and Operations notifications
 
@@ -24,7 +24,7 @@ These comment and quotation notifications are backed by real models and saved au
 
 ## Quotations and conversations
 
-The authenticated workspace now provides real draft/send/revision/approval/rejection/revision-request quotation actions, Decimal/VAT totals, public PDFs and separate private costing. Comments support shared threads and private Operations notes/files, with explicit per-job tenant conversation permissions. Full rules, APIs, current testing and remaining limits are in [Step 7](STEP-7-QUOTATIONS-AND-OPERATIONS.md).
+The authenticated workspace now provides real draft/send/revision/approval/rejection/revision-request quotation actions, manually recorded ZAR amounts, externally uploaded PDFs and separate private costing. Comments support shared threads and private Operations notes/files, with explicit per-job tenant conversation permissions. Full rules, APIs, current testing and remaining limits are in [Step 7](STEP-7-QUOTATIONS-AND-OPERATIONS.md).
 
 ## Central event and outbox architecture
 
@@ -86,7 +86,7 @@ python manage.py shell -c "from portal.models import OperationsNotification; pri
 
 Pending rows become eligible at `next_attempt_at`; dead rows need operator investigation. A safe audited dead-letter replay/monitoring interface is not yet implemented. Do not reset attempt numbers manually: delivery attempt numbers are unique audit records.
 
-Local test sequence (human end-to-end review remains deferred): tenant submits; tenant/PM comments; Super Admin issues two basic quotations; PM approves one and rejects the other; PM completes/cancels separate jobs. Verify one preview/notification per qualifying saved event, no previews for rejected/unauthorized/duplicate mutations, and authorized job links. Automated tests perform these workflows now.
+Local test sequence (human end-to-end review remains deferred): tenant submits; tenant/PM comments; Super Admin uploads and sends two quotation PDFs; PM approves one and rejects the other; PM completes/cancels separate jobs. Verify one preview/notification per qualifying saved event, no previews for rejected/unauthorized/duplicate mutations, and authorized job links. Automated tests perform these workflows now.
 
 ## Configuration and future SES
 
