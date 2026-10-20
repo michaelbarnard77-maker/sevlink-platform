@@ -114,3 +114,12 @@ The development branch now supports authenticated private photo/PDF uploads and
 downloads using local Django storage. See [private attachments](docs/PRIVATE-ATTACHMENTS.md)
 for limits, permissions, storage/S3 architecture, tests and production prerequisites.
 The original static demo remains separate and unchanged.
+
+## Operations event notifications development update
+
+Saved job submissions, shared comments, quotation decisions and completion/cancellation
+now create a durable Operations outbox for maintenance@sevlink.co.za (configurable).
+Real shared comments and basic quotation decisions are connected to Django. Delivery
+is local-only until explicitly configured; run the separate worker to process previews.
+See [Operations notifications](docs/OPERATIONS-NOTIFICATIONS.md) for setup, guarantees,
+privacy, SES preparation, tests and unfinished work. No live email or cloud service was activated.

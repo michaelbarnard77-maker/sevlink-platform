@@ -1,3 +1,9 @@
+> Current development update: shared comments, basic quotation issue/decisions and
+> durable Operations notifications are now real Django workflows. Delivery remains
+> local-only. See [Operations notifications](OPERATIONS-NOTIFICATIONS.md) for the
+> current workflow, worker instructions and delivery limits. The original demo's
+> advanced financial/dispatch behavior remains simulated.
+
 > Private attachment follow-up is implemented on this same development branch.
 > After installing the updated lockfile and running migrations, you can attach photos
 > or PDFs in the report form or job details. The original test instructions remain valid.

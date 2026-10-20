@@ -7,7 +7,7 @@ from django.test import TransactionTestCase
 class MaintenanceMigrationTests(TransactionTestCase):
     def test_upgrade_preserves_existing_agency_property_and_tenancy(self):
         old = [('portal', '0001_initial')]
-        new = [('portal', '0003_maintenanceattachment')]
+        new = [('portal', '0006_maintenancerequest_submission_fingerprint_and_more')]
         try:
             executor = MigrationExecutor(connection)
             executor.migrate(old)
@@ -42,5 +42,7 @@ class MaintenanceMigrationTests(TransactionTestCase):
             self.assertEqual(apps.get_model('portal', 'MaintenanceRequest').objects.get(pk=job.pk).title, 'Existing repair')
             self.assertEqual(apps.get_model('portal', 'MaintenanceStatusEvent').objects.get(request_id=job.pk).status, 'awaiting_review')
             self.assertEqual(apps.get_model('portal', 'MaintenanceAttachment').objects.count(), 0)
+            self.assertEqual(apps.get_model('portal', 'JobActivity').objects.get(request_id=job.pk).actor_id, user.pk)
+            self.assertEqual(apps.get_model('portal', 'OperationsNotification').objects.count(), 0)
         finally:
             MigrationExecutor(connection).migrate(new)

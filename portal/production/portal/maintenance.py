@@ -1,11 +1,13 @@
 """Authenticated maintenance API. Never serialize a model's __dict__ or internal fields."""
 import json
+import hashlib
+import uuid
 import re
 from functools import wraps
 
 from django import forms
 from django.conf import settings
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import F
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -63,7 +65,7 @@ def requests_for(user):
     qs = MaintenanceRequest.objects.filter(property__in=properties_for(user))
     if role == Membership.TENANT:
         qs = qs.filter(reported_by=user)
-    return qs.select_related('property__agency', 'property__manager').prefetch_related('status_events', 'attachments')
+    return qs.select_related('property__agency', 'property__manager').prefetch_related('status_events', 'attachments', 'activities', 'comments', 'quotations')
 
 
 def api_access(view):
@@ -100,6 +102,8 @@ def property_data(prop):
 
 def serialize(job, user):
     from .attachments import attachment_data
+    from .events import activity_data
+    from .collaboration import comment_data, quote_data
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
     return {
@@ -108,6 +112,10 @@ def serialize(job, user):
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),
         'attachments': [attachment_data(a) for a in job.attachments.all()],
+        'comments': [comment_data(c, user) for c in job.comments.all()],
+        'quotations': [quote_data(q) for q in job.quotations.all()] if role != Membership.TENANT else [],
+        'activity': [activity_data(e, user) for e in job.activities.all()
+                     if role != Membership.TENANT or not e.kind.startswith('quote_')],
         'version': job.version, 'created_at': job.created_at.isoformat(),
         'updated_at': job.updated_at.isoformat(),
         'allowed_statuses': [{'value': s, 'label': S(s).label} for s in TRANSITIONS[job.status]] if can_update else [],
@@ -159,7 +167,14 @@ def collection(request):
         return JsonResponse({'error': 'Only linked tenants can submit reports.'}, status=403)
     from . import attachments
     keys = []
+    submission_key = None
+    fingerprint = ''
     try:
+        if request.headers.get('Idempotency-Key'):
+            try:
+                submission_key = uuid.UUID(request.headers['Idempotency-Key'])
+            except ValueError:
+                raise ValueError('Idempotency-Key must be a UUID.')
         if request.content_type == 'multipart/form-data':
             data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category'))
         else:
@@ -171,12 +186,31 @@ def collection(request):
         if not form.is_valid():
             return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
         prepared = attachments.prepare(uploads)
+        fingerprint = hashlib.sha256(json.dumps({
+            'fields': {key: str(value.pk) if key == 'property' else value for key, value in form.cleaned_data.items()},
+            'attachments': [(item['filename'], hashlib.sha256(item['data']).hexdigest()) for item in prepared],
+        }, sort_keys=True).encode()).hexdigest()
         with transaction.atomic():
-            job = MaintenanceRequest.objects.create(reported_by=request.user, **form.cleaned_data)
+            if submission_key:
+                existing = MaintenanceRequest.objects.filter(submission_key=submission_key).first()
+                if existing:
+                    if existing.reported_by_id != request.user.pk or existing.submission_fingerprint != fingerprint:
+                        return JsonResponse({'error': 'Idempotency key conflicts with an earlier report.'}, status=409)
+                    return JsonResponse(serialize(get_object_or_404(requests_for(request.user), pk=existing.pk), request.user))
+            job = MaintenanceRequest.objects.create(reported_by=request.user, submission_key=submission_key,
+                                                     submission_fingerprint=fingerprint, **form.cleaned_data)
             MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=job.status)
             Audit.objects.create(agency=job.property.agency, actor=request.user,
                                  action='Maintenance request submitted', object_id=str(job.pk))
             attachments.save_files(job, request.user, prepared, keys)
+            from .events import record
+            record(job, request.user, 'job_submitted', 'submitted:' + str(job.pk), {'status': job.status})
+    except IntegrityError:
+        attachments.cleanup(keys)
+        existing = MaintenanceRequest.objects.filter(submission_key=submission_key).first() if submission_key else None
+        if existing and existing.reported_by_id == request.user.pk and existing.submission_fingerprint == fingerprint:
+            return JsonResponse(serialize(get_object_or_404(requests_for(request.user), pk=existing.pk), request.user))
+        raise
     except ValueError as error:
         attachments.cleanup(keys)
         return JsonResponse({'error': str(error)}, status=400)
@@ -215,6 +249,9 @@ def detail(request, job_id):
         if not updated:
             return JsonResponse({'error': 'This request changed. Refresh before updating.'}, status=409)
         MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=data['status'])
+        from .events import record
+        kind = {'cancelled': 'job_cancelled', 'completed': 'job_completed'}.get(data['status'], 'status_changed')
+        record(job, request.user, kind, f'status:{job.pk}:{job.version + 1}', {'status': data['status']})
         Audit.objects.create(agency=job.property.agency, actor=request.user,
                              action='Maintenance status: ' + data['status'], object_id=str(job.pk))
     return JsonResponse(serialize(requests_for(request.user).get(pk=job.pk), request.user))

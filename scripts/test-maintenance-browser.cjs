@@ -36,6 +36,9 @@ process.stdin.on('end', async () => {
     await page.locator('#jobcontent').getByText('Awaiting property manager review').waitFor();
     downloadUrl = await page.locator('#modal .file a').first().getAttribute('href');
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
+    await page.locator('#commentForm [name=text]').fill('Please call before visiting.');
+    await page.getByRole('button', {name:'Add comment', exact:true}).click();
+    await page.locator('.comment').filter({hasText:'Please call before visiting.'}).waitFor();
     assert.equal(await page.locator('#statusForm').count(), 0);
     assert.equal(await page.evaluate(() => indexedDB.databases().then(dbs => dbs.length)), 0, 'Live mode does not use demo IndexedDB');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -78,8 +81,25 @@ process.stdin.on('end', async () => {
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#jobcontent .activity').filter({hasText:'Reviewed'}).waitFor();
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
+    await page.locator('#quoteForm [name=title]').fill('Browser quotation');
+    await page.locator('#quoteForm [name=scope]').fill('Replace kitchen tap and test.');
+    await page.locator('#quoteForm [name=amount]').fill('1250.00');
+    await page.getByRole('button', {name:'Issue quotation', exact:true}).click();
+    await page.locator('.card h2').filter({hasText:'Browser quotation'}).waitFor();
+    await context.close();
+
+    ({context, page} = await signedIn('pm'));
+    const jobId = new URL(downloadUrl, url).pathname.split('/')[4];
+    await page.goto(url + '/maintenance/?job=' + jobId);
+    await page.locator('.quoteDecision').waitFor();
+    await page.locator('.quoteDecision [name=status]').selectOption('approved');
+    await page.getByRole('button', {name:'Save quotation decision', exact:true}).click();
+    await page.locator('.card .badge').filter({hasText:'approved'}).waitFor();
+    await page.locator('#commentForm [name=text]').fill('Approved. Please coordinate access.');
+    await page.getByRole('button', {name:'Add comment', exact:true}).click();
+    await page.locator('.comment').filter({hasText:'Approved. Please coordinate access.'}).waitFor();
     await context.close();
     assert.deepEqual(errors, []); assert.deepEqual(failedAssets, []);
-    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin view, mobile layout, CSRF, no demo role switch or IndexedDB.');
+    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin quote issue, authorized PM approval and saved tenant/PM comments, secure deep link, mobile layout, CSRF, no demo role switch or IndexedDB.');
   } finally { await browser.close(); }
 });

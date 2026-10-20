@@ -17,7 +17,7 @@
       ...options, credentials:'same-origin', cache:'no-store',
       headers:{...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}), 'X-CSRFToken':csrf(), ...options.headers}
     });
-    if (response.status === 401) { location.assign('/login/?next=/maintenance/'); throw Error('Please sign in again.'); }
+    if (response.status === 401) { location.assign('/login/?next=' + encodeURIComponent(location.pathname + location.search)); throw Error('Please sign in again.'); }
     let data;
     try { data = await response.json(); } catch { throw Error('The server could not process this request. Please try again.'); }
     if (!response.ok) {
@@ -87,6 +87,7 @@
     if (!context.properties.length) { toast('Your account needs an active property link. Contact your property manager.'); return; }
     modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(category)}</span><h1>Report a problem.</h1><form id="reportForm"><label>Your property</label><select name="property" required>${context.properties.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.address)}</option>`).join('')}</select><label>What is the problem?</label><input name="title" required maxlength="180"><label>Tell us what happened</label><textarea name="description" required rows="4" maxlength="2500" placeholder="Where is the issue, when did it start, and what can you see?"></textarea><label>Photos or documents (optional)</label><input name="attachments" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"><small>Up to 5 files, 5 MB each · JPEG, PNG, WebP or PDF.</small><div class="notice">Your report goes to your property manager for review. Attachments are shared with your property manager and Sevlink.</div><p id="formError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Send report to property manager</button></div></form>`;
     modal.showModal();
+    const submissionKey = crypto.randomUUID();
     $('#reportForm').onsubmit = async event => {
       event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
       try {
@@ -94,7 +95,7 @@
         for (const file of data.getAll('attachments')) { if (file.size > 5 * 1024 * 1024) throw Error('Each file must be at most 5 MB.'); }
         if (data.getAll('attachments').filter(file => file.size).length > 5) throw Error('Choose at most five files.');
         if (!data.getAll('attachments').some(file => file.size)) data.delete('attachments');
-        await api('requests/', {method:'POST', body:data});
+        await api('requests/', {method:'POST', body:data, headers:{'Idempotency-Key':submissionKey}});
         modal.close(); view = 'requests'; page = 1;
         try { await loadJobs(); render(); toast('Report saved and sent for property manager review.'); }
         catch { render(); toast('Report saved. Refresh the list to see it.'); }
@@ -102,10 +103,36 @@
       finally { if (button.isConnected) button.disabled = false; }
     };
   }
+  function collaborationMarkup(job) {
+    const canDecide = ['pm','admin'].includes(context.user.role), operations = context.user.role === 'superadmin';
+    const quotations = context.user.role === 'tenant' ? '' : `<h2>Quotations</h2>${job.quotations.map(q => `<div class="card"><h2>${esc(q.title)}</h2><p style="white-space:pre-wrap">${esc(q.scope)}</p><h2>ZAR ${esc(q.amount)}</h2>${badge(q.status)}${q.decision_reason ? `<p>${esc(q.decision_reason)}</p>` : ''}${q.status === 'pending' && canDecide && !['completed','cancelled'].includes(job.status) ? `<form class="quoteDecision" data-quote="${q.id}" data-version="${q.version}"><label>Decision</label><select name="status"><option value="approved">Approve</option><option value="rejected">Reject</option></select><label>Reason (required for rejection)</label><textarea name="reason" maxlength="1000"></textarea><p class="collaborationError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Save quotation decision</button></div></form>` : ''}</div>`).join('') || '<p>No quotations yet.</p>'}`;
+    const issue = operations && !['completed','cancelled'].includes(job.status) ? '<form id="quoteForm"><h2>Issue quotation</h2><label>Title</label><input name="title" required maxlength="180"><label>Scope shared with the agency</label><textarea name="scope" required maxlength="3000"></textarea><label>Total (ZAR)</label><input name="amount" required type="number" min="0.01" max="9999999999.99" step="0.01"><p class="collaborationError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Issue quotation</button></div></form>' : '';
+    return `${quotations}${issue}<h2 style="margin-top:20px">Shared comments</h2>${job.comments.map(c => `<div class="comment"><b>${esc(c.actor)}</b><p>${esc(c.text)}</p><small>${esc(date(c.at))}</small></div>`).join('') || '<p>No comments yet.</p>'}<form id="commentForm"><label>Comment shared with the tenant, agency and Sevlink</label><textarea name="text" required maxlength="2500" rows="3"></textarea><p class="collaborationError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Add comment</button></div></form>`;
+  }
+  function wireCollaboration(job) {
+    const forms = [[$('#commentForm'), `requests/${job.id}/comments/`], [$('#quoteForm'), `requests/${job.id}/quotations/`],
+      ...Array.from(modal.querySelectorAll('.quoteDecision')).map(form => [form, `requests/${job.id}/quotations/${form.dataset.quote}/decision/`])];
+    for (const [form, path] of forms) {
+      if (!form) continue;
+      const key = crypto.randomUUID();
+      form.onsubmit = async event => {
+        event.preventDefault(); const button = form.querySelector('[type=submit]'); button.disabled = true;
+        try {
+          const data = Object.fromEntries(new FormData(form));
+          if (form.dataset.version) data.version = Number(form.dataset.version);
+          await api(path, {method:'POST', body:JSON.stringify(data), headers:{'Idempotency-Key':key}});
+          showDetail(await api(`requests/${job.id}/`)); toast('Saved.');
+        } catch (error) {
+          const target = form.querySelector('.collaborationError'); target.hidden = false; target.textContent = error.message;
+        } finally { if (button.isConnected) button.disabled = false; }
+      };
+    }
+  }
   function showDetail(job) {
     selected = job;
-    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(job.reference)} · ${esc(job.category)}</span><h1 class="job-property-address">${esc(job.property.address)}</h1><p class="job-repair-title">${esc(job.title)}</p><div class="toolbar">${badge(job.status_label)}</div><p><b>${esc(job.property.name)}</b><br>${esc(job.property.agency)}</p><div class="notice"><span class="eyebrow">PROPERTY MANAGER</span><p>${esc(job.property.manager)}</p></div><p style="white-space:pre-wrap">${esc(job.description)}</p><div class="notice"><h2>Shared attachments · ${job.attachments.length}</h2>${job.attachments.map(file => `<div class="file"><div>📄 ${esc(file.filename)}<br><small>${Math.ceil(file.size / 1024)} KB</small></div><a class="secondary" href="${esc(file.download_url)}" download>Download</a></div>`).join('') || '<p>No attachments yet.</p>'}</div>${!['completed','cancelled'].includes(job.status) ? '<form id="attachmentForm"><label>Add shared photos or documents</label><input name="attachments" type="file" multiple required accept="image/jpeg,image/png,image/webp,application/pdf"><small>Up to 5 files at a time, 5 MB each; 10 per request. Files are shared with the tenant, authorised managers and Sevlink. Do not attach private/internal documents.</small><p id="attachmentError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Upload attachments</button></div></form>' : ''}<div class="tabs"><button class="selected">Timeline</button></div><div id="jobcontent">${job.history.map(e => `<div class="activity"><span class="dot"></span>${esc(e.label)}<small>${esc(date(e.at))}</small></div>`).join('')}</div>${job.allowed_statuses.length ? `<form id="statusForm"><label>Update status</label><select name="status" required>${job.allowed_statuses.map(s => `<option value="${s.value}">${esc(s.label)}</option>`).join('')}</select><p id="statusError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Save status</button></div></form>` : ''}`;
+    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(job.reference)} · ${esc(job.category)}</span><h1 class="job-property-address">${esc(job.property.address)}</h1><p class="job-repair-title">${esc(job.title)}</p><div class="toolbar">${badge(job.status_label)}</div><p><b>${esc(job.property.name)}</b><br>${esc(job.property.agency)}</p><div class="notice"><span class="eyebrow">PROPERTY MANAGER</span><p>${esc(job.property.manager)}</p></div><p style="white-space:pre-wrap">${esc(job.description)}</p><div class="notice"><h2>Shared attachments · ${job.attachments.length}</h2>${job.attachments.map(file => `<div class="file"><div>📄 ${esc(file.filename)}<br><small>${Math.ceil(file.size / 1024)} KB</small></div><a class="secondary" href="${esc(file.download_url)}" download>Download</a></div>`).join('') || '<p>No attachments yet.</p>'}</div>${!['completed','cancelled'].includes(job.status) ? '<form id="attachmentForm"><label>Add shared photos or documents</label><input name="attachments" type="file" multiple required accept="image/jpeg,image/png,image/webp,application/pdf"><small>Up to 5 files at a time, 5 MB each; 10 per request. Files are shared with the tenant, authorised managers and Sevlink. Do not attach private/internal documents.</small><p id="attachmentError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Upload attachments</button></div></form>' : ''}${collaborationMarkup(job)}<div class="tabs"><button class="selected">Timeline</button></div><div id="jobcontent">${job.activity.map(e => `<div class="activity"><span class="dot"></span>${esc(e.type === 'job_submitted' ? 'Report submitted · Awaiting property manager review' : e.type === 'status_changed' ? ({reviewed:'Reviewed',in_progress:'In progress'}[e.details.status] || e.label) : e.label)}<small>${esc(e.actor)} · ${esc(date(e.at))}</small></div>`).join('')}</div>${job.allowed_statuses.length ? `<form id="statusForm"><label>Update status</label><select name="status" required>${job.allowed_statuses.map(s => `<option value="${s.value}">${esc(s.label)}</option>`).join('')}</select><p id="statusError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Save status</button></div></form>` : ''}`;
     if (!modal.open) modal.showModal();
+    wireCollaboration(job);
     if ($('#attachmentForm')) $('#attachmentForm').onsubmit = async event => {
       event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
       try {
@@ -140,7 +167,13 @@
   });
   async function start() {
     app.innerHTML = '<div class="notice" role="status">Loading your maintenance workspace…</div>';
-    try { context = await api('context/'); await loadJobs(); render(); }
+    try {
+      context = await api('context/'); await loadJobs(); render();
+      const linkedJob = new URLSearchParams(location.search).get('job');
+      if (linkedJob && /^[0-9a-f-]{36}$/i.test(linkedJob)) {
+        try { showDetail(await api(`requests/${linkedJob}/`)); } catch (error) { toast(error.message); }
+      }
+    }
     catch (error) {
       app.innerHTML = `<div class="notice" role="alert">${esc(error.message)}</div><button class="secondary" id="retry">Try again</button>`;
       $('#retry').onclick = start;

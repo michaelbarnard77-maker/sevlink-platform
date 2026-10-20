@@ -8,3 +8,24 @@ class QueueBackend(BaseEmailBackend):
                 MailQueue.objects.create(recipient=recipient,subject=message.subject,body=message.body)
                 count += 1
         return count
+
+
+from pathlib import Path
+import os
+from django.conf import settings
+from django.core.mail.backends.filebased import EmailBackend as FileBackend
+
+
+class PrivatePreviewBackend(FileBackend):
+    """Local testing messages, never a public outbox or real SMTP connection."""
+    def __init__(self, *args, file_path=None, **kwargs):
+        path = Path(file_path or settings.EMAIL_FILE_PATH)
+        path.mkdir(parents=True, mode=0o700, exist_ok=True)
+        super().__init__(*args, file_path=path, **kwargs)
+
+    def open(self):
+        if self.stream is None:
+            descriptor = os.open(self._get_filename(), os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+            self.stream = os.fdopen(descriptor, 'ab')
+            return True
+        return False

@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import Client, override_settings
 
-from .models import Agency, Membership, Property, Tenancy, User, MaintenanceRequest
+from .models import Agency, Membership, Property, Tenancy, User, MaintenanceRequest, JobQuotation, JobComment, OperationsNotification
 
 
 @skipUnless(os.environ.get('SEVLINK_BROWSER_TESTS') == '1', 'Set SEVLINK_BROWSER_TESTS=1 with Node Playwright installed.')
@@ -54,3 +54,6 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertIn('PASS', result.stdout)
         self.assertEqual(MaintenanceRequest.objects.get().status, 'reviewed')
         self.assertEqual(MaintenanceRequest.objects.get().attachments.count(), 2)
+        self.assertEqual(JobQuotation.objects.get().status, 'approved')
+        self.assertEqual(JobComment.objects.count(), 2)
+        self.assertEqual(OperationsNotification.objects.count(), 4)

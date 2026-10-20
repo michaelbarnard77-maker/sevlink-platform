@@ -81,3 +81,9 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 65536
 DATA_UPLOAD_MAX_NUMBER_FILES = 5
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 20
+
+# Domain events are always queued. Delivery is local-only unless explicitly enabled.
+OPERATIONS_NOTIFICATION_EMAIL = os.environ.get('OPERATIONS_NOTIFICATION_EMAIL', 'maintenance@sevlink.co.za')
+OPERATIONS_EMAIL_DELIVERY_BACKEND = os.environ.get('OPERATIONS_EMAIL_DELIVERY_BACKEND', 'portal.mail.PrivatePreviewBackend')
+OPERATIONS_LIVE_DELIVERY_ENABLED = os.environ.get('OPERATIONS_LIVE_DELIVERY_ENABLED') == '1'
+EMAIL_FILE_PATH = BASE_DIR / 'private-email-preview'
