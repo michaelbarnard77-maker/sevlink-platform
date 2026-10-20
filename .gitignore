@@ -31,3 +31,6 @@ Thumbs.db
 .vscode/
 # Hosting configuration is retained; project IDs are not credentials.
 # Do not ignore dist/: it is the supplied frontend source.
+
+# Private server-side maintenance uploads
+private-attachments/

@@ -15,7 +15,7 @@
   async function api(path, options = {}) {
     const response = await fetch('/api/maintenance/' + path, {
       ...options, credentials:'same-origin', cache:'no-store',
-      headers:{'Content-Type':'application/json', 'X-CSRFToken':csrf(), ...options.headers}
+      headers:{...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}), 'X-CSRFToken':csrf(), ...options.headers}
     });
     if (response.status === 401) { location.assign('/login/?next=/maintenance/'); throw Error('Please sign in again.'); }
     let data;
@@ -85,13 +85,16 @@
   function render() { shell(); if (view === 'report') reportLanding(); else list(); }
   function reportForm(category) {
     if (!context.properties.length) { toast('Your account needs an active property link. Contact your property manager.'); return; }
-    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(category)}</span><h1>Report a problem.</h1><form id="reportForm"><label>Your property</label><select name="property" required>${context.properties.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.address)}</option>`).join('')}</select><label>What is the problem?</label><input name="title" required maxlength="180"><label>Tell us what happened</label><textarea name="description" required rows="4" maxlength="2500" placeholder="Where is the issue, when did it start, and what can you see?"></textarea><div class="notice">Your report goes to your property manager for review. Attachments are not available in this first version.</div><p id="formError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Send report to property manager</button></div></form>`;
+    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(category)}</span><h1>Report a problem.</h1><form id="reportForm"><label>Your property</label><select name="property" required>${context.properties.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.address)}</option>`).join('')}</select><label>What is the problem?</label><input name="title" required maxlength="180"><label>Tell us what happened</label><textarea name="description" required rows="4" maxlength="2500" placeholder="Where is the issue, when did it start, and what can you see?"></textarea><label>Photos or documents (optional)</label><input name="attachments" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"><small>Up to 5 files, 5 MB each · JPEG, PNG, WebP or PDF.</small><div class="notice">Your report goes to your property manager for review. Attachments are shared with your property manager and Sevlink.</div><p id="formError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Send report to property manager</button></div></form>`;
     modal.showModal();
     $('#reportForm').onsubmit = async event => {
       event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
       try {
-        const data = Object.fromEntries(new FormData(event.target)); data.category = category;
-        await api('requests/', {method:'POST', body:JSON.stringify(data)});
+        const data = new FormData(event.target); data.set('category', category);
+        for (const file of data.getAll('attachments')) { if (file.size > 5 * 1024 * 1024) throw Error('Each file must be at most 5 MB.'); }
+        if (data.getAll('attachments').filter(file => file.size).length > 5) throw Error('Choose at most five files.');
+        if (!data.getAll('attachments').some(file => file.size)) data.delete('attachments');
+        await api('requests/', {method:'POST', body:data});
         modal.close(); view = 'requests'; page = 1;
         try { await loadJobs(); render(); toast('Report saved and sent for property manager review.'); }
         catch { render(); toast('Report saved. Refresh the list to see it.'); }
@@ -101,8 +104,17 @@
   }
   function showDetail(job) {
     selected = job;
-    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(job.reference)} · ${esc(job.category)}</span><h1 class="job-property-address">${esc(job.property.address)}</h1><p class="job-repair-title">${esc(job.title)}</p><div class="toolbar">${badge(job.status_label)}</div><p><b>${esc(job.property.name)}</b><br>${esc(job.property.agency)}</p><div class="notice"><span class="eyebrow">PROPERTY MANAGER</span><p>${esc(job.property.manager)}</p></div><p style="white-space:pre-wrap">${esc(job.description)}</p><div class="tabs"><button class="selected">Timeline</button></div><div id="jobcontent">${job.history.map(e => `<div class="activity"><span class="dot"></span>${esc(e.label)}<small>${esc(date(e.at))}</small></div>`).join('')}</div>${job.allowed_statuses.length ? `<form id="statusForm"><label>Update status</label><select name="status" required>${job.allowed_statuses.map(s => `<option value="${s.value}">${esc(s.label)}</option>`).join('')}</select><p id="statusError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Save status</button></div></form>` : ''}`;
+    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(job.reference)} · ${esc(job.category)}</span><h1 class="job-property-address">${esc(job.property.address)}</h1><p class="job-repair-title">${esc(job.title)}</p><div class="toolbar">${badge(job.status_label)}</div><p><b>${esc(job.property.name)}</b><br>${esc(job.property.agency)}</p><div class="notice"><span class="eyebrow">PROPERTY MANAGER</span><p>${esc(job.property.manager)}</p></div><p style="white-space:pre-wrap">${esc(job.description)}</p><div class="notice"><h2>Shared attachments · ${job.attachments.length}</h2>${job.attachments.map(file => `<div class="file"><div>📄 ${esc(file.filename)}<br><small>${Math.ceil(file.size / 1024)} KB</small></div><a class="secondary" href="${esc(file.download_url)}" download>Download</a></div>`).join('') || '<p>No attachments yet.</p>'}</div>${!['completed','cancelled'].includes(job.status) ? '<form id="attachmentForm"><label>Add shared photos or documents</label><input name="attachments" type="file" multiple required accept="image/jpeg,image/png,image/webp,application/pdf"><small>Up to 5 files at a time, 5 MB each; 10 per request. Files are shared with the tenant, authorised managers and Sevlink. Do not attach private/internal documents.</small><p id="attachmentError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Upload attachments</button></div></form>' : ''}<div class="tabs"><button class="selected">Timeline</button></div><div id="jobcontent">${job.history.map(e => `<div class="activity"><span class="dot"></span>${esc(e.label)}<small>${esc(date(e.at))}</small></div>`).join('')}</div>${job.allowed_statuses.length ? `<form id="statusForm"><label>Update status</label><select name="status" required>${job.allowed_statuses.map(s => `<option value="${s.value}">${esc(s.label)}</option>`).join('')}</select><p id="statusError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Save status</button></div></form>` : ''}`;
     if (!modal.open) modal.showModal();
+    if ($('#attachmentForm')) $('#attachmentForm').onsubmit = async event => {
+      event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+      try {
+        await api(`requests/${job.id}/attachments/`, {method:'POST', body:new FormData(event.target)});
+        showDetail(await api(`requests/${job.id}/`)); toast('Attachments saved.');
+      } catch (error) {
+        $('#attachmentError').hidden = false; $('#attachmentError').textContent = error.message;
+      } finally { if (button.isConnected) button.disabled = false; }
+    };
     if ($('#statusForm')) $('#statusForm').onsubmit = async event => {
       event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
       try {

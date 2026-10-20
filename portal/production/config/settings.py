@@ -64,3 +64,20 @@ PASSWORD_RESET_TIMEOUT = 3600
 # Source checkout and container layouts both retain the original portal assets.
 PORTAL_UI_DIR = BASE_DIR / 'frontend' if (BASE_DIR / 'frontend').exists() else BASE_DIR.parent / 'dist'
 STATICFILES_DIRS += [('maintenance-ui', PORTAL_UI_DIR)]
+
+# Never add this directory to STATICFILES_DIRS, MEDIA_URL, or a public web server.
+PRIVATE_ATTACHMENT_ROOT = Path(os.environ.get('PRIVATE_ATTACHMENT_ROOT', BASE_DIR / 'private-attachments'))
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    'maintenance_private': {'BACKEND': 'portal.attachment_storage.PrivateAttachmentStorage'},
+}
+FILE_UPLOAD_HANDLERS = [
+    'portal.attachments.BoundedUploadHandler',
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler',
+]
+FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 65536
+DATA_UPLOAD_MAX_NUMBER_FILES = 5
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 20

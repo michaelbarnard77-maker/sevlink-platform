@@ -29,6 +29,7 @@ services:
         condition: service_healthy
     volumes:
       - static:/app/collected-static
+      - private_uploads:/app/private-attachments
     # Only Caddy can reach this port; never publish it directly.
     expose: ['8000']
   caddy:
@@ -45,6 +46,7 @@ services:
       - caddyconfig:/config
     depends_on: [web]
 volumes:
+  private_uploads:
   pgdata:
   static:
   caddydata:

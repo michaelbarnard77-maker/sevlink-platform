@@ -107,3 +107,10 @@ The earlier export description and review document the baseline before this phas
 
 The `dist/` directories are the available editable frontend source. Keep them in Git.
 No design, branding, page, script-loading order or application behavior was changed during repository preparation.
+
+## Private attachments development update
+
+The development branch now supports authenticated private photo/PDF uploads and
+downloads using local Django storage. See [private attachments](docs/PRIVATE-ATTACHMENTS.md)
+for limits, permissions, storage/S3 architecture, tests and production prerequisites.
+The original static demo remains separate and unchanged.

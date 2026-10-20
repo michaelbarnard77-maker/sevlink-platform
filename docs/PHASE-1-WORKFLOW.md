@@ -1,3 +1,7 @@
+> Attachment follow-up: photos and PDF documents are now connected through private
+> Django storage. See [private attachments](PRIVATE-ATTACHMENTS.md) for the current
+> implementation. Attachment limitations below describe the original Phase 1 baseline.
+
 # Phase 1: persistent maintenance requests
 
 Branch: `development/phase-1-foundations`. This is a development implementation, not a production deployment or launch approval.

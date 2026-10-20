@@ -112,3 +112,11 @@ verification, PM invitation, PM property ownership, tenant invitation, role
 escalation denial, cross-agency/PM isolation, tenant privacy, expired/reissued/
 reused links, CSRF, POST-only logout, login throttling and queued password resets.
 PostgreSQL and Docker deployment have NOT been exercised in this environment.
+
+## Private attachment follow-up
+
+Authenticated photo/PDF uploads and downloads now use a private local storage alias.
+Install the updated lockfile and apply migration 0003 for local testing.
+See [private attachment implementation](../../docs/PRIVATE-ATTACHMENTS.md) for policy,
+S3 extension points, tests and unfinished production requirements.
+The proposed Compose configuration has a web-only private upload volume; it has not been deployed.

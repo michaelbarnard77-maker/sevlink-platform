@@ -8,6 +8,8 @@ process.stdin.on('end', async () => {
   const browser = await chromium.launch({headless:true,
     ...(process.env.SEVLINK_CHROMIUM_PATH ? {executablePath:process.env.SEVLINK_CHROMIUM_PATH} : {}), args:['--no-sandbox']});
   const errors = [], failedAssets = [];
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFElEQVR4nGNkYPjPAANMDEgANwcAMdMBB1sLEtoAAAAASUVORK5CYII=', 'base64');
+  let downloadUrl;
   try {
     async function signedIn(role, width = 1440) {
       const context = await browser.newContext({viewport:{width,height:900}});
@@ -27,10 +29,13 @@ process.stdin.on('end', async () => {
     await page.locator('[data-category="Plumbing"]').click();
     await page.locator('[name=title]').fill('Kitchen tap leaking');
     await page.locator('[name=description]').fill('The kitchen tap drips after it is turned off.');
+    await page.locator('#reportForm [name=attachments]').setInputFiles({name:'repair.png', mimeType:'image/png', buffer:image});
     await page.getByRole('button', {name:'Send report to property manager'}).click();
     await page.getByRole('button', {name:'Open job'}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#jobcontent').getByText('Awaiting property manager review').waitFor();
+    downloadUrl = await page.locator('#modal .file a').first().getAttribute('href');
+    assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
     assert.equal(await page.locator('#statusForm').count(), 0);
     assert.equal(await page.evaluate(() => indexedDB.databases().then(dbs => dbs.length)), 0, 'Live mode does not use demo IndexedDB');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -41,6 +46,14 @@ process.stdin.on('end', async () => {
 
     ({context, page} = await signedIn('pm'));
     await page.getByRole('button', {name:'Open job'}).click();
+    const downloadEvent = page.waitForEvent('download');
+    await page.locator('#modal .file a').first().click();
+    const downloaded = await downloadEvent;
+    assert.equal(downloaded.suggestedFilename(), 'repair.png');
+    assert.equal(await downloaded.failure(), null);
+    await page.locator('#attachmentForm [name=attachments]').setInputFiles({name:'followup.png', mimeType:'image/png', buffer:image});
+    await page.getByRole('button', {name:'Upload attachments', exact:true}).click();
+    await page.locator('#modal .file').nth(1).waitFor();
     await page.locator('[name=status]').selectOption('reviewed');
     await page.getByRole('button', {name:'Save status'}).click();
     await page.locator('#jobcontent .activity').filter({hasText:'Reviewed'}).waitFor();
@@ -56,11 +69,17 @@ process.stdin.on('end', async () => {
     assert.equal(await page.locator('#modal').innerText().then(t => /internal_notes|subcontractor/i.test(t)), false);
     await context.close();
 
+    ({context, page} = await signedIn('foreign'));
+    assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 404);
+    assert.equal(await page.locator('#modal .file').count(), 0);
+    await context.close();
+
     ({context, page} = await signedIn('superadmin'));
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#jobcontent .activity').filter({hasText:'Reviewed'}).waitFor();
+    assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
     await context.close();
     assert.deepEqual(errors, []); assert.deepEqual(failedAssets, []);
-    console.log('PASS: real browser tenant report, database persistence, PM status update, logout/new tenant session, superadmin view, mobile layout, CSRF, no demo role switch or IndexedDB.');
+    console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin view, mobile layout, CSRF, no demo role switch or IndexedDB.');
   } finally { await browser.close(); }
 });

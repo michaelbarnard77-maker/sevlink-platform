@@ -103,3 +103,18 @@ class MaintenanceStatusEvent(models.Model):
 
     class Meta:
         ordering = ['at', 'id']
+
+
+class MaintenanceAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='attachments')
+    uploaded_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    storage_key = models.CharField(max_length=200, unique=True)
+    filename = models.CharField(max_length=160)
+    content_type = models.CharField(max_length=40)
+    size = models.PositiveIntegerField()
+    sha256 = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']

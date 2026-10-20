@@ -63,7 +63,7 @@ def requests_for(user):
     qs = MaintenanceRequest.objects.filter(property__in=properties_for(user))
     if role == Membership.TENANT:
         qs = qs.filter(reported_by=user)
-    return qs.select_related('property__agency', 'property__manager').prefetch_related('status_events')
+    return qs.select_related('property__agency', 'property__manager').prefetch_related('status_events', 'attachments')
 
 
 def api_access(view):
@@ -99,6 +99,7 @@ def property_data(prop):
 
 
 def serialize(job, user):
+    from .attachments import attachment_data
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
     return {
@@ -106,6 +107,7 @@ def serialize(job, user):
         'property': property_data(job.property), 'title': job.title,
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),
+        'attachments': [attachment_data(a) for a in job.attachments.all()],
         'version': job.version, 'created_at': job.created_at.isoformat(),
         'updated_at': job.updated_at.isoformat(),
         'allowed_statuses': [{'value': s, 'label': S(s).label} for s in TRANSITIONS[job.status]] if can_update else [],
@@ -155,20 +157,35 @@ def collection(request):
                              'next': page + 1 if page * 50 < count else None})
     if access(request.user)[0] != Membership.TENANT:
         return JsonResponse({'error': 'Only linked tenants can submit reports.'}, status=403)
+    from . import attachments
+    keys = []
     try:
-        data = payload(request, ('property', 'title', 'description', 'category'))
+        if request.content_type == 'multipart/form-data':
+            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category'))
+        else:
+            data = payload(request, ('property', 'title', 'description', 'category'))
+            uploads = []
         if any(not isinstance(value, str) for value in data.values()):
             raise ValueError('Report fields must be text.')
+        form = ReportForm(data, user=request.user)
+        if not form.is_valid():
+            return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
+        prepared = attachments.prepare(uploads)
+        with transaction.atomic():
+            job = MaintenanceRequest.objects.create(reported_by=request.user, **form.cleaned_data)
+            MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=job.status)
+            Audit.objects.create(agency=job.property.agency, actor=request.user,
+                                 action='Maintenance request submitted', object_id=str(job.pk))
+            attachments.save_files(job, request.user, prepared, keys)
     except ValueError as error:
+        attachments.cleanup(keys)
         return JsonResponse({'error': str(error)}, status=400)
-    form = ReportForm(data, user=request.user)
-    if not form.is_valid():
-        return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
-    with transaction.atomic():
-        job = MaintenanceRequest.objects.create(reported_by=request.user, **form.cleaned_data)
-        MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=job.status)
-        Audit.objects.create(agency=job.property.agency, actor=request.user,
-                             action='Maintenance request submitted', object_id=str(job.pk))
+    except attachments.UploadStorageError:
+        attachments.cleanup(keys)
+        return JsonResponse({'error': 'Attachment storage is unavailable. Report was not saved.'}, status=503)
+    except Exception:
+        attachments.cleanup(keys)
+        raise
     return JsonResponse(serialize(requests_for(request.user).get(pk=job.pk), request.user), status=201)
 
 

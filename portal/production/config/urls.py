@@ -1,7 +1,9 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
-from portal import views, maintenance
+from portal import views, maintenance, attachments
 urlpatterns = [
+    path('api/maintenance/requests/<uuid:job_id>/attachments/', attachments.upload, name='maintenance_attachment_upload'),
+    path('api/maintenance/requests/<uuid:job_id>/attachments/<uuid:attachment_id>/', attachments.download, name='maintenance_attachment_download'),
     path('maintenance/', maintenance.workspace, name='maintenance_workspace'),
     path('api/maintenance/context/', maintenance.context, name='maintenance_context'),
     path('api/maintenance/requests/', maintenance.collection, name='maintenance_collection'),

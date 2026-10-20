@@ -1,3 +1,9 @@
+> Private attachment follow-up is implemented on this same development branch.
+> After installing the updated lockfile and running migrations, you can attach photos
+> or PDFs in the report form or job details. The original test instructions remain valid.
+> See [private attachments](PRIVATE-ATTACHMENTS.md) for current file limits and tests;
+> the historical simulated-upload description below applies to the standalone demo.
+
 # Verify Phase 1 locally
 
 Use the `development/phase-1-foundations` branch. This guide runs the real Django portal on your own computer. It does not deploy or enable email, AWS or any paid service. Commands below are for Bash/macOS/Linux with Python 3.12 and Node 24 installed. Authenticate Git locally to access the private repository; do not put GitHub tokens into commands or source files.
