@@ -116,7 +116,7 @@ def serialize(job, user):
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
     return {
-        'id': str(job.pk), 'reference': job.reference, 'legacy_reference': 'SV-' + str(job.pk).upper(), 'urgency': job.urgency,
+        'id': str(job.pk), 'reference': job.reference, 'legacy_reference': 'SV-' + str(job.pk).upper(), 'request_reference': job.request_reference, 'official_job_reference': job.reference if job.job_number else None, 'historical_reference': job.legacy_job_reference, 'urgency': job.urgency,
         'property': property_data(job.property), 'title': job.title,
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),

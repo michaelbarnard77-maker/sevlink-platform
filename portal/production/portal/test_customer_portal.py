@@ -138,10 +138,11 @@ class CustomerPortalTests(TestCase):
         self.client.force_login(self.ops);self.assertEqual(len(self.client.get(reverse('operations_website_issues')).json()['issues']),1)
 
     def test_job_numbers_immutable_and_legacy_reference_retained(self):
-        self.assertRegex(self.job.reference,r'^SV-\d{6,}$')
+        self.assertRegex(self.job.reference,r'^REQ-\d{4,}$')
+        self.assertIsNone(self.job.job_number)
         self.client.force_login(self.pm);data=self.client.get(self.detail_url).json()
         self.assertEqual(data['legacy_reference'],'SV-'+str(self.job.pk).upper())
-        self.job.job_number+=1
+        self.job.job_number=1
         from django.core.exceptions import ValidationError
         with self.assertRaises(ValidationError):self.job.save()
 
@@ -199,13 +200,13 @@ from django.test import TransactionTestCase
 
 @skipUnless(connection.vendor=='postgresql','PostgreSQL job numbering concurrency')
 class JobNumberConcurrencyTests(TransactionTestCase):
-    def test_simultaneous_jobs_get_distinct_persistent_numbers(self):
+    def test_simultaneous_requests_get_distinct_persistent_numbers(self):
         from .models import Agency
         agency=Agency.objects.create(name='Synthetic sequence agency')
         user=User.objects.create_user(username='sequence',email='sequence@example.test')
         home=Property.objects.create(agency=agency,name='Synthetic',address='Synthetic')
         def create(_):
-            try:return MaintenanceRequest.objects.create(property_id=home.pk,reported_by_id=user.pk,title='Concurrent test',description='Synthetic',category='Plumbing').job_number
+            try:return MaintenanceRequest.objects.create(property_id=home.pk,reported_by_id=user.pk,title='Concurrent test',description='Synthetic',category='Plumbing').request_number
             finally:connections.close_all()
         with ThreadPoolExecutor(max_workers=2) as pool:values=list(pool.map(create,[1,2]))
         self.assertEqual(len(set(values)),2)

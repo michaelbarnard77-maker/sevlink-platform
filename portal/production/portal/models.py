@@ -167,6 +167,8 @@ class MaintenanceRequest(models.Model):
     property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name='maintenance_requests')
     reported_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='maintenance_requests')
     job_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
+    request_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
+    legacy_job_reference = models.CharField(max_length=80, blank=True, editable=False)
     urgency = models.CharField(max_length=10, choices=[('normal','Normal'),('urgent','Urgent'),('safety','Safety concern')], default='normal')
     title = models.CharField(max_length=180)
     description = models.TextField(max_length=2500)
@@ -189,25 +191,26 @@ class MaintenanceRequest(models.Model):
         ]), name='maintenance_valid_status')]
 
     @model_property
+    def request_reference(self):
+        return f'REQ-{self.request_number:04d}' if self.request_number else 'REQ-' + str(self.pk).upper()
+
+    @model_property
     def reference(self):
-        return f'SV-{self.job_number:06d}' if self.job_number else 'SV-' + str(self.pk).upper()
+        return f'SV-{self.job_number:04d}' if self.job_number else self.request_reference
 
     def save(self, *args, **kwargs):
         from django.db import transaction
         from django.core.exceptions import ValidationError
         if not self._state.adding:
-            original = type(self).objects.filter(pk=self.pk).values_list('job_number', flat=True).first()
-            if original != self.job_number:
-                raise ValidationError('Saved job numbers cannot be changed.')
+            original = type(self).objects.filter(pk=self.pk).values('job_number','request_number','legacy_job_reference').first()
+            if original and any(original[name] != getattr(self,name) for name in original):
+                raise ValidationError('Saved reference identifiers cannot be changed.')
             return super().save(*args, **kwargs)
         with transaction.atomic():
-            if self.job_number is not None:
-                raise ValidationError('Job numbers are allocated by Sevlink.')
-            row, _ = DocumentSequence.objects.get_or_create(prefix='SV',year=0)
-            row = DocumentSequence.objects.select_for_update().get(pk=row.pk)
-            row.last_value += 1
-            row.save(update_fields=['last_value'])
-            self.job_number = row.last_value
+            if self.job_number is not None or self.request_number is not None or self.legacy_job_reference:
+                raise ValidationError('Reference identifiers are allocated by Sevlink.')
+            from .numbering import next_number
+            self.request_number = next_number('REQ')
             return super().save(*args, **kwargs)
 
 
@@ -443,12 +446,21 @@ class QuoteApprovalReplacement(AppendOnlyModel):
 
 
 class DocumentSequence(models.Model):
-    prefix = models.CharField(max_length=2, choices=[('SQ','Quotation'),('SI','Invoice'),('SV','Job')])
+    prefix = models.CharField(max_length=3, choices=[('SQ','Historical quotation'),('SI','Historical invoice'),('SV','Approved job'),('REQ','Request')])
     year = models.PositiveIntegerField()
     last_value = models.PositiveIntegerField(default=0)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['prefix','year'], name='document_annual_sequence')]
+
+
+class QuotationReferenceReservation(models.Model):
+    """Never recycle a PDF reference; revisions share the owning quotation series.
+
+    NULL series denotes conflicting historical records requiring manual review.
+    """
+    reference = models.CharField(max_length=240, primary_key=True)
+    series_id = models.UUIDField(null=True)
 
 
 class QuotationLine(models.Model):

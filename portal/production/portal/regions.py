@@ -148,14 +148,14 @@ def dashboard(request):
         'suburbs': list(Suburb.objects.values('id', 'city_id', 'name')),
         'properties': page_data(props.order_by('name', 'pk'), page, property_data),
         'subcontractors': page_data(contractors, page, contractor_data),
-        'jobs': page_data(jobs, page, lambda j: {'id': str(j.pk), 'title': j.title,
+        'jobs': page_data(jobs, page, lambda j: {'id': str(j.pk), 'reference':j.reference, 'title': j.title,
             'status': j.status, 'property': property_data(j.property)}),
         'page': page,
         'trade_options': list(TradeCategory.objects.values_list('name',flat=True)),
         'compliance_alerts': compliance_alerts(),
         'assignment_reviews': [{'id': r.pk, 'assignment':r.assignment_id, 'reason':r.reason,
             'subcontractor':str(r.assignment.subcontractor_id), 'name':r.assignment.subcontractor.name,
-            'job':str(r.assignment.request_id)} for r in AssignmentReview.objects.filter(resolution__isnull=True).select_related('assignment__subcontractor')[:100]],
+            'job':str(r.assignment.request_id), 'reference':r.assignment.request.reference} for r in AssignmentReview.objects.filter(resolution__isnull=True).select_related('assignment__subcontractor','assignment__request')[:100]],
     })
 
 
@@ -221,7 +221,7 @@ def property_location(request, property_id):
 def assignments(request, job_id):
     job = get_object_or_404(MaintenanceRequest.objects.select_related('property__city__province'), pk=job_id)
     if request.method == 'GET':
-        return JsonResponse({'version': job.version, 'location_required': not bool(job.property.city_id),
+        return JsonResponse({'version': job.version, 'reference':job.reference, 'location_required': not bool(job.property.city_id),
             'subcontractors': [dict(contractor_data(c), teams=[{'id':str(t.pk),'name':t.name} for t in c.teams.filter(active=True)], team_required=c.teams.exists()) for c in eligible(job.property)],
             'history': [{'id': a.pk, 'subcontractor': str(a.subcontractor_id),
                 'name': a.subcontractor.name, 'at': a.created_at.isoformat(),

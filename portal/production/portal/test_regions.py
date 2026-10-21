@@ -227,7 +227,7 @@ class RegionalConcurrencyTests(TransactionTestCase):
 class RegionalMigrationTests(TransactionTestCase):
     def test_preserves_gauteng_records_without_guessing_coordinates(self):
         old = [('portal', '0013_reserve_historical_document_numbers')]
-        new = [('portal', '0026_jobactionrequest_job_active_action_unique')]
+        new = [('portal', '0027_manual_document_references_and_approved_jobs')]
         try:
             MigrationExecutor(connection).migrate(old)
             apps = MigrationExecutor(connection).loader.project_state(old).apps

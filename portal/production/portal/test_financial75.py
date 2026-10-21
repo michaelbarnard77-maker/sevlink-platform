@@ -15,7 +15,7 @@ from . import test_manual_documents as documents
 from .models import (JobInvoice, InvoicePayment, InvoiceRefund, InvoiceAction, InvoiceCreditNote,
     JobQuotation, QuotationAction, QuoteApprovalReplacement, JobActivity, OperationsNotification,
     MaintenanceAttachment, DocumentSequence, User, Agency, Property, Membership, MaintenanceRequest)
-from .numbering import allocate
+from .numbering import next_number
 
 
 @override_settings(SECURE_SSL_REDIRECT=False,ALLOWED_HOSTS=['testserver'],OPERATIONS_EMAIL_DELIVERY_BACKEND=fixtures.LOCAL)
@@ -265,22 +265,81 @@ class Financial75Tests(TestCase):
             self.assertEqual(response.status_code,expected)
         self.assertEqual(QuoteApprovalReplacement.objects.count(),0)
 
-    def test_internal_numbering_annual_sequences_external_references_and_idempotency(self):
-        with patch('portal.numbering.timezone.localdate',return_value=date(2031,12,31)):
-            quote=self.quote(reference='EXTERNAL-PDF-REF').json();invoice=self.invoice(number='ACCOUNTANT-REF').json()
-            self.assertEqual((quote['record_number'],invoice['record_number']),('SQ-2031-0001','SI-2031-0001'))
-            self.assertEqual((quote['reference'],invoice['number']),('EXTERNAL-PDF-REF','ACCOUNTANT-REF'))
-            self.assertEqual(self.quote().json()['record_number'],'SQ-2031-0002')
-        with patch('portal.numbering.timezone.localdate',return_value=date(2032,1,1)):
-            self.assertEqual(self.quote().json()['record_number'],'SQ-2032-0001')
-            self.assertEqual(self.invoice(number='NEXT-EXTERNAL').json()['record_number'],'SI-2032-0001')
-        key=uuid.uuid4();one=self.quote(key).json();self.assertEqual(self.quote(key).json()['record_number'],one['record_number'])
-        self.assertEqual(JobQuotation.objects.filter(record_number=one['record_number']).count(),1)
-        with patch('portal.numbering.timezone.localdate',return_value=date(2033,1,1)):
-            DocumentSequence.objects.create(prefix='SQ',year=2033,last_value=9999)
-            before=MaintenanceAttachment.objects.count()
-            self.assertEqual(self.quote().status_code,400)
-            self.assertEqual(MaintenanceAttachment.objects.count(),before)
+    def test_manual_document_references_never_allocate_sq_or_si(self):
+        before=list(DocumentSequence.objects.filter(prefix__in=['SQ','SI']).values())
+        quote=self.quote(reference='SQ-0001').json()
+        invoice=self.invoice(number='INV-0001').json()
+        self.assertIsNone(quote['record_number'])
+        self.assertIsNone(invoice['record_number'])
+        self.assertEqual((quote['reference'],invoice['number']),('SQ-0001','INV-0001'))
+        key=uuid.uuid4()
+        one=self.quote(key,reference='SQ-0002').json()
+        self.assertEqual(self.quote(key,reference='SQ-0002').json()['id'],one['id'])
+        self.assertEqual(list(DocumentSequence.objects.filter(prefix__in=['SQ','SI']).values()),before)
+
+    def test_request_gets_official_number_only_on_approval_and_amendment_keeps_it(self):
+        self.assertIsNone(self.job.job_number)
+        request_reference=self.job.reference
+        self.assertRegex(request_reference,r'^REQ-\d{4,}$')
+        quote=self.sent()
+        self.job.refresh_from_db()
+        self.assertIsNone(self.job.job_number)
+        self.assertEqual(self.approve(quote,'rejected').status_code,200)
+        self.job.refresh_from_db()
+        self.assertIsNone(self.job.job_number)
+        self.client.force_login(self.ops)
+        q=self.quote(reference='SQ-APPROVE').json()
+        q=self.send(q)
+        key=uuid.uuid4()
+        self.assertEqual(self.approve(q,key=key).status_code,200)
+        self.job.refresh_from_db()
+        number=self.job.job_number
+        self.assertRegex(self.job.reference,r'^SV-\d{4,}$')
+        self.assertEqual(self.job.request_reference,request_reference)
+        self.assertEqual(self.job.status,'awaiting_review')
+        self.assertEqual(self.approve(q,key=key).status_code,200)
+        self.assertEqual(self.approve(q).status_code,409)
+        original=JobQuotation.objects.get(pk=q['id'])
+        amended=self.send(self.amendment(dict(id=str(original.pk),version=original.version)).json())
+        self.assertEqual(self.approve(amended).status_code,200)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.job_number,number)
+        self.assertEqual(DocumentSequence.objects.get(prefix='SV',year=0).last_value,number)
+        from .customer_portal import deposit_state
+        self.assertFalse(deposit_state(self.job)['ready'])
+        self.assertFalse(self.job.assignments.exists())
+
+    def test_manual_references_required_and_unique_between_series_but_allowed_on_revision(self):
+        self.assertEqual(self.quote(reference='').status_code,400)
+        self.assertEqual(self.invoice(number='').status_code,400)
+        q=self.sent()
+        self.client.force_login(self.ops)
+        self.assertEqual(self.quote(reference=' q-001 ').status_code,400)
+        # A different agency/job cannot accidentally claim the same printed reference.
+        home=Property.objects.create(agency=self.foreign_agency,name='Other',address='Other')
+        other=MaintenanceRequest.objects.create(property=home,reported_by=self.ops,title='Other',description='Test',category='Plumbing')
+        response=self.client.post(reverse('maintenance_quote',args=[other.pk]),dict(reference='Q-001',amount='1000',attachments=fixtures.document()),HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,400)
+        revision=self.amendment(q,operation='revise',reference=q['reference']).json()
+        self.assertEqual(revision['reference'],q['reference'])
+        self.assertEqual(revision['revision'],2)
+        self.assertEqual(JobQuotation.objects.get(pk=q['id']).reference,q['reference'])
+        # Legacy drafts with missing references must not be issued.
+        draft=JobQuotation.objects.create(request=self.job,created_by=self.ops,title='Legacy draft',amount='100',document=self.attachment_for_legacy_quote(),creation_key=uuid.uuid4())
+        self.assertEqual(self.post(reverse('maintenance_quote_action',args=[self.job.pk,draft.pk,'send']),dict(version=1)).status_code,400)
+
+    def attachment_for_legacy_quote(self):
+        return MaintenanceAttachment.objects.create(request=self.job,uploaded_by=self.ops,purpose='quotation',visibility='internal',storage_key=f'maintenance/{self.job.pk}/{uuid.uuid4()}.pdf',filename='legacy.pdf',content_type='application/pdf',size=1,sha256='a'*64)
+
+    def test_failed_approval_rolls_back_official_number_and_event(self):
+        quote=self.sent()
+        with patch('portal.quotations.record',side_effect=RuntimeError('event transaction rollback')):
+            with self.assertRaises(RuntimeError):self.approve(quote)
+        self.job.refresh_from_db()
+        self.assertIsNone(self.job.job_number)
+        self.assertEqual(JobQuotation.objects.get(pk=quote['id']).status,'sent')
+        self.assertFalse(OperationsNotification.objects.filter(event__kind='quote_approved').exists())
+        self.assertEqual(DocumentSequence.objects.get(prefix='SV',year=0).last_value,0)
 
 
 @override_settings(SECURE_SSL_REDIRECT=False,ALLOWED_HOSTS=['testserver'])
@@ -350,8 +409,8 @@ class FinancialConcurrencyTests(TransactionTestCase):
 
     @skipUnlessDBFeature('has_select_for_update')
     def test_simultaneous_amendment_approvals_replace_once(self):
-        base=JobQuotation.objects.create(request=self.job,document=self.attachment('quotation'),created_by=self.ops,creation_key=uuid.uuid4(),title='Original',scope='Public',amount='1000',status='approved')
-        amendment=JobQuotation.objects.create(request=self.job,document=self.attachment('quotation'),created_by=self.ops,creation_key=uuid.uuid4(),title='Amendment',scope='Public',amount='1200',status='sent',previous=base,amends=base,series_id=base.series_id,revision=2,amendment_reason='Public scope change')
+        base=JobQuotation.objects.create(request=self.job,document=self.attachment('quotation'),created_by=self.ops,creation_key=uuid.uuid4(),reference='SQ-RACE-1',title='Original',scope='Public',amount='1000',status='approved')
+        amendment=JobQuotation.objects.create(request=self.job,document=self.attachment('quotation'),created_by=self.ops,creation_key=uuid.uuid4(),reference='SQ-RACE-1',title='Amendment',scope='Public',amount='1200',status='sent',previous=base,amends=base,series_id=base.series_id,revision=2,amendment_reason='Public scope change')
         url=reverse('maintenance_quote_decision',args=[self.job.pk,amendment.pk])
         body=dict(version=1,status='approved',reason='Approve change')
         self.assertEqual(sorted(self.race([lambda c:self.api(c,url,body)]*2,user=self.pm)),[200,409])
@@ -360,18 +419,42 @@ class FinancialConcurrencyTests(TransactionTestCase):
         base.refresh_from_db();self.assertEqual((base.status,base.amount,base.version),('approved',1000,1))
 
     @skipUnlessDBFeature('has_select_for_update')
-    def test_concurrent_first_annual_numbers_are_unique(self):
+    def test_concurrent_first_request_numbers_are_unique(self):
         def reserve(_):
-            with transaction.atomic():return allocate('SQ')
+            with transaction.atomic():return next_number('REQ')
         values=self.race([reserve,reserve])
-        year=timezone.localdate().year
-        self.assertEqual(set(values),{f'SQ-{year}-0001',f'SQ-{year}-0002'})
+        self.assertEqual(len(set(values)),2)
+        self.assertEqual(abs(values[0]-values[1]),1)
+
+    @skipUnlessDBFeature('has_select_for_update')
+    def test_simultaneous_first_approvals_on_different_jobs_allocate_global_numbers(self):
+        def sent(job,reference):
+            attachment=MaintenanceAttachment.objects.create(request=job,uploaded_by=self.ops,purpose='quotation',visibility='internal',storage_key=f'maintenance/{job.pk}/{uuid.uuid4()}.pdf',filename='quote.pdf',content_type='application/pdf',size=1,sha256='a'*64)
+            return JobQuotation.objects.create(request=job,document=attachment,created_by=self.ops,reference=reference,creation_key=uuid.uuid4(),title='Sent',scope='Public',amount='1000',status='sent')
+        other=MaintenanceRequest.objects.create(property=self.home,reported_by=self.ops,title='Second',description='Test',category='Plumbing')
+        quotes=[sent(self.job,'SQ-CONCURRENT-1'),sent(other,'SQ-CONCURRENT-2')]
+        def decide(c,q):
+            return self.api(c,reverse('maintenance_quote_decision',args=[q.request_id,q.pk]),dict(version=1,status='approved',reason='Authorised approval'))
+        self.assertEqual(self.race([lambda c:decide(c,quotes[0]),lambda c:decide(c,quotes[1])],user=self.pm),[200,200])
+        self.job.refresh_from_db();other.refresh_from_db()
+        self.assertEqual({self.job.job_number,other.job_number},{1,2})
+        self.assertEqual(DocumentSequence.objects.get(prefix='SV',year=0).last_value,2)
+
+    @skipUnlessDBFeature('has_select_for_update')
+    def test_simultaneous_same_quotation_approvals_allocate_once(self):
+        quote=JobQuotation.objects.create(request=self.job,document=self.attachment('quotation'),created_by=self.ops,reference='SQ-ONLY-ONCE',creation_key=uuid.uuid4(),title='Sent',scope='Public',amount='1000',status='sent')
+        url=reverse('maintenance_quote_decision',args=[self.job.pk,quote.pk])
+        body=dict(version=1,status='approved',reason='Approve')
+        self.assertEqual(sorted(self.race([lambda c:self.api(c,url,body)]*2,user=self.pm)),[200,409])
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.job_number,1)
+        self.assertEqual(DocumentSequence.objects.get(prefix='SV',year=0).last_value,1)
 
 
 class Financial75MigrationTests(TransactionTestCase):
     def test_preserves_paid_invoice_approved_quote_and_reserves_historical_ranges(self):
         old=[('portal','0010_jobquotation_document_jobquotation_reference_and_more')]
-        new=[('portal','0026_jobactionrequest_job_active_action_unique')]
+        new=[('portal','0027_manual_document_references_and_approved_jobs')]
         try:
             executor=MigrationExecutor(connection);executor.migrate(old)
             apps=executor.loader.project_state(old).apps
@@ -393,6 +476,45 @@ class Financial75MigrationTests(TransactionTestCase):
             self.assertEqual(quote.public_snapshot,{'amount':'100','legacy':'unchanged'})
             self.assertEqual(apps.get_model('portal','InvoiceRefund').objects.count(),0)
             self.assertEqual(apps.get_model('portal','OperationsNotification').objects.count(),0)
-            with patch('portal.numbering.timezone.localdate',return_value=date(2024,12,31)),transaction.atomic():
-                self.assertEqual((allocate('SQ'),allocate('SI')),('SQ-2024-0043','SI-2024-0011'))
+            self.assertIsNotNone(apps.get_model('portal','MaintenanceRequest').objects.get(pk=job.pk).job_number)
         finally:MigrationExecutor(connection).migrate(new)
+
+    def test_reference_correction_reserves_old_numbers_and_preserves_historical_aliases(self):
+        old=[('portal','0026_jobactionrequest_job_active_action_unique')]
+        new=[('portal','0027_manual_document_references_and_approved_jobs')]
+        try:
+            executor=MigrationExecutor(connection);executor.migrate(old)
+            apps=executor.loader.project_state(old).apps
+            user=apps.get_model('portal','User').objects.create(username='number-history@example.test',email='number-history@example.test',password='!')
+            agency=apps.get_model('portal','Agency').objects.create(name='Number history',phone='test',area='Test')
+            home=apps.get_model('portal','Property').objects.create(agency=agency,name='Preserve',address='Test')
+            Job=apps.get_model('portal','MaintenanceRequest')
+            pending=Job.objects.create(property=home,reported_by=user,title='Unapproved',description='Keep',category='Plumbing',job_number=7)
+            approved=Job.objects.create(property=home,reported_by=user,title='Approved',description='Keep',category='Plumbing',job_number=11)
+            Quote=apps.get_model('portal','JobQuotation')
+            first=Quote.objects.create(request=pending,created_by=user,reference='SQ-HISTORICAL',title='Pending',amount='100',status='sent',creation_key=uuid.uuid4())
+            second=Quote.objects.create(request=approved,created_by=user,reference='SQ-HISTORICAL',title='Approved',amount='200',status='approved',creation_key=uuid.uuid4())
+            executor=MigrationExecutor(connection);executor.migrate(new)
+            pending=MaintenanceRequest.objects.get(pk=pending.pk)
+            approved=MaintenanceRequest.objects.get(pk=approved.pk)
+            self.assertIsNone(pending.job_number)
+            self.assertEqual(pending.legacy_job_reference,'SV-000007')
+            self.assertRegex(pending.reference,r'^REQ-\d{4,}$')
+            self.assertEqual(approved.job_number,11)
+            self.assertEqual(approved.reference,'SV-0011')
+            self.assertEqual(approved.legacy_job_reference,'SV-000011')
+            self.assertEqual(JobQuotation.objects.get(pk=first.pk).reference,'SQ-HISTORICAL')
+            self.assertEqual(JobQuotation.objects.get(pk=second.pk).reference,'SQ-HISTORICAL')
+            from .models import QuotationReferenceReservation
+            self.assertIsNone(QuotationReferenceReservation.objects.get(pk='sq-historical').series_id)
+            self.assertEqual(DocumentSequence.objects.get(prefix='SV',year=0).last_value,11)
+            # Subsequent approval never resurrects premature SV-7.
+            JobQuotation.objects.create(request=pending,created_by_id=user.pk,reference='SQ-REVIEWED',title='Reviewed',amount='100',status='approved',creation_key=uuid.uuid4())
+            from .numbering import approve_job_number
+            with transaction.atomic():
+                pending=MaintenanceRequest.objects.select_for_update().get(pk=pending.pk)
+                approve_job_number(pending)
+            self.assertEqual(pending.reference,'SV-0012')
+            self.assertEqual(pending.legacy_job_reference,'SV-000007')
+        finally:
+            MigrationExecutor(connection).migrate(new)

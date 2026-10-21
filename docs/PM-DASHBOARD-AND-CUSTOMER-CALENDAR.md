@@ -92,14 +92,13 @@ maintenance job. No live delivery or automatic support response is claimed.
 
 ## Numbering and migration
 
-0025 adds sequential global `SV-000001` job references, preserving UUID primary
-keys and a `legacy_reference` SV-UUID alias. Historical jobs receive numbers in
-saved creation order. A locked shared sequence prevents concurrent duplicate
-allocation. SV numbering is continuous; it does not reset annually. Existing
-annual SQ/SI series and printed quotation/invoice references are unchanged.
-0026 prevents duplicate unresolved action requests. Existing data is retained.
-Stop all writers and take a verified DB/private-file backup before upgrading;
-do not downgrade casually after new job numbers or customer publication records.
+0027 supersedes 0025's request-time SV allocation. Requests receive REQ-0001;
+only authorised quotation approval issues an official global SV-0001. Manual PDF
+quotation/invoice references are required; no new SQ/SI identifiers are generated.
+Existing UUIDs, PDFs, decisions and financial history remain. Premature SV numbers
+become reserved historical aliases rather than official numbers. See
+[the numbering correction](NUMBERING-CORRECTION.md) for migration and duplicate
+reference handling. Stop writers and back up before upgrading.
 
 ## Verification and local update
 

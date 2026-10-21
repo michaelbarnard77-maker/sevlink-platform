@@ -70,9 +70,10 @@ def week(request):
         starts_at__gte=datetime.combine(start,time.min,tzinfo=TZ),starts_at__lt=datetime.combine(end,time.min,tzinfo=TZ),cancelled_at__isnull=True)
     search=request.GET.get('job_search','').strip()
     if len(search)>180: raise ValueError
-    reference=search[3:] if search.upper().startswith('SV-') else search
+    reference=search.split('-',1)[1] if search.upper().startswith(('SV-','REQ-')) else search
+    number_field='request_number' if search.upper().startswith('REQ-') else 'job_number'
     jobs=MaintenanceRequest.objects.exclude(status__in=['completed','cancelled']).filter(
-        Q(title__icontains=search)|Q(property__address__icontains=search)|Q(id__icontains=reference)| (Q(job_number=int(reference)) if reference.isdecimal() and len(reference)<18 else Q(pk__isnull=True)))
+        Q(title__icontains=search)|Q(property__address__icontains=search)|Q(id__icontains=reference)|Q(legacy_job_reference__iexact=search)| (Q(**{number_field:int(reference)}) if reference.isdecimal() and len(reference)<18 else Q(pk__isnull=True)))
     return JsonResponse({'week_start':str(start),'previous':str(start-timedelta(days=7)),'next':str(end),
         'days':[str(start+timedelta(days=i)) for i in range(7)],'timezone':'Africa/Johannesburg',
         'teams':[{'id':str(t.pk),'name':t.name,'subcontractor':str(t.subcontractor_id),'supplier':t.subcontractor.name,

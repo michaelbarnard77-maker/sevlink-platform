@@ -126,7 +126,7 @@ def profile(request, subcontractor_id):
         agreements=[{'id': a.pk, 'commission_percent': str(a.commission_percent) if a.commission_percent is not None else '',
             'rate': str(a.rate) if a.rate is not None else '', 'currency':'ZAR', 'rate_basis':a.rate_basis,
             'terms':a.terms, 'created_at':a.created_at.isoformat()} for a in item.agreements.all()],
-        assignments=[{'id': a.pk, 'job':str(a.request_id), 'title':a.request.title,
+        assignments=[{'id': a.pk, 'job':str(a.request_id), 'reference':a.request.reference, 'title':a.request.title,
             'team':a.team.name if a.team_id else 'Legacy / team unallocated', 'team_id':str(a.team_id) if a.team_id else None, 'current':current_assignments().filter(pk=a.pk).exists(), 'at':a.created_at.isoformat(),
             'reviews':[{'id':r.pk,'reason':r.reason,'at':r.created_at.isoformat()}
                 for r in a.reviews.filter(resolution__isnull=True)]} for a in item.jobassignment_set.select_related('request','team')[:100]],

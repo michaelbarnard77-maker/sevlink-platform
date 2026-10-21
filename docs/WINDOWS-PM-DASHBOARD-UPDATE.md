@@ -131,10 +131,20 @@ demo link is a different, browser-local application.
   the one-minute visible-page refresh. Acknowledging an appointment marks it
   reviewed; it does not cancel it or change the job status.
 
-Migration 0025 adds immutable sequential `SV-000001` style job numbers, backfilled
-in saved creation order. UUIDs and legacy SV-UUID links remain available. SQ/SI
-numbering, external PDF references and existing financial records are unchanged.
-0026 prevents duplicate unresolved information requests. Stop all app writers
-while migrating. Do not reverse these migrations or restore only half a backup.
-If recovery is needed, stop the server and have the matching code/database/files
-restored together through a reviewed procedure.
+Migration **0027** supersedes request-time SV numbering: unapproved requests show
+REQ-0001 style references; only approved quotations issue official SV-0001 numbers.
+Earlier premature SV numbers remain reserved historical aliases. Existing approved
+numbers, UUID relationships, PDFs, payments and decisions are preserved. New
+quotation and invoice references are manually entered from their PDFs; no automatic
+SQ/SI numbers are generated. See [the detailed correction](NUMBERING-CORRECTION.md).
+
+After migrating, test a new request, rejected quote, approved revised PDF, repeat
+approval and approved amendment. Confirm only approval produces one SV number,
+then verify an unpaid job still cannot be scheduled without an authorised
+arrangement. Compare the old and new reference using an existing unapproved test
+request; its former SV must not be presented as an official job number.
+
+Stop all app writers while migrating. **Do not reverse 0027 on a populated DB**:
+it refuses to drop historical identifiers. Do not reset counters, flush, reseed or
+restore only half a backup. If recovery is needed, stop the server and restore the
+matching previous code, complete verified database and private files together.

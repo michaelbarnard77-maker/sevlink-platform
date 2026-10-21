@@ -43,7 +43,7 @@ class Step7Tests(TestCase):
         self.client.force_login(self.ops)
 
     def draft(self, **changes):
-        data = dict(reference='Q-STEP7', title='Public repair scope', scope='Agency-visible work.', amount='281.40',
+        data = dict(reference='Q-STEP7-'+str(JobQuotation.objects.count()+1), title='Public repair scope', scope='Agency-visible work.', amount='281.40',
                     attachments=fixtures.document(name='quotation.pdf'))
         data.update(changes)
         response = self.client.post(self.quote_url, data, HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
@@ -71,7 +71,7 @@ class Step7Tests(TestCase):
     def test_recorded_amount_and_pdf_are_not_calculated_or_generated(self):
         quote = self.draft(amount='250.13')
         self.assertEqual(quote['amount'], '250.13')
-        self.assertEqual(quote['reference'], 'Q-STEP7')
+        self.assertEqual(quote['reference'], 'Q-STEP7-1')
         self.assertTrue(quote['document']['uploaded_at'])
         self.assertNotIn('lines', quote)
         self.assertNotIn('vat_total', quote)

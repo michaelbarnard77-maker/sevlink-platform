@@ -34,6 +34,7 @@ process.stdin.on('end', async () => {
     await page.getByRole('button', {name:'Open job'}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#jobcontent').getByText('Awaiting property manager review').waitFor();
+    assert.match((await (await page.request.get(url+'/api/maintenance/requests/')).json()).results[0].reference,/^REQ-\d{4,}$/);
     downloadUrl = await page.locator('#modal .file a').first().getAttribute('href');
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
     await page.locator('#commentForm [name=text]').fill('Please call before visiting.');
@@ -128,6 +129,10 @@ process.stdin.on('end', async () => {
     await page.locator('.quoteDecision [name=reason]').fill('Approved as quoted.');
     await page.getByRole('button', {name:'Save quotation decision', exact:true}).click();
     await page.locator('.card .badge').filter({hasText:'approved'}).waitFor();
+    const numberedJob=await (await page.request.get(url+'/api/maintenance/requests/'+jobId+'/')).json();
+    assert.match(numberedJob.reference,/^SV-\d{4,}$/);
+    assert.match(numberedJob.request_reference,/^REQ-\d{4,}$/);
+    const officialReference=numberedJob.reference;
     await page.locator('#commentForm [name=text]').fill('Approved. Please coordinate access.');
     await page.getByRole('button', {name:'Add comment', exact:true}).click();
     await page.locator('.comment').filter({hasText:'Approved. Please coordinate access.'}).waitFor();
@@ -180,6 +185,7 @@ process.stdin.on('end', async () => {
     await page.getByRole('button',{name:'Save quotation decision',exact:true}).click();
     await page.getByText('Historical approval — replaced only after the linked amendment was approved.').waitFor();
     assert.equal(await page.locator('.quoteDecision').count(),0);
+    assert.equal((await (await page.request.get(url+'/api/maintenance/requests/'+jobId+'/')).json()).reference,officialReference);
     await context.close();
     assert.deepEqual(errors, []); assert.deepEqual(failedAssets, []);
     console.log('PASS: real browser tenant photo/report upload, authenticated PM download and follow-up upload, cross-agency download denial, database persistence, PM status update, logout/new tenant session, superadmin manual PDF draft/send, invoice PDF and manual partial payment, private notes and notification read/open, authorized PM approval and saved tenant/PM comments, secure deep link, mobile layout, CSRF, no demo role switch or IndexedDB.');

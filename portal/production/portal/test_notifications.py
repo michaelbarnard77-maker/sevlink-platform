@@ -59,7 +59,7 @@ class EventWorkflowTests(TestCase):
         override.enable(); self.addCleanup(override.disable)
 
     def upload_quote(self, key=None):
-        return self.client.post(self.quote_url, {'reference':'Q-TEST', 'title':'Repair quotation',
+        return self.client.post(self.quote_url, {'reference':('Q-TEST-'+str(key)) if key else 'Q-TEST-'+str(JobQuotation.objects.count()+1), 'title':'Repair quotation',
             'scope':'Replace the leaking tap.', 'amount':'1250.50', 'attachments':document(name='quotation.pdf')},
             HTTP_IDEMPOTENCY_KEY=str(key or uuid.uuid4()))
 

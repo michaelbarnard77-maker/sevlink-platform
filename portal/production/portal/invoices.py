@@ -14,7 +14,6 @@ from .maintenance import api_access, requests_for, payload, access
 from .staff_access import can_pay
 from .models import MaintenanceRequest, JobInvoice, InvoicePayment, Membership, Subcontractor, JobAssignment
 from .quotations import digest
-from .numbering import allocate
 from .financial import net_paid, set_payment_state
 from .commercial import MAX_MONEY
 
@@ -95,7 +94,7 @@ def create(request, job_id):
                 return JsonResponse({'error':'This invoice number already exists for this job and visibility.'},status=409)
             document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
             invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,subcontractor=supplier,
-                record_number=allocate('SI'),creation_key=key,fingerprint=fingerprint,**values)
+                creation_key=key,fingerprint=fingerprint,**values)
             # Reload typed Decimal/Date values before serializing, including on SQLite.
             invoice.refresh_from_db()
             audit(invoice,request.user,'invoice_uploaded',key,invoice.amount)

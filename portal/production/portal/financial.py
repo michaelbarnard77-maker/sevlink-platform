@@ -13,7 +13,6 @@ from .collaboration import lock_job, request_key
 from .events import record
 from .maintenance import api_access, requests_for, payload, access
 from .models import JobInvoice, InvoicePayment, InvoiceRefund, InvoiceAction, InvoiceCreditNote, Membership
-from .numbering import allocate
 from .quotations import digest
 
 
@@ -141,7 +140,7 @@ def adjust(request, job_id, invoice_id, operation):
                 document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
                 old=invoice
                 invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,
-                    record_number=allocate('SI'),previous=old,correction_reason=reason,subcontractor_id=old.subcontractor_id,
+                    previous=old,correction_reason=reason,subcontractor_id=old.subcontractor_id,
                     visibility=old.visibility,reconciliation_required=old.reconciliation_required or net_paid(old)>0,
                     creation_key=key,fingerprint=fingerprint,**values)
                 invoice.refresh_from_db()

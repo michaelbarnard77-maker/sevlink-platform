@@ -83,7 +83,7 @@ class SupplierPaymentTests(TestCase):
 
 class BankRemovalMigrationTests(TransactionTestCase):
     def test_nonempty_bank_table_blocks_drop_then_empty_upgrade_preserves_supplier(self):
-        old=[('portal','0017_seed_supplier_trades')];new=[('portal','0026_jobactionrequest_job_active_action_unique')]
+        old=[('portal','0017_seed_supplier_trades')];new=[('portal','0027_manual_document_references_and_approved_jobs')]
         bank=None
         try:
             MigrationExecutor(connection).migrate(old)
