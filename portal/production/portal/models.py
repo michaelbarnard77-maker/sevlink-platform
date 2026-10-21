@@ -589,6 +589,15 @@ class Subcontractor(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=180)
     active = models.BooleanField(default=True)
+    archived = models.BooleanField(default=False)
+    contact_person = models.CharField(max_length=180, blank=True)
+    telephone = models.CharField(max_length=40, blank=True)
+    whatsapp = models.CharField(max_length=40, blank=True)
+    email = models.EmailField(blank=True)
+    trades = models.ManyToManyField('TradeCategory', blank=True, related_name='subcontractors')
+    specialisations = models.TextField(max_length=2000, blank=True)
+    internal_notes = models.TextField(max_length=4000, blank=True)
+    version = models.PositiveIntegerField(default=1)
     provinces = models.ManyToManyField(Province, blank=True, related_name='subcontractors')
     cities = models.ManyToManyField(City, blank=True, related_name='subcontractors')
     suburbs = models.ManyToManyField(Suburb, blank=True, related_name='subcontractors')
@@ -597,9 +606,11 @@ class Subcontractor(models.Model):
 
     class Meta:
         ordering = ['name', 'id']
+        permissions = [('manage_subcontractor_finance', 'Manage private subcontractor bank details')]
 
 
 class JobAssignment(AppendOnlyModel):
+    team = models.ForeignKey('SubcontractorTeam', null=True, blank=True, on_delete=models.PROTECT, related_name='assignments')
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='assignments')
     subcontractor = models.ForeignKey(Subcontractor, on_delete=models.PROTECT)
     actor = models.ForeignKey(User, on_delete=models.PROTECT)
@@ -611,3 +622,131 @@ class JobAssignment(AppendOnlyModel):
 
     class Meta:
         ordering = ['-created_at', '-id']
+
+
+class TradeCategory(models.Model):
+    name = models.CharField(max_length=80, primary_key=True)
+
+    class Meta:
+        ordering = ['name']
+
+
+class SubcontractorTerms(AppendOnlyModel):
+    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.PROTECT, related_name='agreements')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    commission_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    rate_basis = models.CharField(max_length=12, choices=[('hour','Per hour'),('visit','Per visit'),('fixed','Fixed')])
+    terms = models.TextField(max_length=4000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    submission_key = models.UUIDField(unique=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [models.CheckConstraint(condition=models.Q(commission_percent__isnull=True) | models.Q(commission_percent__gte=0, commission_percent__lte=100), name='supplier_commission_range'),
+                       models.CheckConstraint(condition=models.Q(rate__isnull=True) | models.Q(rate__gte=0), name='supplier_rate_nonnegative')]
+
+
+class SubcontractorBank(models.Model):
+    subcontractor = models.OneToOneField(Subcontractor, on_delete=models.PROTECT, related_name='bank')
+    bank_name = models.CharField(max_length=120)
+    account_holder = models.CharField(max_length=180)
+    account_number = models.CharField(max_length=20)
+    branch_code = models.CharField(max_length=6)
+    account_type = models.CharField(max_length=40)
+    version = models.PositiveIntegerField(default=1)
+    updated_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class SupplierActivity(AppendOnlyModel):
+    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.PROTECT, related_name='supplier_activity')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    action = models.CharField(max_length=80)
+    details = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+
+
+class ComplianceDocument(AppendOnlyModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.PROTECT, related_name='compliance_documents')
+    kind = models.CharField(max_length=20, choices=[('cipc','CIPC registration'),('insurance','Public liability insurance'),('qualification','Trade qualification/certificate'),('other','Other compliance document')])
+    title = models.CharField(max_length=180)
+    expires_on = models.DateField(null=True, blank=True)
+    previous = models.OneToOneField('self', on_delete=models.PROTECT, null=True, blank=True, related_name='replacement')
+    storage_key = models.CharField(max_length=200, unique=True)
+    filename = models.CharField(max_length=160)
+    size = models.PositiveIntegerField()
+    sha256 = models.CharField(max_length=64)
+    uploaded_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    submission_key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+
+
+class SubcontractorTeam(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.PROTECT, related_name='teams')
+    name = models.CharField(max_length=100)
+    active = models.BooleanField(default=True)
+    working_days = models.JSONField(default=list, blank=True)  # Monday=0 ... Sunday=6; no assumed availability.
+    day_start = models.TimeField(default='09:00')
+    day_end = models.TimeField(default='17:00')
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name', 'pk']
+        constraints = [models.UniqueConstraint(Lower('name'), 'subcontractor', name='supplier_team_name'),
+                       models.CheckConstraint(condition=models.Q(day_end__gt=models.F('day_start')), name='team_working_hours_order')]
+
+
+class TeamUnavailableDate(models.Model):
+    team = models.ForeignKey(SubcontractorTeam, on_delete=models.PROTECT, related_name='unavailable_dates')
+    date = models.DateField()
+    reason = models.CharField(max_length=500)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+
+    class Meta:
+        ordering = ['date', 'pk']
+        constraints = [models.UniqueConstraint(fields=['team','date'], name='team_unavailable_date')]
+
+
+class TeamAppointment(models.Model):
+    assignment = models.ForeignKey(JobAssignment, on_delete=models.PROTECT, related_name='appointments')
+    team = models.ForeignKey(SubcontractorTeam, on_delete=models.PROTECT, related_name='appointments')
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    actor = models.ForeignKey(User, on_delete=models.PROTECT, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='+')
+    cancellation_reason = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ['starts_at', 'pk']
+        constraints = [models.CheckConstraint(condition=models.Q(ends_at__gt=models.F('starts_at')), name='team_appointment_order'),
+                       models.UniqueConstraint(fields=['assignment'], condition=models.Q(cancelled_at__isnull=True), name='assignment_active_appointment')]
+
+
+class AssignmentReview(AppendOnlyModel):
+    assignment = models.ForeignKey(JobAssignment, on_delete=models.PROTECT, related_name='reviews')
+    reason = models.CharField(max_length=100)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+
+
+class AssignmentReviewResolution(AppendOnlyModel):
+    review = models.OneToOneField(AssignmentReview, on_delete=models.PROTECT, related_name='resolution')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    reason = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)

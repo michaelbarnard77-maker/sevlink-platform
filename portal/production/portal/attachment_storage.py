@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.files.storage import FileSystemStorage
 
-KEY = re.compile(r'maintenance/[0-9a-f-]{36}/[0-9a-f-]{36}\.(?:jpg|png|webp|pdf)\Z')
+KEY = re.compile(r'(?:maintenance/[0-9a-f-]{36}/[0-9a-f-]{36}\.(?:jpg|png|webp|pdf)|subcontractors/[0-9a-f-]{36}/[0-9a-f-]{36}\.pdf)\Z')
 
 
 class PrivateAttachmentStorage(FileSystemStorage):

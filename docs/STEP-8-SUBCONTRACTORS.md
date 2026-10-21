@@ -79,7 +79,15 @@ business records. Seed reversal intentionally preserves reference rows until
 schema reversal; do not reverse the new schema after recording assignments
 without a backup. Upgrade-preservation tests restore the new migration head.
 
-## Scope and remaining Step 8 work
+## Step 8.5 update
+
+Profile fields, private commercial/finance records, compliance PDFs and expiry
+alerts, multiple teams, availability/appointment records and assignment review
+flags are now implemented by [Step 8.5](STEP-8-5-SUBCONTRACTORS.md). The historical
+scope description below records what was outside the original Step 8 slice; use
+the Step 8.5 guide for the current completion status.
+
+## Original Step 8 scope and remaining work
 
 This completes regional coverage/filtering/private allocation, not the entire
 subcontractor product. Trade qualification, contacts/onboarding, availability,

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from datetime import timedelta
 from unittest import skipUnless
 
 from django.conf import settings
@@ -71,18 +72,29 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         from .test_regions import fixtures
         from .models import JobAssignment, Subcontractor
         fixtures(self)
+        from .models import TradeCategory
+        TradeCategory.objects.get_or_create(name='Plumbing')  # LiveServer DB is flushed between test classes.
         sessions = {}
         for role, user in [('ops', self.ops), ('pm', self.pm)]:
             client = Client(); client.force_login(user)
             sessions[role] = client.cookies[settings.SESSION_COOKIE_NAME].value
         script = Path(settings.BASE_DIR).parents[1] / 'scripts' / 'test-regions-browser.cjs'
+        monday=timezone.localdate()+timedelta(days=7)
+        monday+=timedelta(days=(0-monday.weekday())%7)
         result = subprocess.run(['node', str(script)], input=json.dumps({
             'url': self.live_server_url, 'sessions': sessions,
+            'pdf':base64.b64encode(document().read()).decode(), 'expires':str(timezone.localdate()+timedelta(days=15)),
+            'appointmentDay':str(monday), 'unavailableDay':str(monday+timedelta(days=1)),
             'ids': {'wc':self.wc.pk, 'cape':self.cape.pk, 'joburg':self.joburg.pk,
                     'job':str(self.cape_job.pk), 'gpjob':str(self.job.pk), 'partner':str(self.partner.pk)}}),
             text=True, capture_output=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('PASS', result.stdout)
-        self.assertEqual(JobAssignment.objects.get().request_id, self.cape_job.pk)
+        self.assertEqual(JobAssignment.objects.count(),2)
+        self.assertEqual(JobAssignment.objects.first().request_id,self.cape_job.pk)
+        self.assertEqual(JobAssignment.objects.first().team.name,'Team A')
+        from .models import TeamAppointment, ComplianceDocument
+        self.assertEqual(TeamAppointment.objects.get().team.name,'Team A')
+        self.assertEqual(ComplianceDocument.objects.count(),1)
         partner = Subcontractor.objects.get(name='Browser dual-region partner')
         self.assertEqual(set(partner.cities.values_list('pk', flat=True)), {self.cape.pk,self.joburg.pk})

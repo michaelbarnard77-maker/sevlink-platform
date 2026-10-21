@@ -1,7 +1,16 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
-from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions
+from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers
 urlpatterns = [
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/', suppliers.profile, name='supplier_profile'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/bank/', suppliers.bank, name='supplier_bank'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/agreements/', suppliers.agreement, name='supplier_agreement'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/documents/', suppliers.document_upload, name='supplier_document_upload'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/documents/<uuid:document_id>/', suppliers.document_pdf, name='supplier_document_pdf'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/teams/', suppliers.team, name='supplier_team'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/teams/<uuid:team_id>/unavailable/', suppliers.unavailable, name='supplier_unavailable'),
+    path('api/maintenance/operations/subcontractors/<uuid:subcontractor_id>/appointments/', suppliers.appointment, name='supplier_appointment'),
+    path('api/maintenance/operations/assignment-reviews/<int:review_id>/', suppliers.review, name='supplier_assignment_review'),
     path('api/maintenance/operations/regions/', regions.dashboard, name='operations_regions'),
     path('api/maintenance/operations/subcontractors/', regions.contractor, name='operations_subcontractor'),
     path('api/maintenance/operations/properties/<uuid:property_id>/location/', regions.property_location, name='operations_property_location'),
