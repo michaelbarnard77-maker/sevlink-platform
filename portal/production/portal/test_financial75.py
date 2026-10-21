@@ -371,7 +371,7 @@ class FinancialConcurrencyTests(TransactionTestCase):
 class Financial75MigrationTests(TransactionTestCase):
     def test_preserves_paid_invoice_approved_quote_and_reserves_historical_ranges(self):
         old=[('portal','0010_jobquotation_document_jobquotation_reference_and_more')]
-        new=[('portal','0013_reserve_historical_document_numbers')]
+        new=[('portal','0015_seed_sa_regions')]
         try:
             executor=MigrationExecutor(connection);executor.migrate(old)
             apps=executor.loader.project_state(old).apps

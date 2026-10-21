@@ -66,3 +66,23 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertTrue(JobInvoice.objects.get(previous__isnull=False).reconciliation_required)
         self.assertEqual(InvoicePayment.objects.get().amount,250)
         self.assertEqual(InvoiceRefund.objects.get().amount,100)
+
+    def test_operations_multi_region_assignments(self):
+        from .test_regions import fixtures
+        from .models import JobAssignment, Subcontractor
+        fixtures(self)
+        sessions = {}
+        for role, user in [('ops', self.ops), ('pm', self.pm)]:
+            client = Client(); client.force_login(user)
+            sessions[role] = client.cookies[settings.SESSION_COOKIE_NAME].value
+        script = Path(settings.BASE_DIR).parents[1] / 'scripts' / 'test-regions-browser.cjs'
+        result = subprocess.run(['node', str(script)], input=json.dumps({
+            'url': self.live_server_url, 'sessions': sessions,
+            'ids': {'wc':self.wc.pk, 'cape':self.cape.pk, 'joburg':self.joburg.pk,
+                    'job':str(self.cape_job.pk), 'gpjob':str(self.job.pk), 'partner':str(self.partner.pk)}}),
+            text=True, capture_output=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PASS', result.stdout)
+        self.assertEqual(JobAssignment.objects.get().request_id, self.cape_job.pk)
+        partner = Subcontractor.objects.get(name='Browser dual-region partner')
+        self.assertEqual(set(partner.cities.values_list('pk', flat=True)), {self.cape.pk,self.joburg.pk})

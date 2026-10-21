@@ -33,12 +33,13 @@ def record(job, actor, kind, dedup_key, details=None, *, private=False):
     fields.update({kind: {'quote_id', 'amount', 'status', 'reason'} for kind in ('quote_edited', 'quote_sent', 'quote_revised', 'quote_superseded', 'quote_revision_requested', 'quote_amended', 'quote_amendment_active')})
     fields.update({kind: {'invoice_id','number','amount','status'} for kind in ('invoice_uploaded','invoice_payment','invoice_refund','invoice_void','invoice_corrected','invoice_reconciled','invoice_credit_note')})
     fields.update({'conversation_permission': {'tenant_comments_allowed'}, 'internal_note': {'comment_id', 'text'}, 'notification_state': {'notification_id', 'read'}})
+    fields['job_assigned'] = {'assignment_id', 'subcontractor_id'}
     if set(details or {}) != fields[kind] or any(not isinstance(value, str) for value in (details or {}).values()):
         raise ValueError('Unexpected event detail fields.')
     event, created = JobActivity.objects.get_or_create(dedup_key=dedup_key, defaults={
         'request': job, 'actor': actor, 'actor_name': name, 'actor_role': role, 'kind': kind,
         'details': details or {}, 'job_title': job.title,
-        'visibility': 'internal' if private or kind in ('conversation_permission', 'internal_note', 'quote_created', 'quote_edited', 'quote_revised', 'quote_amended', 'notification_state') else 'shared',
+        'visibility': 'internal' if private or kind in ('job_assigned', 'conversation_permission', 'internal_note', 'quote_created', 'quote_edited', 'quote_revised', 'quote_amended', 'notification_state') else 'shared',
         'property_name': job.property.name, 'property_address': job.property.address,
         'agency_name': job.property.agency.name,
     })

@@ -53,6 +53,19 @@ class Property(models.Model):
     manager = models.ForeignKey(User,null=True,blank=True,on_delete=models.PROTECT)
     access_responsibility = models.CharField(max_length=10,choices=[('sevlink','Sevlink arranges access'),('agency','Agency arranges access')],default='sevlink')
     access_notes = models.TextField(blank=True,max_length=2000)
+    # Nullable for historical addresses: never guess a structured location.
+    city = models.ForeignKey('City', null=True, blank=True, on_delete=models.PROTECT)
+    suburb = models.ForeignKey('Suburb', null=True, blank=True, on_delete=models.PROTECT)
+
+    def clean(self):
+        super().clean()
+        if self.suburb_id and (not self.city_id or self.suburb.city_id != self.city_id):
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'suburb': 'Suburb must belong to the selected city.'})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        return super().save(*args, **kwargs)
 class Tenancy(models.Model):
     id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     property = models.ForeignKey(Property,on_delete=models.PROTECT)
@@ -415,6 +428,7 @@ class QuotationAction(AppendOnlyModel):
 
 class JobActivity(AppendOnlyModel):
     class Kind(models.TextChoices):
+        ASSIGNED = 'job_assigned', 'Private subcontractor assignment recorded'
         SUBMITTED = 'job_submitted', 'Maintenance request submitted'
         STATUS = 'status_changed', 'Status changed'
         COMMENT = 'comment_added', 'Shared comment added'
@@ -533,3 +547,67 @@ class OperationsFeedbackResolution(AppendOnlyModel):
     actor = models.ForeignKey(User, on_delete=models.PROTECT)
     reason = models.TextField(max_length=1000)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Province(models.Model):
+    code = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class City(models.Model):
+    province = models.ForeignKey(Province, on_delete=models.PROTECT, related_name='cities')
+    name = models.CharField(max_length=120)
+
+    class Meta:
+        ordering = ['name', 'id']
+        constraints = [models.UniqueConstraint(Lower('name'), 'province', name='city_name_per_province')]
+
+    def __str__(self):
+        return f'{self.name}, {self.province.name}'
+
+
+class Suburb(models.Model):
+    city = models.ForeignKey(City, on_delete=models.PROTECT, related_name='suburbs')
+    name = models.CharField(max_length=120)
+
+    class Meta:
+        ordering = ['name', 'id']
+        constraints = [models.UniqueConstraint(Lower('name'), 'city', name='suburb_name_per_city')]
+
+    def __str__(self):
+        return f'{self.name}, {self.city.name}'
+
+
+class Subcontractor(models.Model):
+    """Private Operations directory; never serialized into agency/tenant job data."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=180)
+    active = models.BooleanField(default=True)
+    provinces = models.ManyToManyField(Province, blank=True, related_name='subcontractors')
+    cities = models.ManyToManyField(City, blank=True, related_name='subcontractors')
+    suburbs = models.ManyToManyField(Suburb, blank=True, related_name='subcontractors')
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+
+class JobAssignment(AppendOnlyModel):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='assignments')
+    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.PROTECT)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    submission_key = models.UUIDField(unique=True)
+    # Preserve the location reviewed at assignment time if a property moves later.
+    city = models.ForeignKey(City, on_delete=models.PROTECT)
+    suburb = models.ForeignKey(Suburb, null=True, blank=True, on_delete=models.PROTECT)
+
+    class Meta:
+        ordering = ['-created_at', '-id']

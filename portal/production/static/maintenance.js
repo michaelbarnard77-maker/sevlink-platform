@@ -32,7 +32,7 @@
   }
   const heading = (title, sub) => `<div class="heading"><div><span class="eyebrow">${context.user.role === 'superadmin' ? 'SEVLINK OPERATIONS' : 'PROPERTY MAINTENANCE'}</span><h1>${title}</h1><p style="margin:0">${sub}</p></div></div>`;
   function shell() {
-    const items = [['overview','◫','Overview'], ['requests','☷','Repair jobs'], ...(context.can_report ? [['report','＋','Report a repair']] : [])];
+    const items = [['overview','◫','Overview'], ['requests','☷','Repair jobs'], ...(context.can_report ? [['report','＋','Report a repair']] : []), ...(context.user.role === 'superadmin' ? [['regions','⌖','Service areas']] : [])];
     $('#nav').innerHTML = items.map(([key, icon, label]) => `<button data-view="${key}" class="${view === key ? 'active' : ''}">${icon} &nbsp; ${label}</button>`).join('') + '<a class="secondary" href="/">Account & properties</a>';
     $('.profile').innerHTML = `<span class="demo">SIGNED IN</span><span class="name">${esc(context.user.name)}<br><small>${esc({superadmin:'Sevlink Super Admin',admin:'Agency administrator',pm:'Property manager',tenant:'Tenant'}[context.user.role])}</small></span>${context.user.role === 'superadmin' ? '<button class="secondary" id="notifications" aria-label="Operations notifications">🔔 Notifications</button>' : ''}<button class="secondary" id="logout">Sign out</button>`;
     if ($('#notifications')) { $('#notifications').onclick = () => notificationCentre(); notificationCount(); }
@@ -43,12 +43,12 @@
         location.assign('/login/');
       } catch (error) { toast(error.message); }
     };
-    $('#breadcrumb').textContent = view === 'report' ? 'Report a repair' : view === 'requests' ? 'Repair jobs' : 'Overview';
+    $('#breadcrumb').textContent = view === 'report' ? 'Report a repair' : view === 'requests' ? 'Repair jobs' : view === 'regions' ? 'Service areas' : 'Overview';
     if (!$('#phoneBar')) {
       document.body.insertAdjacentHTML('beforeend', '<div id="phoneBar"></div><nav id="phoneNav" aria-label="Phone navigation"></nav><button id="phoneShade" aria-label="Close navigation menu"></button>');
     }
     $('#phoneBar').innerHTML = '<a class="phone-brand" href="/maintenance/">SEVLINK<span>PROPERTY MAINTENANCE</span></a><button id="phoneMenuButton" aria-label="Open navigation menu" aria-expanded="false">☰ Menu</button>';
-    $('#phoneNav').innerHTML = items.map(([key, icon, label]) => `<button data-view="${key}" class="${view === key ? 'active' : ''}"><span aria-hidden="true">${icon}</span>${key === 'overview' ? 'Home' : key === 'requests' ? 'Jobs' : 'Report'}</button>`).join('');
+    $('#phoneNav').innerHTML = items.map(([key, icon, label]) => `<button data-view="${key}" class="${view === key ? 'active' : ''}"><span aria-hidden="true">${icon}</span>${key === 'overview' ? 'Home' : key === 'requests' ? 'Jobs' : key === 'regions' ? 'Areas' : 'Report'}</button>`).join('');
     $('#phoneMenuButton').onclick = () => {
       const open = document.body.classList.toggle('phone-menu-open');
       $('#phoneMenuButton').setAttribute('aria-expanded', String(open));
@@ -83,7 +83,7 @@
   function reportLanding() {
     app.innerHTML = heading('What needs attention?', 'A few clear details help your property manager review the repair.') + '<div class="reportwrap"><div class="panel"><div class="step-label">01 / SELECT A REPAIR CATEGORY</div><div class="categorygrid">' + context.categories.map(c => `<button class="category illustrated" data-category="${esc(c)}"><span>${icons[c] || '⌂'}</span><b>${esc(c)}</b><small>Tell us what happened →</small></button>`).join('') + '</div><div class="notice">For immediate danger, use your established emergency contact. This portal does not dispatch emergency assistance.</div></div></div>';
   }
-  function render() { shell(); if (view === 'report') reportLanding(); else list(); }
+  function render() { shell(); if (view === 'report') reportLanding(); else if (view === 'regions') regionalWorkspace(); else list(); }
   function reportForm(category) {
     if (!context.properties.length) { toast('Your account needs an active property link. Contact your property manager.'); return; }
     modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(category)}</span><h1>Report a problem.</h1><form id="reportForm"><label>Your property</label><select name="property" required>${context.properties.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.address)}</option>`).join('')}</select><label>What is the problem?</label><input name="title" required maxlength="180"><label>Tell us what happened</label><textarea name="description" required rows="4" maxlength="2500" placeholder="Where is the issue, when did it start, and what can you see?"></textarea><label>Photos or documents (optional)</label><input name="attachments" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"><small>Up to 5 files, 5 MB each · JPEG, PNG, WebP or PDF.</small><div class="notice">Your report goes to your property manager for review. Attachments are shared with your property manager and Sevlink.</div><p id="formError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Send report to property manager</button></div></form>`;
@@ -228,6 +228,83 @@
       try { showDetail(await api(`requests/${button.dataset.job}/`)); } catch (error) { toast(error.message); }
     }
   });
+  let regionPage = 1, regionFilters = {}, regionData, regionRequest = 0;
+  const options = (items, value = '', label = 'name') => items.map(i => `<option value="${esc(i.id)}" ${String(i.id) === String(value) ? 'selected' : ''}>${esc(i[label])}</option>`).join('');
+  function regionSelects(prefix, values = {}) {
+    const cities = regionData.cities.filter(c => !values.province || String(c.province_id) === String(values.province));
+    const suburbs = regionData.suburbs.filter(s => values.city && String(s.city_id) === String(values.city));
+    return `<label>Province</label><select id="${prefix}Province"><option value="">All provinces</option>${options(regionData.provinces, values.province)}</select><label>City</label><select id="${prefix}City"><option value="">All cities</option>${options(cities, values.city)}</select><label>Suburb</label><select id="${prefix}Suburb"><option value="">All suburbs</option>${options(suburbs, values.suburb)}</select>`;
+  }
+  async function regionalWorkspace() {
+    const requestNumber = ++regionRequest;
+    try {
+      const data = await api('operations/regions/?' + new URLSearchParams({...regionFilters, page:regionPage}));
+      if (view !== 'regions' || requestNumber !== regionRequest) return;
+      regionData = data;
+      const label = p => [data.suburbs.find(s => s.id === p.suburb)?.name, data.cities.find(c => c.id === p.city)?.name, data.provinces.find(r => r.id === p.province)?.name].filter(Boolean).join(', ') || 'Location not mapped';
+      app.innerHTML = heading('Service areas & assignments', 'Private Sevlink Operations · Gauteng, Cape Town and all South African provinces.') +
+        `<div class="panel"><div class="filters">${regionSelects('regionFilter', regionFilters)}</div><div class="actions"><button class="secondary" id="newSubcontractor">Add subcontractor</button><button class="secondary" id="newLocation">Add city or suburb</button></div></div>` +
+        `<div class="panel" style="margin-top:26px"><h2>Private subcontractors (${data.subcontractors.count})</h2><div class="tablewrap"><table><thead><tr><th>Name</th><th>Service areas</th><th></th></tr></thead><tbody>${data.subcontractors.results.map(c => `<tr><td>${esc(c.name)}${c.active ? '' : ' (inactive)'}</td><td>${esc([...c.provinces.map(id => data.provinces.find(x => x.id === id)?.name), ...c.cities.map(id => data.cities.find(x => x.id === id)?.name), ...c.suburbs.map(id => data.suburbs.find(x => x.id === id)?.name)].join(', '))}</td><td><button class="secondary" data-contractor="${c.id}">Edit coverage</button></td></tr>`).join('') || '<tr><td colspan="3">No subcontractors in this area.</td></tr>'}</tbody></table></div></div>` +
+        `<div class="panel" style="margin-top:26px"><h2>Properties (${data.properties.count})</h2><div class="tablewrap"><table><thead><tr><th>Property / agency</th><th>Location</th><th></th></tr></thead><tbody>${data.properties.results.map(p => `<tr><td>${esc(p.name)} · ${esc(p.agency)}<small>${esc(p.address)}</small></td><td>${esc(label(p))}</td><td><button class="secondary" data-map-property="${p.id}">Map location</button></td></tr>`).join('') || '<tr><td colspan="3">No properties in this area.</td></tr>'}</tbody></table></div></div>` +
+        `<div class="panel" style="margin-top:26px"><h2>Maintenance jobs (${data.jobs.count})</h2><div class="tablewrap"><table><thead><tr><th>Job / property</th><th>Location</th><th></th></tr></thead><tbody>${data.jobs.results.map(j => `<tr><td>${esc(j.title)}<small>SV-${esc(j.id.toUpperCase())} · ${esc(j.property.name)} · ${esc(j.property.agency)}</small></td><td>${esc(label(j.property))}</td><td><button class="secondary" data-regional-job="${j.id}">Private assignment</button></td></tr>`).join('') || '<tr><td colspan="3">No jobs in this area.</td></tr>'}</tbody></table></div><div class="toolbar"><button class="secondary" id="regionsPrevious" ${regionPage === 1 ? 'disabled' : ''}>← Previous</button><span>Page ${regionPage} · Up to 50 of each record type per page</span><button class="secondary" id="regionsNext" ${Math.max(data.jobs.count, data.properties.count, data.subcontractors.count) <= regionPage*50 ? 'disabled' : ''}>Next →</button></div></div>`;
+      const filterChange = () => { regionPage = 1; regionalWorkspace(); };
+      $('#regionFilterProvince').onchange = e => { regionFilters = {province:e.target.value}; filterChange(); };
+      $('#regionFilterCity').onchange = e => { regionFilters = {province:$('#regionFilterProvince').value, city:e.target.value}; filterChange(); };
+      $('#regionFilterSuburb').onchange = e => { regionFilters.suburb = e.target.value; filterChange(); };
+      $('#regionsPrevious').onclick = () => { regionPage--; regionalWorkspace(); };
+      $('#regionsNext').onclick = () => { regionPage++; regionalWorkspace(); };
+      $('#newSubcontractor').onclick = () => contractorForm();
+      $('#newLocation').onclick = () => locationForm();
+      app.querySelectorAll('[data-contractor]').forEach(b => b.onclick = () => contractorForm(data.subcontractors.results.find(c => c.id === b.dataset.contractor)));
+      app.querySelectorAll('[data-map-property]').forEach(b => b.onclick = () => mapProperty(data.properties.results.find(p => p.id === b.dataset.mapProperty)));
+      app.querySelectorAll('[data-regional-job]').forEach(b => b.onclick = () => assignRegionalJob(b.dataset.regionalJob));
+    } catch (error) { toast(error.message); }
+  }
+  function regionModal(title, body) {
+    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">PRIVATE SEVLINK OPERATIONS</span><h1>${title}</h1>${body}`;
+    if (!modal.open) modal.showModal();
+  }
+  function contractorForm(item) {
+    const select = (name, list) => `<label>${name} (multiple selections allowed)</label><select name="${name}" multiple size="5">${list.map(i => `<option value="${i.id}" ${item?.[name].includes(i.id) ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>`;
+    regionModal('Subcontractor service areas', `<form id="regionContractor"><label>Name (Operations only)</label><input name="name" required maxlength="180" value="${esc(item?.name || '')}"><label><input name="active" type="checkbox" ${item?.active !== false ? 'checked' : ''}> Active</label><p>A province covers all its cities and suburbs; a city covers all its suburbs. Select individual suburbs for narrower coverage.</p>${select('provinces', regionData.provinces)}${select('cities', regionData.cities.map(c => ({...c, name:c.name + ', ' + regionData.provinces.find(p => p.id === c.province_id)?.name})))}${select('suburbs', regionData.suburbs.map(s => ({...s, name:s.name + ', ' + regionData.cities.find(c => c.id === s.city_id)?.name})))}<div class="actions"><button type="submit" class="primary">Save service areas</button></div></form>`);
+    $('#regionContractor').onsubmit = async e => {
+      e.preventDefault(); const form = e.target, button = form.querySelector('[type=submit]'); button.disabled = true;
+      try { const f = new FormData(form); const body = {name:f.get('name'), active:form.elements.active.checked, ...Object.fromEntries(['provinces','cities','suburbs'].map(k => [k, f.getAll(k).map(Number)]))}; if (item) body.id = item.id;
+        await api('operations/subcontractors/', {method:'POST', body:JSON.stringify(body)}); modal.close(); await regionalWorkspace(); toast('Service areas saved.');
+      } catch (error) { toast(error.message); } finally { button.disabled = false; }
+    };
+  }
+  function mapProperty(prop) {
+    const values = {province:prop.province, city:prop.city, suburb:prop.suburb};
+    const draw = () => {
+      regionModal('Map property location', `<p>${esc(prop.name)} · ${esc(prop.address)}</p><form id="regionProperty">${regionSelects('mapping', values)}<p>Choose a city. Leave the suburb empty only if unknown; suburb-only contractors will then be excluded. Existing address text is preserved.</p><button type="submit" class="primary">Save location</button></form>`);
+      $('#mappingProvince').onchange = e => { values.province = e.target.value; values.city = ''; values.suburb = ''; draw(); };
+      $('#mappingCity').onchange = e => { values.city = e.target.value; values.suburb = ''; draw(); };
+      $('#mappingSuburb').onchange = e => { values.suburb = e.target.value; };
+      $('#regionProperty').onsubmit = async e => { e.preventDefault(); const button = e.target.querySelector('[type=submit]'); button.disabled = true;
+        try { await api(`operations/properties/${prop.id}/location/`, {method:'POST', body:JSON.stringify({city:values.city, suburb:values.suburb || ''})}); modal.close(); await regionalWorkspace(); toast('Location saved.'); }
+        catch (error) { toast(error.message); } finally { button.disabled = false; }
+      };
+    }; draw();
+  }
+  function locationForm() {
+    regionModal('Add city or suburb', `<form id="regionLocation"><label>Location type</label><select name="kind"><option value="city">City</option><option value="suburb">Suburb</option></select><label>Name</label><input name="name" required maxlength="120"><label>Province (for a city)</label><select name="province">${options(regionData.provinces)}</select><label>City (for a suburb)</label><select name="city">${options(regionData.cities.map(c => ({...c,name:c.name+', '+regionData.provinces.find(p => p.id === c.province_id)?.name})))}</select><button type="submit" class="primary">Save location</button></form>`);
+    $('#regionLocation').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target), kind = f.get('kind'), parent = kind === 'city' ? 'province' : 'city'; const button = e.target.querySelector('[type=submit]'); button.disabled = true;
+      try { await api('operations/regions/', {method:'POST',body:JSON.stringify({kind, name:f.get('name'), [parent]:Number(f.get(parent))})}); modal.close(); await regionalWorkspace(); toast('Location added.'); }
+      catch (error) { toast(error.message); } finally { button.disabled = false; }
+    };
+  }
+  async function assignRegionalJob(id) {
+    try {
+      const data = await api(`operations/requests/${id}/assignments/`), key = crypto.randomUUID();
+      regionModal('Private job assignment', `<p>SV-${esc(id.toUpperCase())}</p>${data.location_required ? '<div class="notice">Map this property’s city and suburb before assigning.</div>' : `<form id="regionAssignment"><label>Active subcontractors covering this property</label><select name="subcontractor" required><option value="">Select subcontractor</option>${options(data.subcontractors)}</select><p>Location coverage is checked again when saved. Assignment records are private; they do not book a visit or change job status.</p><button type="submit" class="primary">Record assignment</button></form>`}<h2>Private assignment history (newest first)</h2>${data.history.map(a => `<p>${esc(a.name)} · ${esc(date(a.at))}</p>`).join('') || '<p>No assignments recorded.</p>'}`);
+      if ($('#regionAssignment')) $('#regionAssignment').onsubmit = async e => { e.preventDefault(); const button = e.target.querySelector('[type=submit]'); button.disabled = true;
+        try { await api(`operations/requests/${id}/assignments/`, {method:'POST',body:JSON.stringify({subcontractor:new FormData(e.target).get('subcontractor'), version:data.version, submission_key:key})}); toast('Private assignment saved.'); await assignRegionalJob(id); }
+        catch (error) { toast(error.message); } finally { button.disabled = false; }
+      };
+    } catch (error) { toast(error.message); }
+  }
+
   async function start() {
     app.innerHTML = '<div class="notice" role="status">Loading your maintenance workspace…</div>';
     try {
