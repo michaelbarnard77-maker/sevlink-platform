@@ -1,0 +1,29 @@
+# Reference only: not installed or started by this change.
+[Unit]
+Description=Sevlink committed-event Operations mail worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sevlink
+Group=sevlink
+WorkingDirectory=/opt/sevlink/portal/production
+EnvironmentFile=/etc/sevlink/worker.env
+# Keep these disabled until owner-approved service configuration and delivery test.
+Environment=SMTP_DELIVERY_ENABLED=0
+Environment=OPERATIONS_LIVE_DELIVERY_ENABLED=0
+Environment=OPERATIONS_EMAIL_DELIVERY_BACKEND=portal.mail.PrivatePreviewBackend
+Environment=OPERATIONS_PREVIEW_DIR=/var/lib/sevlink/private-email-preview
+ExecStart=/opt/sevlink/.venv/bin/python manage.py send_operations_notifications --watch --interval 5
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sevlink/private-email-preview
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

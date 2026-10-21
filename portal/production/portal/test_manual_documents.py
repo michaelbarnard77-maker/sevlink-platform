@@ -292,6 +292,9 @@ class ConcurrentManualPaymentTests(TransactionTestCase):
                     content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())).status_code
             finally:
                 connections.close_all()
+                # Thread-local healthy persistent connections must also be released.
+                for alias in connections:
+                    self.assertIsNone(connections[alias].connection)
         with ThreadPoolExecutor(max_workers=2) as executor:
             results=list(executor.map(run,range(2)))
         self.assertEqual(sorted(results),[201,409])

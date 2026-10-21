@@ -33,3 +33,13 @@ def operations_configuration(app_configs, **kwargs):
     if site.scheme not in ('http', 'https') or not site.hostname or site.username or site.password or site.query or site.fragment:
         errors.append(Error('SITE_URL must be a trusted origin without credentials, query or fragment.', id='portal.E003'))
     return errors
+
+
+@register()
+def live_email_configuration(app_configs, **kwargs):
+    if not settings.OPERATIONS_LIVE_DELIVERY_ENABLED:
+        return []
+    if settings.OPERATIONS_EMAIL_DELIVERY_BACKEND == 'django.core.mail.backends.smtp.EmailBackend':
+        if not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD or settings.EMAIL_USE_TLS == settings.EMAIL_USE_SSL:
+            return [Error('Live SMTP requires host/secret credentials and exactly one TLS mode.', id='portal.E004')]
+    return []

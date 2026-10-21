@@ -12,6 +12,9 @@ from .events import record
 from .maintenance import api_access, requests_for, payload, access
 from .models import JobInvoice, InvoicePayment, Membership
 from .quotations import digest
+from .numbering import allocate
+from .financial import net_paid, set_payment_state
+from .commercial import MAX_MONEY
 
 
 def invoice_data(invoice, user):
@@ -20,14 +23,29 @@ def invoice_data(invoice, user):
         row = {'amount': str(payment.amount), 'paid_on': payment.paid_on.isoformat(),
                'at': payment.created_at.isoformat()}
         if user.is_superuser:
-            row.update(reference=payment.reference, note=payment.note, actor=payment.actor.get_full_name() or 'Sevlink Operations')
+            refunded=sum((r.amount for r in payment.refunds.all()),0)
+            row.update(id=payment.pk, refundable=str(payment.amount-refunded), reference=payment.reference, note=payment.note, actor=payment.actor.get_full_name() or 'Sevlink Operations')
         payments.append(row)
-    result = {'id': str(invoice.pk), 'number': invoice.number, 'amount': str(invoice.amount), 'currency':'ZAR',
+    replacement=JobInvoice.objects.filter(previous=invoice).first()
+    result = {'replacement_id':str(replacement.pk) if replacement else None, 'record_number':invoice.record_number, 'previous_id':str(invoice.previous_id) if invoice.previous_id else None,
+        'document_status':invoice.document_status,'reconciliation_required':invoice.reconciliation_required,
+        'refunded_amount':str(invoice.refunded_amount),'net_paid_amount':str(net_paid(invoice)),
+        'recorded_balance':str(invoice.amount-net_paid(invoice)),
+        'id': str(invoice.pk), 'number': invoice.number, 'amount': str(invoice.amount), 'currency':'ZAR',
         'due_date': invoice.due_date.isoformat(), 'uploaded_at': invoice.created_at.isoformat(),
-        'paid_amount': str(invoice.paid_amount), 'outstanding': str(invoice.amount-invoice.paid_amount),
+        'paid_amount': str(invoice.paid_amount), 'outstanding': str(invoice.amount-net_paid(invoice) if invoice.document_status == 'active' else invoice.amount*0),
         'payment_status': invoice.payment_status, 'version': invoice.version, 'payments': payments,
         'document': document_data(invoice.document, reverse('maintenance_invoice_pdf',args=[invoice.request_id,invoice.pk]))}
+    result['collectible'] = result['outstanding'] if not invoice.reconciliation_required else '0.00'
+    result['credit_notes']=[{'id':n.pk,'reference':n.reference,'amount':str(n.amount),'issued_on':n.issued_on.isoformat(),
+        'document':document_data(n.document,reverse('maintenance_credit_pdf',args=[invoice.request_id,invoice.pk,n.pk]))} for n in invoice.credit_notes.select_related('document')]
+    result['refunds']=[dict(amount=str(r.amount),refunded_on=r.refunded_on.isoformat(),
+        **({'payment_id':r.payment_id,'reason':r.reason,'reference':r.reference,'actor':r.actor.get_full_name() or 'Sevlink Operations','at':r.created_at.isoformat()} if user.is_superuser else {})) for r in invoice.refunds.select_related('actor')]
     if user.is_superuser:
+        result.update(void_reason=invoice.void_reason,voided_on=invoice.voided_on.isoformat() if invoice.voided_on else None,
+            accounting_reference=invoice.accounting_reference,correction_reason=invoice.correction_reason,
+            voided_by=invoice.voided_by.get_full_name() if invoice.voided_by_id else None,
+            financial_history=[dict(type=a.kind,actor=a.actor.get_full_name() or 'Sevlink Operations',at=a.created_at.isoformat(),reason=a.reason,reference=a.reference) for a in invoice.actions.select_related('actor')])
         result['visibility'] = invoice.visibility
     return result
 
@@ -64,7 +82,7 @@ def create(request, job_id):
                 return JsonResponse({'error':'This invoice number already exists for this job and visibility.'},status=409)
             document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
             invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,
-                creation_key=key,fingerprint=fingerprint,**values)
+                record_number=allocate('SI'),creation_key=key,fingerprint=fingerprint,**values)
             # Reload typed Decimal/Date values before serializing, including on SQLite.
             invoice.refresh_from_db()
             audit(invoice,request.user,'invoice_uploaded',key,invoice.amount)
@@ -108,12 +126,14 @@ def pay(request,job_id,invoice_id):
             return JsonResponse(invoice_data(invoice,request.user))
         if invoice.version != data['version']:
             return JsonResponse({'error':'Invoice changed. Refresh before recording payment.'},status=409)
+        if invoice.document_status != 'active' or invoice.reconciliation_required:
+            return JsonResponse({'error':'Invoice is void or on reconciliation hold; no payments may be collected.'},status=409)
         total=invoice.paid_amount+values['amount']
-        if total > invoice.amount:
+        if total-invoice.refunded_amount > invoice.amount or total > MAX_MONEY:
             return JsonResponse({'error':'Payment exceeds the recorded outstanding amount.'},status=400)
         InvoicePayment.objects.create(invoice=invoice,actor=request.user,key=key,fingerprint=fingerprint,**values)
         invoice.paid_amount=total
-        invoice.payment_status='paid' if total == invoice.amount else 'partially_paid'
+        set_payment_state(invoice)
         invoice.version+=1
         invoice.save(update_fields=['paid_amount','payment_status','version'])
         audit(invoice,request.user,'invoice_payment',key,values['amount'])

@@ -385,6 +385,9 @@ class ConcurrentQuotationTests(TransactionTestCase):
                 # Worker threads own their connections; healthy persistent connections
                 # must also close before Django drops the isolated PostgreSQL test DB.
                 connections.close_all()
+                # Thread-local healthy persistent connections must also be released.
+                for alias in connections:
+                    self.assertIsNone(connections[alias].connection)
         with ThreadPoolExecutor(max_workers=2) as executor:
             results=list(executor.map(run,('approved','rejected')))
         self.assertEqual(sorted(results),[200,409])

@@ -1,3 +1,5 @@
+> Step 7.5 development update: refunds, invoice void/correction holds, approved quotation amendments, annual SQ/SI internal IDs and disabled email operations tooling are documented in [Step 7.5 acceptance](docs/STEP-7-5-ACCEPTANCE.md). No production deployment or live email is active.
+
 > Development update: quotations and invoices are prepared externally and uploaded as PDFs. The Django workspace supports quotation decisions/revisions and manual invoice payment records; it does not calculate line items or generate documents. See [current commercial document workflows](docs/STEP-7-QUOTATIONS-AND-OPERATIONS.md). Older source-export/demo descriptions below are historical.
 
 # Sevlink source export for Codex

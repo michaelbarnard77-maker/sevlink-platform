@@ -10,9 +10,10 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST, require_GET
 
 from .maintenance import api_access, payload, requests_for, access
-from .models import JobQuotation, QuotationPrivate, QuotationAction, Membership
+from .models import JobQuotation, QuotationPrivate, QuotationAction, QuoteApprovalReplacement, Membership
 from .collaboration import lock_job, request_key
 from .events import record
+from .numbering import allocate
 from . import attachments
 from .commercial import money, text, uploaded_pdf, file_fingerprint, document_data
 
@@ -27,7 +28,11 @@ def quote_data(quote, user=None):
                   currency='ZAR', amount=str(quote.amount),
                   document=document_data(quote.document, reverse('maintenance_quote_pdf', args=[quote.request_id, quote.pk])) if quote.document_id else None,
                   legacy_without_pdf=not bool(quote.document_id))
-    result = dict(public, id=str(quote.pk), status=quote.status, version=quote.version,
+    replaced=QuoteApprovalReplacement.objects.filter(original=quote).first()
+    result = dict(public, record_number=quote.record_number, amends_id=str(quote.amends_id) if quote.amends_id else None,
+                  amendment_reason=quote.amendment_reason, amends_record_number=quote.amends.record_number if quote.amends_id else None,
+                  has_next_revision=JobQuotation.objects.filter(previous=quote).exists(), approval_valid=quote.status == 'approved' and not replaced,
+                  superseded_by_approval=str(replaced.replacement_id) if replaced else None, id=str(quote.pk), status=quote.status, version=quote.version,
                   revision=quote.revision, series_id=str(quote.series_id), decision_reason=quote.decision_reason,
                   created_at=quote.created_at.isoformat(), sent_at=quote.sent_at.isoformat() if quote.sent_at else None,
                   decided_at=quote.decided_at.isoformat() if quote.decided_at else None,
@@ -44,10 +49,10 @@ def quote_data(quote, user=None):
 
 def action(quote, user, kind, key, fingerprint, reason=''):
     snapshot = quote.public_snapshot or {k: v for k, v in quote_data(quote).items()
-        if k in ('title', 'scope', 'reference', 'currency', 'amount', 'document')}
+        if k in ('record_number','amends_id','amendment_reason','title', 'scope', 'reference', 'currency', 'amount', 'document')}
     QuotationAction.objects.create(quote=quote, actor=user, kind=kind, key=key,
         fingerprint=fingerprint, reason=reason, snapshot=snapshot)
-    event_kind = {'created': 'quote_created', 'edited': 'quote_edited', 'sent': 'quote_sent',
+    event_kind = {'amended':'quote_amended', 'effective':'quote_amendment_active', 'created': 'quote_created', 'edited': 'quote_edited', 'sent': 'quote_sent',
                   'revised': 'quote_revised', 'superseded': 'quote_superseded',
                   'approved': 'quote_approved', 'rejected': 'quote_rejected',
                   'revision_requested': 'quote_revision_requested'}[kind]
@@ -89,7 +94,7 @@ def create(request, job_id):
             document = attachments.save_files(job, request.user, prepared, keys,
                 visibility='internal', purpose='quotation')[0]
             quote = JobQuotation.objects.create(request=job, created_by=request.user, document=document,
-                creation_key=key, creation_fingerprint=fingerprint, **values)
+                record_number=allocate('SQ'), creation_key=key, creation_fingerprint=fingerprint, **values)
             action(quote, request.user, 'created', key, fingerprint)
     except ValueError as error:
         attachments.cleanup(keys)
@@ -114,8 +119,8 @@ def mutate(request, job_id, quote_id, operation):
     try:
         key = request_key(request)
         prepared = None
-        if operation == 'revise':
-            data, prepared = uploaded_pdf(request, ('version','reference','title','scope','amount'))
+        if operation in ('revise','amend'):
+            data, prepared = uploaded_pdf(request, ('version','reference','title','scope','amount','reason'))
             if not data.get('version', '').isdigit():
                 raise ValueError('An integer quotation version is required.')
             data['version'] = int(data['version'])
@@ -126,7 +131,7 @@ def mutate(request, job_id, quote_id, operation):
             values = upload_fields(data) if operation == 'edit' else None
         if type(data.get('version')) is not int or data['version'] < 1:
             raise ValueError('An integer quotation version is required.')
-        reason = ''
+        reason = text(data.get('reason'),1000) if operation == 'amend' else ''
         if decision:
             if data.get('status') not in ('approved', 'rejected', 'revision_requested'):
                 raise ValueError('Invalid decision.')
@@ -150,6 +155,8 @@ def mutate(request, job_id, quote_id, operation):
             if decision:
                 if quote.status != 'sent' or not quote.document_id:
                     return JsonResponse({'error': 'Only a current sent quotation with an uploaded PDF can be decided.'}, status=409)
+                if quote.amends_id and QuoteApprovalReplacement.objects.filter(original_id=quote.amends_id).exists():
+                    return JsonResponse({'error':'The original approval has already been replaced. Refresh.'},status=409)
                 quote.status = data['status']
                 quote.decided_by = request.user
                 quote.decided_at = timezone.now()
@@ -165,29 +172,38 @@ def mutate(request, job_id, quote_id, operation):
                     kind = 'edited'
                 else:
                     quote.public_snapshot = {k: v for k, v in quote_data(quote).items()
-                        if k in ('title','scope','reference','currency','amount','document')}
+                        if k in ('record_number','amends_id','amendment_reason','title','scope','reference','currency','amount','document')}
                     quote.status = 'sent'
                     quote.sent_at = timezone.now()
                     kind = 'sent'
-            elif operation == 'revise':
-                if quote.status not in ('sent','rejected','revision_requested'):
+            elif operation in ('revise','amend'):
+                if operation == 'amend':
+                    if quote.status != 'approved' or QuoteApprovalReplacement.objects.filter(original=quote).exists() or JobQuotation.objects.filter(previous=quote).exists():
+                        return JsonResponse({'error':'Only the current approved quotation without an amendment can be amended. Use the existing amendment revision chain.'},status=409)
+                elif quote.status not in ('sent','rejected','revision_requested'):
                     return JsonResponse({'error': 'This revision cannot be superseded. Approved quotations are immutable.'}, status=409)
                 document = attachments.save_files(job, request.user, prepared, keys,
                     visibility='internal', purpose='quotation')[0]
-                quote.status = 'superseded'
-                quote.version += 1
-                quote.save()
-                action(quote, request.user, 'superseded', uuid.uuid4(), fingerprint)
+                if operation == 'revise':
+                    quote.status = 'superseded'
+                    quote.version += 1
+                    quote.save()
+                    action(quote, request.user, 'superseded', uuid.uuid4(), fingerprint)
                 old = quote
                 quote = JobQuotation.objects.create(request=job, created_by=request.user, document=document,
+                    record_number=allocate('SQ'), amends=old if operation == 'amend' else old.amends,
+                    amendment_reason=reason if operation == 'amend' else old.amendment_reason,
                     creation_key=uuid.uuid4(), creation_fingerprint=fingerprint, series_id=old.series_id,
                     revision=old.revision+1, previous=old, **values)
-                action(quote, request.user, 'revised', key, fingerprint)
+                action(quote, request.user, 'amended' if operation == 'amend' else 'revised', key, fingerprint, reason)
                 return JsonResponse(quote_data(quote, request.user), status=201)
             else:
                 return JsonResponse({'error': 'Unknown quotation action.'}, status=404)
             quote.version += 1
             quote.save()
+            if decision and quote.status == 'approved' and quote.amends_id:
+                QuoteApprovalReplacement.objects.create(original_id=quote.amends_id,replacement=quote,actor=request.user)
+                action(quote,request.user,'effective',uuid.uuid4(),fingerprint,'Replacement approval now effective; original PDF/decision retained.')
             action(quote, request.user, kind, key, fingerprint, reason)
     except ValueError as error:
         attachments.cleanup(keys)

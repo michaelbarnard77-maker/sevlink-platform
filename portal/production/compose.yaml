@@ -24,6 +24,8 @@ services:
       DB_NAME: sevlink
       DB_USER: sevlink
       DEBUG: '0'
+      # Bundled bridge-network database has no TLS; real production PostgreSQL must use verify-full.
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
     depends_on:
       db:
         condition: service_healthy

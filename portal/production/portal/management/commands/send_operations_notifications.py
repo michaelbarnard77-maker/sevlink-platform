@@ -3,6 +3,7 @@ import time
 from django.core.management.base import BaseCommand, CommandError
 from django.core.exceptions import ImproperlyConfigured
 from portal.notifications import deliver
+from django.db import close_old_connections
 
 
 class Command(BaseCommand):
@@ -20,6 +21,7 @@ class Command(BaseCommand):
             raise CommandError('Interval must be between 1 and 60 seconds.')
         try:
             while True:
+                close_old_connections()
                 count = deliver(options['limit'])
                 self.stdout.write(f'Processed {count} Operations delivery attempts. Inspect outbox state for pending/failed records.')
                 if not options['watch']:

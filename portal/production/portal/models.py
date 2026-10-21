@@ -138,7 +138,7 @@ class MaintenanceStatusEvent(models.Model):
 
 class MaintenanceAttachment(models.Model):
     # Commercial documents are never returned by the general job attachment API.
-    purpose = models.CharField(max_length=12, default='general', choices=[('general', 'Job attachment'), ('quotation', 'Quotation PDF'), ('invoice', 'Invoice PDF')])
+    purpose = models.CharField(max_length=12, default='general', choices=[('general', 'Job attachment'), ('quotation', 'Quotation PDF'), ('invoice', 'Invoice PDF'), ('credit_note', 'External credit note PDF')])
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='attachments')
     comment = models.ForeignKey('JobComment', null=True, blank=True, on_delete=models.PROTECT, related_name='attachments')
@@ -186,6 +186,9 @@ class JobComment(AppendOnlyModel):
 
 
 class JobQuotation(models.Model):
+    record_number = models.CharField(max_length=24, unique=True, null=True, blank=True)
+    amends = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='amendments')
+    amendment_reason = models.TextField(max_length=1000, blank=True)
     reference = models.CharField(max_length=80, blank=True)
     document = models.OneToOneField(MaintenanceAttachment, null=True, blank=True, on_delete=models.PROTECT, related_name='quotation')
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -226,7 +229,7 @@ class JobQuotation(models.Model):
         from django.core.exceptions import ValidationError
         old = type(self).objects.filter(pk=self.pk).first() if self.pk else None
         if old and old.status != 'draft':
-            fields = ['reference','document_id','title','scope','amount','tax_treatment','vat_rate','subtotal','vat_total','public_snapshot','series_id','revision','previous_id','sent_at']
+            fields = ['record_number','amends_id','amendment_reason','reference','document_id','title','scope','amount','tax_treatment','vat_rate','subtotal','vat_total','public_snapshot','series_id','revision','previous_id','sent_at']
             if any(getattr(old, name) != getattr(self, name) for name in fields):
                 raise ValidationError('Sent quotation content is immutable; create a revision.')
             if old.status == 'approved' and any(getattr(old, field.attname) != getattr(self, field.attname) for field in self._meta.fields):
@@ -235,6 +238,17 @@ class JobQuotation(models.Model):
 
 
 class JobInvoice(models.Model):
+    record_number = models.CharField(max_length=24, unique=True, null=True, blank=True)
+    previous = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT, related_name='replacement')
+    correction_reason = models.TextField(max_length=1000, blank=True)
+    refunded_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    document_status = models.CharField(max_length=10, default='active', choices=[('active','Active'),('void','Void')])
+    void_reason = models.TextField(max_length=1000, blank=True)
+    voided_on = models.DateField(null=True, blank=True)
+    voided_at = models.DateTimeField(null=True, blank=True)
+    voided_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT, related_name='+')
+    accounting_reference = models.CharField(max_length=180, blank=True)
+    reconciliation_required = models.BooleanField(default=False)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='invoices')
     document = models.OneToOneField(MaintenanceAttachment, on_delete=models.PROTECT, related_name='invoice')
@@ -247,17 +261,19 @@ class JobInvoice(models.Model):
     creation_key = models.UUIDField(unique=True)
     fingerprint = models.CharField(max_length=64)
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    payment_status = models.CharField(max_length=16, choices=[('unpaid','Unpaid'), ('partially_paid','Partially paid'), ('paid','Paid')], default='unpaid')
+    payment_status = models.CharField(max_length=16, choices=[('unpaid','Unpaid'), ('partially_paid','Partially paid'), ('paid','Paid'), ('refunded','Fully refunded')], default='unpaid')
     version = models.PositiveIntegerField(default=1)
 
     class Meta:
         ordering = ['created_at', 'id']
         constraints = [
             models.CheckConstraint(condition=models.Q(amount__gt=0), name='invoice_positive_amount'),
-            models.CheckConstraint(condition=models.Q(paid_amount__gte=0) & models.Q(paid_amount__lte=models.F('amount')), name='invoice_payment_bounds'),
-            models.CheckConstraint(condition=(models.Q(payment_status='unpaid', paid_amount=0) |
-                models.Q(payment_status='paid', paid_amount=models.F('amount')) |
-                models.Q(payment_status='partially_paid', paid_amount__gt=0, paid_amount__lt=models.F('amount'))), name='invoice_payment_state'),
+            models.CheckConstraint(condition=models.Q(paid_amount__gte=models.F('refunded_amount')) & models.Q(refunded_amount__gte=0) & models.Q(paid_amount__lte=models.F('amount')+models.F('refunded_amount')), name='invoice_payment_bounds'),
+            models.CheckConstraint(condition=(models.Q(payment_status='unpaid', paid_amount=0, refunded_amount=0) |
+                models.Q(payment_status='refunded', paid_amount__gt=0, paid_amount=models.F('refunded_amount')) |
+                models.Q(payment_status='paid', paid_amount=models.F('amount')+models.F('refunded_amount')) |
+                models.Q(payment_status='partially_paid', paid_amount__gt=models.F('refunded_amount'), paid_amount__lt=models.F('amount')+models.F('refunded_amount'))), name='invoice_payment_state'),
+            models.CheckConstraint(condition=models.Q(document_status__in=['active','void']), name='invoice_document_state'),
             models.UniqueConstraint(fields=['request', 'visibility', 'number'], name='invoice_job_number_unique'),
         ]
 
@@ -265,8 +281,11 @@ class JobInvoice(models.Model):
         from django.core.exceptions import ValidationError
         old = type(self).objects.filter(pk=self.pk).first()
         if old and any(getattr(old, field) != getattr(self, field) for field in (
-                'request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
+                'record_number','previous_id','correction_reason','request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
             raise ValidationError('Invoice PDF and recorded invoice details are immutable.')
+        if old and old.document_status == 'void' and any(getattr(old, f) != getattr(self, f) for f in (
+                'document_status','void_reason','voided_on','voided_at','voided_by_id','accounting_reference')):
+            raise ValidationError('Void records cannot be rewritten or reopened.')
         return super().save(*args, **kwargs)
 
 
@@ -284,6 +303,64 @@ class InvoicePayment(AppendOnlyModel):
     class Meta:
         ordering = ['created_at', 'id']
         constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name='manual_payment_positive')]
+
+
+class InvoiceRefund(AppendOnlyModel):
+    invoice = models.ForeignKey(JobInvoice, on_delete=models.PROTECT, related_name='refunds')
+    payment = models.ForeignKey(InvoicePayment, on_delete=models.PROTECT, related_name='refunds')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    refunded_on = models.DateField()
+    reason = models.TextField(max_length=1000)
+    reference = models.CharField(max_length=180)
+    key = models.UUIDField(unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at','id']
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name='refund_positive')]
+
+
+class InvoiceAction(AppendOnlyModel):
+    invoice = models.ForeignKey(JobInvoice, on_delete=models.PROTECT, related_name='actions')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    kind = models.CharField(max_length=24)
+    key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+    reason = models.TextField(max_length=1000, blank=True)
+    reference = models.CharField(max_length=180, blank=True)
+    snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at','id']
+
+
+class InvoiceCreditNote(AppendOnlyModel):
+    invoice = models.ForeignKey(JobInvoice, on_delete=models.PROTECT, related_name='credit_notes')
+    document = models.OneToOneField(MaintenanceAttachment, on_delete=models.PROTECT)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    reference = models.CharField(max_length=80)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    issued_on = models.DateField()
+    reason = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class QuoteApprovalReplacement(AppendOnlyModel):
+    original = models.OneToOneField(JobQuotation, on_delete=models.PROTECT, related_name='approval_replacement')
+    replacement = models.OneToOneField(JobQuotation, on_delete=models.PROTECT, related_name='replaces_approval')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class DocumentSequence(models.Model):
+    prefix = models.CharField(max_length=2, choices=[('SQ','Quotation'),('SI','Invoice')])
+    year = models.PositiveIntegerField()
+    last_value = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['prefix','year'], name='document_annual_sequence')]
 
 
 class QuotationLine(models.Model):
@@ -341,6 +418,13 @@ class JobActivity(AppendOnlyModel):
         SUBMITTED = 'job_submitted', 'Maintenance request submitted'
         STATUS = 'status_changed', 'Status changed'
         COMMENT = 'comment_added', 'Shared comment added'
+        INVOICE_REFUND = 'invoice_refund', 'Manual refund recorded'
+        INVOICE_VOID = 'invoice_void', 'Invoice voided'
+        INVOICE_CORRECTED = 'invoice_corrected', 'Replacement invoice uploaded'
+        INVOICE_RECONCILED = 'invoice_reconciled', 'Invoice reconciliation recorded'
+        CREDIT_NOTE = 'invoice_credit_note', 'External credit note uploaded'
+        QUOTE_AMENDED = 'quote_amended', 'Quotation amendment requested'
+        QUOTE_EFFECTIVE = 'quote_amendment_active', 'Approved amendment replaces prior approval'
         INVOICE_UPLOADED = 'invoice_uploaded', 'Invoice PDF uploaded'
         PAYMENT_RECORDED = 'invoice_payment', 'Manual invoice payment recorded'
         QUOTE_CREATED = 'quote_created', 'Quotation draft created'
@@ -381,6 +465,8 @@ class OperationsNotification(models.Model):
     recipient = models.EmailField()
     state = models.CharField(max_length=12, choices=[('pending', 'Pending'), ('sending', 'Sending'), ('sent', 'Sent'), ('dead', 'Failed')], default='pending')
     attempts = models.PositiveIntegerField(default=0)
+    retry_limit = models.PositiveIntegerField(default=5)
+    feedback_status = models.CharField(max_length=16, default='unknown')
     next_attempt_at = models.DateTimeField(default=timezone.now)
     lease_token = models.UUIDField(null=True, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
@@ -420,3 +506,30 @@ class OperationsInboxReceipt(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['item','user'],name='operations_inbox_receipt_unique')]
+
+
+class OperationsFeedback(AppendOnlyModel):
+    notification = models.ForeignKey(OperationsNotification, on_delete=models.PROTECT, related_name='feedback')
+    provider_event_id = models.CharField(max_length=180, unique=True)
+    kind = models.CharField(max_length=16, choices=[('delivered','Delivered'),('bounce','Bounce'),('complaint','Complaint')])
+    occurred_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class OperationsReplay(AppendOnlyModel):
+    notification = models.ForeignKey(OperationsNotification, on_delete=models.PROTECT, related_name='replays')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    reason = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class OperationsWorkerHeartbeat(models.Model):
+    name = models.CharField(max_length=40, primary_key=True)
+    at = models.DateTimeField(default=timezone.now)
+
+
+class OperationsFeedbackResolution(AppendOnlyModel):
+    feedback = models.OneToOneField(OperationsFeedback, on_delete=models.PROTECT, related_name='resolution')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    reason = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)

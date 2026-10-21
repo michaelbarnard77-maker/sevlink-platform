@@ -1,3 +1,5 @@
+> Step 7.5 extends this workflow with refunds, voids/corrections/credit-note uploads, reconciliation holds, approved quotation amendments and annual internal numbering. See [the current acceptance guide](STEP-7-5-ACCEPTANCE.md); earlier statements here listing these adjustments as unfinished are superseded by that guide. Documents remain externally prepared PDFs.
+
 # Quotations, invoices, conversations and Operations inbox
 
 Current business rule: **quotations and invoices are prepared externally and manually uploaded as PDFs**. This guide supersedes the earlier line-item/VAT/PDF-generation design. Work remains on `development/phase-1-foundations`; draft PR #1 is not merged. No deployment, payment gateway, live email or paid AWS service is activated.

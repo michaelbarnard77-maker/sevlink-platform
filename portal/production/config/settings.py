@@ -1,14 +1,15 @@
 import os
 from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
+from .secrets import secret_value
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.environ.get('DEBUG') == '1'
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
+SECRET_KEY = secret_value('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     raise ImproperlyConfigured('Set DJANGO_SECRET_KEY before starting Sevlink.')
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000').rstrip('/')
-if not DEBUG and ('REPLACE_' in SECRET_KEY or 'REPLACE_' in os.environ.get('DB_PASSWORD','')):
+if not DEBUG and ('REPLACE_' in SECRET_KEY or 'REPLACE_' in secret_value('DB_PASSWORD')):
     raise ImproperlyConfigured('Replace deployment secret placeholders before starting.')
 if not DEBUG and (not SITE_URL.startswith('https://') or not os.environ.get('DB_HOST')):
     raise ImproperlyConfigured('Production requires an HTTPS SITE_URL and PostgreSQL DB_HOST.')
@@ -20,7 +21,7 @@ TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS'
 AUTH_USER_MODEL = 'portal.User'
 AUTH_PASSWORD_VALIDATORS = [{'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},{'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':12}},{'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},{'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 if os.environ.get('DB_HOST'):
-    DATABASES = {'default':{'ENGINE':'django.db.backends.postgresql','NAME':os.environ.get('DB_NAME','sevlink'),'USER':os.environ.get('DB_USER','sevlink'),'PASSWORD':os.environ.get('DB_PASSWORD',''),'HOST':os.environ['DB_HOST'],'PORT':os.environ.get('DB_PORT','5432'),'CONN_MAX_AGE':60}}
+    DATABASES = {'default':{'ENGINE':'django.db.backends.postgresql','NAME':os.environ.get('DB_NAME','sevlink'),'USER':os.environ.get('DB_USER','sevlink'),'PASSWORD':secret_value('DB_PASSWORD'),'HOST':os.environ['DB_HOST'],'PORT':os.environ.get('DB_PORT','5432'),'CONN_MAX_AGE':60,'OPTIONS':{'sslmode':os.environ.get('DB_SSLMODE','prefer' if DEBUG else 'verify-full'),**({'sslrootcert':os.environ['DB_SSLROOTCERT']} if os.environ.get('DB_SSLROOTCERT') else {})}}}
 else:
     DATABASES = {'default':{'ENGINE':'django.db.backends.sqlite3','NAME':BASE_DIR/'development.sqlite3'}}
 EMAIL_BACKEND = 'portal.mail.QueueBackend'
@@ -28,8 +29,8 @@ SMTP_DELIVERY_ENABLED = os.environ.get('SMTP_DELIVERY_ENABLED') == '1'
 SECURE_REFERRER_POLICY = 'no-referrer'
 EMAIL_HOST = os.environ.get('EMAIL_HOST','')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT','587'))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER','')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD','')
+EMAIL_HOST_USER = secret_value('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = secret_value('EMAIL_HOST_PASSWORD')
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS','1')=='1'
 EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL','0')=='1'
 EMAIL_TIMEOUT = 15
@@ -86,4 +87,7 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 20
 OPERATIONS_NOTIFICATION_EMAIL = os.environ.get('OPERATIONS_NOTIFICATION_EMAIL', 'maintenance@sevlink.co.za')
 OPERATIONS_EMAIL_DELIVERY_BACKEND = os.environ.get('OPERATIONS_EMAIL_DELIVERY_BACKEND', 'portal.mail.PrivatePreviewBackend')
 OPERATIONS_LIVE_DELIVERY_ENABLED = os.environ.get('OPERATIONS_LIVE_DELIVERY_ENABLED') == '1'
-EMAIL_FILE_PATH = BASE_DIR / 'private-email-preview'
+EMAIL_FILE_PATH = Path(os.environ.get('OPERATIONS_PREVIEW_DIR', BASE_DIR / 'private-email-preview'))
+
+# SES SMTP tagging allows a future verified provider-feedback adapter to correlate events.
+OPERATIONS_SES_TAGGING_ENABLED = os.environ.get('OPERATIONS_SES_TAGGING_ENABLED') == '1'
