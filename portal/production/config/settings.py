@@ -24,6 +24,10 @@ if os.environ.get('DB_HOST'):
     DATABASES = {'default':{'ENGINE':'django.db.backends.postgresql','NAME':os.environ.get('DB_NAME','sevlink'),'USER':os.environ.get('DB_USER','sevlink'),'PASSWORD':secret_value('DB_PASSWORD'),'HOST':os.environ['DB_HOST'],'PORT':os.environ.get('DB_PORT','5432'),'CONN_MAX_AGE':60,'OPTIONS':{'sslmode':os.environ.get('DB_SSLMODE','prefer' if DEBUG else 'verify-full'),**({'sslrootcert':os.environ['DB_SSLROOTCERT']} if os.environ.get('DB_SSLROOTCERT') else {})}}}
 else:
     DATABASES = {'default':{'ENGINE':'django.db.backends.sqlite3','NAME':BASE_DIR/'development.sqlite3'}}
+    if os.environ.get('SEVLINK_SQLITE_TEST_DATABASE'):
+        # LiveServer must use separate connections for concurrent browser requests;
+        # Django shares a single connection between threads for in-memory SQLite.
+        DATABASES['default']['TEST'] = {'NAME': os.environ['SEVLINK_SQLITE_TEST_DATABASE']}
 EMAIL_BACKEND = 'portal.mail.QueueBackend'
 SMTP_DELIVERY_ENABLED = os.environ.get('SMTP_DELIVERY_ENABLED') == '1'
 SECURE_REFERRER_POLICY = 'no-referrer'

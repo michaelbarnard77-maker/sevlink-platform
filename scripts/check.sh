@@ -10,6 +10,11 @@ export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsa
 export SMTP_DELIVERY_ENABLED=0
 # Always use local SQLite for checks, independent of the caller's DB configuration.
 unset DB_HOST
+if [[ "${SEVLINK_BROWSER_TESTS:-0}" == 1 ]]; then
+  sevlink_browser_db_dir="$(mktemp -d /tmp/sevlink-browser-db.XXXXXX)"
+  export SEVLINK_SQLITE_TEST_DATABASE="$sevlink_browser_db_dir/tests.sqlite3"
+  trap 'rm -rf -- "$sevlink_browser_db_dir"' EXIT
+fi
 cd portal/production
 python manage.py check
 python manage.py makemigrations --check --dry-run

@@ -42,8 +42,10 @@ process.stdin.on('end', async () => {
     await page.locator('#supplierProfileForm [name=email]').fill('synthetic-browser@example.test');
     await page.locator('#supplierProfileForm [name=internal_notes]').fill('PRIVATE browser supplier note');
     await page.locator('#supplierProfileForm [name=trades]').selectOption('Plumbing');
+    const oldProfileVersion=await page.locator('#supplierProfileForm').getAttribute('data-version');
     await page.getByRole('button',{name:'Save private profile',exact:true}).click();
-    await page.waitForFunction(() => document.querySelector('#supplierProfileForm [name=contact_person]')?.value === 'Synthetic browser contact');
+    await page.waitForFunction(old => document.querySelector('#supplierProfileForm')?.dataset.version !== old,oldProfileVersion);
+    assert.equal(await page.locator('#supplierProfileForm [name=contact_person]').inputValue(),'Synthetic browser contact');
     assert.equal(await page.locator('#supplierBank').count(),0,'Bank details require an explicit finance grant');
     assert.equal((await page.request.get(url+`/api/maintenance/operations/subcontractors/${ids.partner}/bank/`)).status(),403);
     for (const name of ['Team A','Team B']) {

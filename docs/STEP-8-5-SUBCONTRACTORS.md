@@ -168,3 +168,13 @@ Automated tests cover profile/finance privacy, secure documents and expiry,
 team compatibility, availability/overlap/cancellation, review flags, preservation
 migrations, PostgreSQL concurrency and Chromium Operations controls. Final full
 suite counts and CI links are recorded on draft PR #1; nothing is merged/deployed.
+
+## Browser verification environment
+
+`SEVLINK_BROWSER_TESTS=1 bash scripts/check.sh` creates a temporary, file-backed
+SQLite test database and removes its directory on exit. The setting
+`SEVLINK_SQLITE_TEST_DATABASE` affects Django's test database only. This avoids
+LiveServer's shared in-memory connection across concurrent notification,
+dashboard and form requests. PostgreSQL CI remains unchanged. Browser tests wait
+for the saved profile version and explicitly fail on unhandled server exceptions;
+no HTTP/authentication errors are ignored or retried to make a test pass.

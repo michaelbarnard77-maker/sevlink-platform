@@ -5,6 +5,8 @@ from .test_attachments import document
 import os
 from pathlib import Path
 import subprocess
+import traceback
+from django.core.signals import got_request_exception
 import tempfile
 from datetime import timedelta
 from unittest import skipUnless
@@ -21,6 +23,11 @@ from .models import Agency, Membership, Property, Tenancy, User, MaintenanceRequ
 @override_settings(SECURE_SSL_REDIRECT=False, SESSION_COOKIE_SECURE=False, CSRF_COOKIE_SECURE=False)
 class MaintenanceBrowserTests(StaticLiveServerTestCase):
     def setUp(self):
+        self.server_errors=[]
+        def capture(sender, request, **kwargs):
+            self.server_errors.append(traceback.format_exc())
+        got_request_exception.connect(capture,weak=False)
+        self.addCleanup(got_request_exception.disconnect,capture)
         directory = tempfile.TemporaryDirectory(prefix='sevlink-browser-private-')
         self.addCleanup(directory.cleanup)
         aliases = {**settings.STORAGES, 'maintenance_private': {
@@ -54,7 +61,8 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         script = Path(settings.BASE_DIR).parents[1] / 'scripts' / 'test-maintenance-browser.cjs'
         result = subprocess.run(['node', str(script)], input=json.dumps({'url': self.live_server_url, 'sessions': sessions, 'pdf':base64.b64encode(document().read()).decode(), 'today':timezone.localdate().isoformat()}),
                                 text=True, capture_output=True, timeout=150)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + '\n'.join(self.server_errors))
+        self.assertEqual(self.server_errors, [], '\n'.join(self.server_errors))
         self.assertIn('PASS', result.stdout)
         self.assertEqual(MaintenanceRequest.objects.get().status, 'reviewed')
         self.assertEqual(MaintenanceRequest.objects.get().attachments.filter(purpose='general').count(), 2)
@@ -88,7 +96,8 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
             'ids': {'wc':self.wc.pk, 'cape':self.cape.pk, 'joburg':self.joburg.pk,
                     'job':str(self.cape_job.pk), 'gpjob':str(self.job.pk), 'partner':str(self.partner.pk)}}),
             text=True, capture_output=True, timeout=90)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + '\n'.join(self.server_errors))
+        self.assertEqual(self.server_errors, [], '\n'.join(self.server_errors))
         self.assertIn('PASS', result.stdout)
         self.assertEqual(JobAssignment.objects.count(),2)
         self.assertEqual(JobAssignment.objects.first().request_id,self.cape_job.pk)
