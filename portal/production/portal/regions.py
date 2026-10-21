@@ -201,7 +201,9 @@ def assignments(request, job_id):
         raise ValueError
     key = uuid.UUID(str(data['submission_key'])); contractor_id = uuid.UUID(str(data['subcontractor']))
     with transaction.atomic():
-        prop = Property.objects.select_for_update().select_related('city__province').get(pk=job.property_id)
+        # Lock only the property row. Its nullable location joins cannot be
+        # included in PostgreSQL's default FOR UPDATE lock targets.
+        prop = Property.objects.select_for_update().get(pk=job.property_id)
         job = MaintenanceRequest.objects.select_for_update().get(pk=job_id)
         item = get_object_or_404(Subcontractor.objects.select_for_update(), pk=contractor_id)
         prior = JobAssignment.objects.filter(submission_key=key).first()
