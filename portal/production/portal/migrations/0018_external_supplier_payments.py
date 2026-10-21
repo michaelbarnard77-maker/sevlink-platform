@@ -8,6 +8,10 @@ from django.db import migrations, models
 def guard_and_retire_permission(apps, schema_editor):
     Bank = apps.get_model('portal', 'SubcontractorBank')
     alias = schema_editor.connection.alias
+    if schema_editor.connection.vendor == 'postgresql':
+        # Keep an older application process from inserting a bank record between
+        # the inventory check and table removal in this atomic migration.
+        schema_editor.execute('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE' % schema_editor.quote_name(Bank._meta.db_table))
     count = Bank.objects.using(alias).count()
     if count:
         raise RuntimeError(f'Banking removal blocked: {count} legacy supplier bank record(s). Transfer/verify outside Sevlink and obtain deletion approval; see docs/SUPPLIER-PAYMENTS.md. No bank data was removed.')
