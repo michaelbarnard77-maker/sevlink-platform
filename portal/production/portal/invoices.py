@@ -11,7 +11,8 @@ from .commercial import money, text, day, uploaded_pdf, file_fingerprint, docume
 from .collaboration import lock_job, request_key
 from .events import record
 from .maintenance import api_access, requests_for, payload, access
-from .models import JobInvoice, InvoicePayment, Membership, Subcontractor, JobAssignment
+from .staff_access import can_pay
+from .models import MaintenanceRequest, JobInvoice, InvoicePayment, Membership, Subcontractor, JobAssignment
 from .quotations import digest
 from .numbering import allocate
 from .financial import net_paid, set_payment_state
@@ -19,11 +20,12 @@ from .commercial import MAX_MONEY
 
 
 def invoice_data(invoice, user):
+    internal=user.is_superuser or (bool(invoice.subcontractor_id) and can_pay(user))
     payments = []
     for payment in invoice.payments.all():
         row = {'amount': str(payment.amount), 'paid_on': payment.paid_on.isoformat(),
                'at': payment.created_at.isoformat()}
-        if user.is_superuser:
+        if internal:
             refunded=sum((r.amount for r in payment.refunds.all()),0)
             row.update(id=payment.pk, refundable=str(payment.amount-refunded), reference=payment.reference, note=payment.note, actor=payment.actor.get_full_name() or 'Sevlink Operations')
         payments.append(row)
@@ -41,8 +43,8 @@ def invoice_data(invoice, user):
     result['credit_notes']=[{'id':n.pk,'reference':n.reference,'amount':str(n.amount),'issued_on':n.issued_on.isoformat(),
         'document':document_data(n.document,reverse('maintenance_credit_pdf',args=[invoice.request_id,invoice.pk,n.pk]))} for n in invoice.credit_notes.select_related('document')]
     result['refunds']=[dict(amount=str(r.amount),refunded_on=r.refunded_on.isoformat(),
-        **({'payment_id':r.payment_id,'reason':r.reason,'reference':r.reference,'actor':r.actor.get_full_name() or 'Sevlink Operations','at':r.created_at.isoformat()} if user.is_superuser else {})) for r in invoice.refunds.select_related('actor')]
-    if user.is_superuser:
+        **({'payment_id':r.payment_id,'reason':r.reason,'reference':r.reference,'actor':r.actor.get_full_name() or 'Sevlink Operations','at':r.created_at.isoformat()} if internal else {})) for r in invoice.refunds.select_related('actor')]
+    if internal:
         result.update(void_reason=invoice.void_reason,voided_on=invoice.voided_on.isoformat() if invoice.voided_on else None,
             accounting_reference=invoice.accounting_reference,correction_reason=invoice.correction_reason,
             voided_by=invoice.voided_by.get_full_name() if invoice.voided_by_id else None,
@@ -109,11 +111,19 @@ def create(request, job_id):
     return JsonResponse(invoice_data(invoice,request.user),status=201)
 
 
+def payment_job(user,job_id,invoice_id,lock=False):
+    if not user.is_superuser and can_pay(user):
+        get_object_or_404(JobInvoice,pk=invoice_id,request_id=job_id,visibility='internal',subcontractor__isnull=False)
+        qs=MaintenanceRequest.objects.select_for_update() if lock else MaintenanceRequest.objects.all()
+        return get_object_or_404(qs,pk=job_id)
+    return lock_job(user,job_id) if lock else get_object_or_404(requests_for(user),pk=job_id)
+
+
 @api_access
 @require_POST
 def pay(request,job_id,invoice_id):
-    get_object_or_404(requests_for(request.user),pk=job_id)
-    if not request.user.is_superuser:
+    payment_job(request.user,job_id,invoice_id)
+    if not can_pay(request.user):
         return JsonResponse({'error':'Only Sevlink Operations can record manual payments.'},status=403)
     try:
         key=request_key(request)
@@ -128,7 +138,7 @@ def pay(request,job_id,invoice_id):
     except ValueError as error:
         return JsonResponse({'error':str(error)},status=400)
     with transaction.atomic():
-        job=lock_job(request.user,job_id)
+        job=payment_job(request.user,job_id,invoice_id,lock=True)
         invoice=get_object_or_404(JobInvoice.objects.select_for_update(),pk=invoice_id,request=job)
         if invoice.subcontractor_id and not values['reference']:
             return JsonResponse({'error':'Record the external payment reference.'},status=400)
@@ -156,11 +166,11 @@ def pay(request,job_id,invoice_id):
 @api_access
 @require_GET
 def pdf(request,job_id,invoice_id):
-    job=get_object_or_404(requests_for(request.user),pk=job_id)
+    job=payment_job(request.user,job_id,invoice_id)
     if access(request.user)[0] == Membership.TENANT:
         return JsonResponse({'error':'Invoice access is restricted.'},status=403)
     qs=JobInvoice.objects.filter(request=job).select_related('document')
     if not request.user.is_superuser:
-        qs=qs.filter(visibility='shared')
+        qs=qs.filter(visibility='internal',subcontractor__isnull=False) if can_pay(request.user) else qs.filter(visibility='shared')
     invoice=get_object_or_404(qs,pk=invoice_id)
     return attachments.file_response(invoice.document)

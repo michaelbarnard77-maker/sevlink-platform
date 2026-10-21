@@ -229,7 +229,13 @@ def assignments(request, job_id):
                 'team':str(a.team_id) if a.team_id else None, 'team_name':a.team.name if a.team_id else 'Legacy / team unallocated',
                 'reviews':[{'id':r.pk,'reason':r.reason} for r in a.reviews.filter(resolution__isnull=True)]}
                 for a in job.assignments.select_related('subcontractor','team')]})
-    data = payload(request, ('subcontractor', 'version', 'submission_key', 'team'))
+    return assign_job(request.user,job_id,payload(request, ('subcontractor','version','submission_key','team')))
+
+
+def assign_job(user,job_id,data):
+    from .staff_access import can_schedule
+    if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
+    job=get_object_or_404(MaintenanceRequest,pk=job_id)
     if set(data) - {'team'} != {'subcontractor', 'version', 'submission_key'} or type(data['version']) is not int:
         raise ValueError
     key = uuid.UUID(str(data['submission_key'])); contractor_id = uuid.UUID(str(data['subcontractor']))
@@ -244,7 +250,7 @@ def assignments(request, job_id):
         team = get_object_or_404(SubcontractorTeam.objects.select_for_update(), pk=team_id, subcontractor=item) if team_id else None
         prior = JobAssignment.objects.filter(submission_key=key).first()
         if prior:
-            if prior.request_id != job.pk or prior.subcontractor_id != item.pk or prior.actor_id != request.user.pk or prior.team_id != team_id:
+            if prior.request_id != job.pk or prior.subcontractor_id != item.pk or prior.actor_id != user.pk or prior.team_id != team_id:
                 return JsonResponse({'error': 'Submission key conflicts with an earlier assignment.'}, status=409)
             return JsonResponse({'id': prior.pk})
         if job.version != data['version'] or job.status in ('completed', 'cancelled'):
@@ -258,9 +264,9 @@ def assignments(request, job_id):
             return JsonResponse({'error':'Cancel/reschedule the existing appointment before reassigning.'},status=409)
         if current and current.subcontractor_id == item.pk and current.team_id == team_id:
             return JsonResponse({'error': 'Subcontractor is already assigned.'}, status=409)
-        assignment = JobAssignment.objects.create(request=job, subcontractor=item, actor=request.user,
+        assignment = JobAssignment.objects.create(request=job, subcontractor=item, actor=user,
             submission_key=key, city=prop.city, suburb=prop.suburb, team=team)
         job.version += 1; job.save(update_fields=['version', 'updated_at'])
-        record(job, request.user, 'job_assigned', 'assignment:' + str(key),
+        record(job, user, 'job_assigned', 'assignment:' + str(key),
                {'assignment_id': str(assignment.pk), 'subcontractor_id': str(item.pk)}, private=True)
     return JsonResponse({'id': assignment.pk}, status=201)

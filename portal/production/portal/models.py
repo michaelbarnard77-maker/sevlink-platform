@@ -34,6 +34,7 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     class Meta:
         constraints = [models.UniqueConstraint(Lower('email'),name='unique_user_email_casefold')]
+        permissions = [('operate_schedule','Operate private weekly scheduling'),('manage_supplier_payments','Review and record private supplier payments')]
 class Agency(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=180)
@@ -112,6 +113,9 @@ class MaintenanceRequest(models.Model):
         AWAITING_REVIEW = 'awaiting_review', 'Awaiting property manager review'
         REVIEWED = 'reviewed', 'Reviewed'
         IN_PROGRESS = 'in_progress', 'In progress'
+        SCHEDULED = 'scheduled', 'Scheduled'
+        ON_SITE = 'on_site', 'On Site'
+        ATTENDED = 'attended', 'Attended'
         COMPLETED = 'completed', 'Completed'
         CANCELLED = 'cancelled', 'Cancelled'
 
@@ -135,7 +139,7 @@ class MaintenanceRequest(models.Model):
         ordering = ['-created_at', '-id']
         indexes = [models.Index(fields=['property', 'status'], name='maintenance_property_status')]
         constraints = [models.CheckConstraint(condition=models.Q(status__in=[
-            'awaiting_review', 'reviewed', 'in_progress', 'completed', 'cancelled'
+            'awaiting_review', 'reviewed', 'in_progress', 'scheduled', 'on_site', 'attended', 'completed', 'cancelled'
         ]), name='maintenance_valid_status')]
 
 
@@ -431,6 +435,7 @@ class QuotationAction(AppendOnlyModel):
 
 class JobActivity(AppendOnlyModel):
     class Kind(models.TextChoices):
+        APPOINTMENT = 'appointment_changed', 'Private appointment changed'
         ASSIGNED = 'job_assigned', 'Private subcontractor assignment recorded'
         SUBMITTED = 'job_submitted', 'Maintenance request submitted'
         STATUS = 'status_changed', 'Status changed'
@@ -709,6 +714,9 @@ class TeamUnavailableDate(models.Model):
 
 
 class TeamAppointment(models.Model):
+    submission_key = models.UUIDField(null=True,blank=True,unique=True)
+    fingerprint = models.CharField(max_length=64,blank=True)
+    rescheduled_from = models.OneToOneField('self',null=True,blank=True,on_delete=models.PROTECT,related_name='rescheduled_to')
     assignment = models.ForeignKey(JobAssignment, on_delete=models.PROTECT, related_name='appointments')
     team = models.ForeignKey(SubcontractorTeam, on_delete=models.PROTECT, related_name='appointments')
     starts_at = models.DateTimeField()
@@ -739,4 +747,12 @@ class AssignmentReviewResolution(AppendOnlyModel):
     review = models.OneToOneField(AssignmentReview, on_delete=models.PROTECT, related_name='resolution')
     actor = models.ForeignKey(User, on_delete=models.PROTECT)
     reason = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AppointmentOverride(AppendOnlyModel):
+    appointment = models.OneToOneField(TeamAppointment,on_delete=models.PROTECT,related_name='overlap_override')
+    actor = models.ForeignKey(User,on_delete=models.PROTECT)
+    reason = models.CharField(max_length=1000)
+    overlapping_ids = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)

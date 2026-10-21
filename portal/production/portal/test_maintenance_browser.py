@@ -107,3 +107,30 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(ComplianceDocument.objects.count(),1)
         partner = Subcontractor.objects.get(name='Browser dual-region partner')
         self.assertEqual(set(partner.cities.values_list('pk', flat=True)), {self.cape.pk,self.joburg.pk})
+
+    def test_weekly_calendar_and_monday_payments(self):
+        from .test_scheduling import fixtures
+        from .regions import assign_job
+        from .models import TeamAppointment, AppointmentOverride
+        import uuid
+        fixtures(self)
+        assign_job(self.ops,self.job.pk,{'version':1,'subcontractor':str(self.partner.pk),'team':str(self.crew.pk),'submission_key':str(uuid.uuid4())})
+        client=Client();client.force_login(self.ops)
+        today=timezone.localdate();monday=today+timedelta(days=(0-today.weekday())%7)
+        response=client.post('/api/maintenance/requests/'+str(self.job.pk)+'/invoices/',{
+            'number':'MONDAY-BROWSER-001','amount':'500.00','due_date':str(monday),'subcontractor':str(self.partner.pk),'attachments':document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,201,response.content)
+        sessions={}
+        for role,user in [('scheduler',self.scheduler),('superadmin',self.ops),('finance',self.finance),('tenant',self.tenant)]:
+            c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
+        script=Path(settings.BASE_DIR).parents[1]/'scripts'/'test-weekly-browser.cjs'
+        result=subprocess.run(['node',str(script)],input=json.dumps({'url':self.live_server_url,'sessions':sessions,'day':str(self.monday),
+            'ids':{'supplier':str(self.partner.pk),'a':str(self.crew.pk),'b':str(self.crew_b.pk),'cape':self.cape.pk,
+                'jobs':[str(j.pk) for j in [self.job,self.cape_job,*self.more_jobs[:2]]]}}),text=True,capture_output=True,timeout=150)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr+'\n'.join(self.server_errors))
+        self.assertEqual(self.server_errors,[],'\n'.join(self.server_errors))
+        self.assertIn('PASS',result.stdout)
+        self.assertEqual(TeamAppointment.objects.count(),5)
+        self.assertEqual(AppointmentOverride.objects.count(),1)
+        self.assertEqual(InvoicePayment.objects.count(),2)
+        self.assertEqual(JobInvoice.objects.get().payment_status,'paid')

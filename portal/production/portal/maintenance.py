@@ -17,6 +17,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 from django.contrib.auth.decorators import login_required
 
+from .staff_access import can_schedule,can_pay
 from .models import Audit, Membership, Property, MaintenanceRequest, MaintenanceStatusEvent
 
 CATEGORIES = (
@@ -30,8 +31,11 @@ CATEGORIES = (
 S = MaintenanceRequest.Status
 TRANSITIONS = {
     S.AWAITING_REVIEW: (S.REVIEWED, S.CANCELLED),
-    S.REVIEWED: (S.IN_PROGRESS, S.CANCELLED),
-    S.IN_PROGRESS: (S.COMPLETED, S.CANCELLED),
+    S.REVIEWED: (S.IN_PROGRESS, S.SCHEDULED, S.ON_SITE, S.ATTENDED, S.CANCELLED),
+    S.IN_PROGRESS: (S.SCHEDULED, S.ON_SITE, S.ATTENDED, S.COMPLETED, S.CANCELLED),
+    S.SCHEDULED: (S.ON_SITE,S.ATTENDED,S.COMPLETED,S.CANCELLED),
+    S.ON_SITE: (S.ATTENDED,S.COMPLETED,S.CANCELLED),
+    S.ATTENDED: (S.COMPLETED,S.CANCELLED),
     S.COMPLETED: (), S.CANCELLED: (),
 }
 
@@ -40,6 +44,8 @@ def access(user):
     # Cross-agency access is explicit: ordinary is_staff users do not qualify.
     if user.is_active and user.is_superuser:
         return 'superadmin', None
+    from .staff_access import can_schedule,can_pay
+    if can_schedule(user) or can_pay(user): return 'operations',None
     membership = Membership.objects.filter(user=user).first()
     if user.is_active and membership and membership.role in (Membership.ADMIN, Membership.PM, Membership.TENANT):
         return membership.role, membership
@@ -123,7 +129,7 @@ def serialize(job, user):
                      if (user.is_superuser or e.visibility == 'shared') and (role != Membership.TENANT or (not e.kind.startswith(('quote_', 'invoice_')) and (job.tenant_comments_allowed or e.kind != 'comment_added')))],
         'version': job.version, 'created_at': job.created_at.isoformat(),
         'updated_at': job.updated_at.isoformat(),
-        'allowed_statuses': [{'value': s, 'label': S(s).label} for s in TRANSITIONS[job.status]] if can_update else [],
+        'allowed_statuses': [{'value': s, 'label': S(s).label} for s in TRANSITIONS[job.status] if user.is_superuser or s not in ('scheduled','on_site','attended')] if can_update else [],
         'history': [{'status': event.status, 'label': S(event.status).label, 'at': event.at.isoformat()}
                     for event in job.status_events.all()],
     }
@@ -148,6 +154,8 @@ def context(request):
     return JsonResponse({
         'user': {'name': request.user.get_full_name() or request.user.username, 'role': role},
         'can_report': role == Membership.TENANT,
+        'can_schedule': can_schedule(request.user),
+        'can_supplier_payments': can_pay(request.user),
         'properties': [property_data(p) for p in properties_for(request.user).select_related('agency', 'manager')],
         'categories': list(CATEGORIES),
     })
@@ -242,24 +250,32 @@ def detail(request, job_id):
             raise ValueError('Status and integer version are required.')
     except ValueError as error:
         return JsonResponse({'error': str(error)}, status=400)
+    return update_status(request.user,job,data)
+
+
+def update_status(user,job,data,operations=False):
+    from .staff_access import can_schedule
+    if operations and not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
+    if data.get('status') in ('scheduled','on_site','attended') and not can_schedule(user):
+        return JsonResponse({'error':'Operations progress updates only.'},status=403)
     if data['version'] != job.version:
         return JsonResponse({'error': 'This request changed. Refresh before updating.'}, status=409)
     if data['status'] not in TRANSITIONS[job.status]:
         return JsonResponse({'error': 'Invalid status transition.'}, status=400)
     with transaction.atomic():
         updated = MaintenanceRequest.objects.filter(
-            pk=job.pk, version=data['version'], property__in=properties_for(request.user)
+            pk=job.pk, version=data['version'], property__in=Property.objects.all() if operations else properties_for(user)
         ).update(
             status=data['status'], version=F('version') + 1, updated_at=timezone.now())
         if not updated:
             return JsonResponse({'error': 'This request changed. Refresh before updating.'}, status=409)
-        MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=data['status'])
+        MaintenanceStatusEvent.objects.create(request=job, actor=user, status=data['status'])
         from .events import record
         kind = {'cancelled': 'job_cancelled', 'completed': 'job_completed'}.get(data['status'], 'status_changed')
-        record(job, request.user, kind, f'status:{job.pk}:{job.version + 1}', {'status': data['status']})
-        Audit.objects.create(agency=job.property.agency, actor=request.user,
+        record(job, user, kind, f'status:{job.pk}:{job.version + 1}', {'status': data['status']})
+        Audit.objects.create(agency=job.property.agency, actor=user,
                              action='Maintenance status: ' + data['status'], object_id=str(job.pk))
-    return JsonResponse(serialize(requests_for(request.user).get(pk=job.pk), request.user))
+    return JsonResponse({'status':data['status'],'version':data['version']+1}) if operations else JsonResponse(serialize(requests_for(user).get(pk=job.pk),user))
 
 
 @login_required
@@ -275,6 +291,7 @@ def workspace(request):
     from django.templatetags.static import static
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"></head>')
     html = html.replace('</body>', '<script src="' + static('maintenance.js') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)

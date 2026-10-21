@@ -287,7 +287,12 @@ def unavailable(request, subcontractor_id, team_id):
 @operations_only
 @require_POST
 def appointment(request, subcontractor_id):
-    data=payload(request,('assignment','starts_at','ends_at','cancel','reason'))
+    return save_appointment(request.user,subcontractor_id,payload(request,('assignment','starts_at','ends_at','cancel','reason','override_reason')))
+
+
+def save_appointment(user,subcontractor_id,data):
+    from .staff_access import can_schedule
+    if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     with transaction.atomic():
         a = None
         if not data.get('cancel'):
@@ -303,10 +308,10 @@ def appointment(request, subcontractor_id):
             SubcontractorTeam.objects.select_for_update().get(pk=a.team_id)
             a=TeamAppointment.objects.select_for_update().get(pk=a.pk)
             if a.cancelled_at: return JsonResponse(appointment_data(a))
-            a.cancelled_at=timezone.now();a.cancelled_by=request.user;a.cancellation_reason=data['reason'];a.save()
-            audit(item,request.user,'Appointment cancelled',appointment=a.pk)
+            a.cancelled_at=timezone.now();a.cancelled_by=user;a.cancellation_reason=data['reason'];a.save()
+            audit(item,user,'Appointment cancelled',appointment=a.pk)
             return JsonResponse(appointment_data(a))
-        if set(data)!={'assignment','starts_at','ends_at'} or type(data['assignment'])is not int: raise ValueError
+        if set(data)-{'override_reason'}!={'assignment','starts_at','ends_at'} or type(data['assignment'])is not int: raise ValueError
         if any(not isinstance(data[k],str) for k in ('starts_at','ends_at')): raise ValueError
         start=parse_datetime(data['starts_at']);end=parse_datetime(data['ends_at'])
         if not start or not end or not timezone.is_aware(start) or not timezone.is_aware(end): raise ValueError
@@ -320,10 +325,19 @@ def appointment(request, subcontractor_id):
         if existing:
             if existing.starts_at==start and existing.ends_at==end: return JsonResponse(appointment_data(existing))
             return JsonResponse({'error':'Cancel the existing appointment before rescheduling.'},status=409)
-        if t.appointments.filter(cancelled_at__isnull=True,starts_at__lt=end,ends_at__gt=start).exists():
-            return JsonResponse({'error':'Team already has an overlapping appointment.'},status=409)
-        entry=TeamAppointment.objects.create(assignment=a,team=t,starts_at=start,ends_at=end,actor=request.user)
-        audit(item,request.user,'Appointment recorded',appointment=entry.pk,assignment=a.pk)
+        overlaps=list(t.appointments.filter(cancelled_at__isnull=True,starts_at__lt=end,ends_at__gt=start).values_list('pk',flat=True))
+        override=data.get('override_reason','')
+        if not isinstance(override,str) or len(override)>1000: raise ValueError
+        if override and not user.is_superuser:
+            return JsonResponse({'error':'Only Super Admin can authorise an overlap exception.'},status=403)
+        if overlaps and not (user.is_superuser and override.strip()):
+            return JsonResponse({'error':'Team already has an overlapping appointment. Super Admin authorisation with a reason is required.'},status=409)
+        entry=TeamAppointment.objects.create(assignment=a,team=t,starts_at=start,ends_at=end,actor=user)
+        if overlaps:
+            from .models import AppointmentOverride
+            AppointmentOverride.objects.create(appointment=entry,actor=user,reason=override.strip(),overlapping_ids=overlaps)
+            audit(item,user,'Overlap exception authorised',appointment=entry.pk)
+        audit(item,user,'Appointment recorded',appointment=entry.pk,assignment=a.pk)
     return JsonResponse(appointment_data(entry),status=201)
 
 

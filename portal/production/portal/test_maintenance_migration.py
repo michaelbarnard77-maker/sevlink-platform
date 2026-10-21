@@ -7,7 +7,7 @@ from django.test import TransactionTestCase
 class MaintenanceMigrationTests(TransactionTestCase):
     def test_upgrade_preserves_existing_agency_property_and_tenancy(self):
         old = [('portal', '0001_initial')]
-        new = [('portal', '0018_external_supplier_payments')]
+        new = [('portal', '0019_weekly_operations_calendar')]
         try:
             executor = MigrationExecutor(connection)
             executor.migrate(old)
@@ -53,7 +53,7 @@ class QuotationUpgradeTests(TransactionTestCase):
         import uuid
         from django.utils import timezone
         old = [('portal', '0006_maintenancerequest_submission_fingerprint_and_more')]
-        new = [('portal', '0018_external_supplier_payments')]
+        new = [('portal', '0019_weekly_operations_calendar')]
         try:
             executor = MigrationExecutor(connection); executor.migrate(old)
             apps = executor.loader.project_state(old).apps
