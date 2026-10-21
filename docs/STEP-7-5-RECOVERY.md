@@ -10,11 +10,17 @@ The earlier two-session teardown error was caused by request threads retaining h
 
 Recovery preserves those fixes and adds assertions in all three concurrency helpers that every thread-local Django connection is released after closure. Threads are joined and exceptions propagate through the executor results. No `--keepdb`, forced DROP DATABASE, session termination, swallowed teardown exceptions or relaxed financial assertions were introduced. Normal PostgreSQL CI database teardown remains part of successful verification.
 
+## First recovery CI failure and correction
+
+The first recovery head (`5d39a0d`) passed SQLite/Chromium, but PostgreSQL reported eight errors (the first in the local-preview worker-command test; the remainder cascaded through that test class). Normal test-database teardown completed: this was not a recurrence of the leaked-thread-session error.
+
+The recovered command's unconditional `close_old_connections()` treated the caller's active `TestCase` transaction as a connection state mismatch and closed it. The command now refreshes old connections only between standalone/autocommit batches, preserving caller-owned transactions. Three regression tests verify local command invocation inside a caller transaction, standalone cleanup between batches, and refusal of live delivery from uncommitted transactions. Real email remains disabled. No financial assertion or failing test was removed.
+
 ## Local result
 
-Fresh full run: **129 discovered; 123 passed, six PostgreSQL-only concurrency tests skipped**. Chromium was enabled. Both original Node demo suites, JavaScript syntax, Django system checks, migration consistency and upgrade-preservation tests passed. The browser covers tenant reporting/files, PM review/comments, Operations invoice/payment/refund/void/correction holds, fresh approved-quote amendment decisions and hidden supplier/financial notes.
+Fresh full run: **132 discovered; 126 passed, six PostgreSQL-only concurrency tests skipped**. Chromium was enabled. Both original Node demo suites, JavaScript syntax, Django system checks, migration consistency and upgrade-preservation tests passed. The browser covers tenant reporting/files, PM review/comments, Operations invoice/payment/refund/void/correction holds, fresh approved-quote amendment decisions and hidden supplier/financial notes.
 
-The previous run's known test-helper failure (parsing a foreign user's expected HTML 404 as JSON) was already corrected in saved source. It did not recur in recovery. No fresh local test failed. Remote PostgreSQL/CI results are recorded on draft PR #1 after the recovery commit is pushed; do not infer PostgreSQL success solely from SQLite skips.
+The previous run's known test-helper failure (parsing a foreign user's expected HTML 404 as JSON) was already corrected in saved source. It did not recur in recovery. No local test failed; the PostgreSQL-only lifecycle failure described above was then corrected. Remote PostgreSQL/CI results are recorded on draft PR #1 after the recovery commit is pushed; do not infer PostgreSQL success solely from SQLite skips.
 
 ## Scope and outstanding launch work
 

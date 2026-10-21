@@ -59,6 +59,8 @@ def deliver(limit=50):
     backend = settings.OPERATIONS_EMAIL_DELIVERY_BACKEND
     if backend not in LOCAL_BACKENDS and not settings.OPERATIONS_LIVE_DELIVERY_ENABLED:
         raise ImproperlyConfigured('Operations live delivery is disabled. Use a local testing backend.')
+    if connection.in_atomic_block and backend not in LOCAL_BACKENDS:
+        raise ImproperlyConfigured('Live Operations delivery must run outside a database transaction.')
     if backend == 'portal.mail.QueueBackend':
         raise ImproperlyConfigured('Operations delivery cannot enqueue itself into the account mail queue.')
     processed = 0

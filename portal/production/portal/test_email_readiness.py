@@ -9,7 +9,7 @@ from unittest.mock import patch
 from django.core import mail
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.management import call_command, CommandError
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from config.secrets import secret_value
 from . import test_notifications as fixtures
@@ -31,6 +31,25 @@ class EmailReadinessTests(TestCase):
 
     def event(self,kind):
         return dict(event_id=str(self.item.event_id),provider_event_id=str(__import__('uuid').uuid4()),kind=kind,occurred_at=timezone.now().isoformat())
+
+    def test_local_worker_command_preserves_caller_owned_transaction(self):
+        from django.db import connection
+        self.assertTrue(connection.in_atomic_block)
+        with patch('portal.management.commands.send_operations_notifications.close_old_connections') as cleanup:
+            call_command('send_operations_notifications', stdout=io.StringIO())
+            cleanup.assert_not_called()
+        self.assertTrue(OperationsNotification.objects.filter(pk=self.item.pk).exists())
+        self.assertEqual(OperationsNotification.objects.get(pk=self.item.pk).state, 'sent')
+        self.assertEqual(len(mail.outbox), 1)
+
+    @override_settings(OPERATIONS_EMAIL_DELIVERY_BACKEND='django.core.mail.backends.smtp.EmailBackend',
+                       OPERATIONS_LIVE_DELIVERY_ENABLED=True)
+    def test_live_delivery_never_sends_from_an_uncommitted_transaction(self):
+        with patch('portal.notifications.get_connection') as provider:
+            with self.assertRaisesMessage(ImproperlyConfigured, 'outside a database transaction'):
+                deliver()
+            provider.assert_not_called()
+        self.assertEqual(OperationsNotification.objects.get().attempts, 0)
 
     def test_mounted_secret_support_and_sanitized_failures(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -118,3 +137,15 @@ class EmailReadinessTests(TestCase):
         record=OperationsFeedback.objects.get()
         with self.assertRaises(CommandError):call_command('resolve_operations_feedback',record.pk,actor=self.ops.pk,reason='Reviewed',stdout=io.StringIO())
         call_command('resolve_operations_feedback',record.pk,actor=self.ops.pk,reason='Reviewed',confirmed_investigation=True,stdout=io.StringIO())
+
+
+@override_settings(OPERATIONS_EMAIL_DELIVERY_BACKEND=fixtures.LOCAL, OPERATIONS_LIVE_DELIVERY_ENABLED=False)
+class WorkerConnectionLifecycleTests(TransactionTestCase):
+    def test_standalone_worker_refreshes_connections_between_committed_batches(self):
+        from django.db import connection, close_old_connections
+        self.assertFalse(connection.in_atomic_block)
+        with patch('portal.management.commands.send_operations_notifications.close_old_connections',
+                   wraps=close_old_connections) as cleanup:
+            call_command('send_operations_notifications', stdout=io.StringIO())
+            cleanup.assert_called_once()
+        self.assertTrue(OperationsWorkerHeartbeat.objects.filter(name='operations').exists())
