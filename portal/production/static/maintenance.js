@@ -231,7 +231,7 @@
     if (button.dataset.view) { document.body.classList.remove('phone-menu-open'); view = button.dataset.view; render(); window.scrollTo({top:0}); }
     if (button.dataset.category && context.can_report) reportForm(button.dataset.category);
     if(button.dataset.ack){try{await api('portal-acknowledge/',{method:'POST',body:JSON.stringify({key:button.dataset.ack})});render();}catch(error){toast(error.message);}}
-    if(button.dataset.resolve){try{await api(`requests/${button.dataset.actionJob}/portal-actions/`,{method:'POST',body:JSON.stringify({resolve:Number(button.dataset.resolve)})});render();}catch(error){toast(error.message);}}
+    if(button.dataset.resolve){try{await api(`requests/${button.dataset.actionJob}/portal-actions/`,{method:'POST',body:JSON.stringify({resolve:Number(button.dataset.resolve)})});if(modal.open && selected?.id===button.dataset.actionJob)showDetail(await api(`requests/${selected.id}/`));render();}catch(error){toast(error.message);}}
     if (button.dataset.job) {
       try { showDetail(await api(`requests/${button.dataset.job}/`)); if(button.dataset.target==='appointment'){const d=await api('portal/calendar/?'+new URLSearchParams({week:button.dataset.appointmentDate?.slice(0,10) || customerWeek || new Date().toLocaleDateString('en-CA')}));const a=d.appointments.find(a=>String(a.id)===button.dataset.targetId);if(a)modal.insertAdjacentHTML('afterbegin',`<section class="notice"><h2>Appointment · ${esc(a.appointment_status)}</h2><p>${esc(date(a.starts_at))} – ${esc(date(a.ends_at))}</p></section>`);} else if(button.dataset.targetId){const item=modal.querySelector(`[data-record-id="${CSS.escape(button.dataset.targetId)}"], [data-invoice="${CSS.escape(button.dataset.targetId)}"], [data-quote="${CSS.escape(button.dataset.targetId)}"]`);item?.scrollIntoView({block:'center'});} } catch (error) { toast(error.message); }
     }
@@ -451,26 +451,27 @@
   }
   const customerRole = () => context && ['admin','pm','tenant'].includes(context.user.role);
   const money = value => 'R '+Number(value).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
-  let customerWeek='', accountFilter='all';
+  let customerWeek='', accountFilter='all', customerRequest=0;
   const jobButton = row => `<button class="secondary" data-job="${row.job}" data-target="${esc(row.target || '')}" data-target-id="${esc(row.target_id || '')}" data-appointment-date="${esc(row.appointment_date || row.starts_at || '')}">${row.target==='quotation'?'Open quotation':row.target==='invoice'?'Open invoice':row.target==='appointment'?'Open appointment':'Review job'} →</button>`;
 
   function attentionMarkup(items) {
     return `<section class="panel attention-panel" id="attention"><div class="panelhead"><h2>Needs Your Attention</h2><button class="secondary" id="attentionRefresh">Refresh</button></div><p>Saved actions for your authorised portfolio. Payments count only after Sevlink records them.</p><div class="attention-grid">${items.map(r=>`<article class="attention-card urgency-${r.priority}"><strong>${esc(r.action)}</strong><p>${esc(r.property)}</p><p>${esc(r.reference)} · ${esc(r.title)}</p><p>${esc(r.status_label)} ${r.amount?'· '+esc(money(r.amount)):''}</p>${r.deposit_received?'<p>50% deposit threshold received.</p>':''}${r.due_date?`<p>Due ${esc(r.due_date)}</p>`:''}${r.appointment_date?`<p>${esc(date(r.appointment_date))}</p>`:''}<div class="actions">${jobButton(r)}${r.acknowledge?`<button class="secondary" data-ack="${esc(r.key)}">Mark reviewed</button>`:''}${r.target==='action'?`<button class="secondary" data-resolve="${r.target_id}" data-action-job="${r.job}">Mark action completed</button>`:''}</div></article>`).join('') || '<p class="empty">You have no unresolved actions.</p>'}</div></section>`;
   }
   async function customerOverview() {
+    const request=++customerRequest;
     list();
-    try {const data=await api('portal/attention/');if(view!=='overview')return;
+    try {const data=await api('portal/attention/');if(view!=='overview' || request!==customerRequest)return;
       app.insertAdjacentHTML('afterbegin',attentionMarkup(data.items));
       $('#attentionRefresh').onclick=customerOverview;
-    } catch(error){if(view==='overview')app.insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error.message)}</p>`);}
+    } catch(error){if(view==='overview' && request===customerRequest)app.insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error.message)}</p>`);}
   }
   async function customerPage() {
-    const active=view;
+    const active=view, request=++customerRequest;
     const section=({accounts:'accounts',quotes:'quotations',publicCalendar:'calendar',properties:'properties',tenants:'tenants',profile:'profile',updates:'updates',issues:'issues',websiteIssues:'operationsIssues'})[view];
     app.innerHTML=heading('Loading…','Reading your saved Django records.');
     try {
       const data=await api(section==='operationsIssues'?'operations/website-issues/':'portal/'+section+'/?'+new URLSearchParams(section==='accounts'?{filter:accountFilter}:section==='calendar'?{week:customerWeek || new Date().toLocaleDateString('en-CA',{timeZone:'Africa/Johannesburg'})}:{}));
-      if(view!==active)return;
+      if(view!==active || request!==customerRequest)return;
       if(section==='accounts'){
         const filters=[['all','All invoices'],['unpaid','Unpaid'],['deposit','50% deposit received'],['partial','Partially paid'],['paid','Fully paid'],['overdue','Overdue'],['cancelled','Cancelled or credited']];
         app.innerHTML=heading('Accounts & Payments','Agency-facing Sevlink invoices. Payment recording is restricted to authorised Sevlink staff.')+`<section class="panel"><label>Invoice filter</label><select id="accountFilter">${filters.map(([value,label])=>`<option value="${value}" ${accountFilter===value?'selected':''}>${label}</option>`).join('')}</select><div class="stats"><div class="stat"><label>Outstanding · selected filter</label><strong>${esc(money(data.outstanding))}</strong></div><div class="stat"><label>Overdue · selected filter</label><strong>${esc(money(data.overdue))}</strong></div></div><div class="attention-grid">${data.invoices.map(r=>`<article class="attention-card"><h2>${esc(r.invoice.number)}</h2><p>${esc(r.property)} · ${esc(r.reference)}</p><p>${esc(r.title)} · ${esc(r.status_label)}</p><p>Total ${esc(money(r.invoice.amount))} · Confirmed net paid ${esc(money(r.invoice.net_paid_amount))}</p><p>Job deposit confirmed ${esc(money(r.job_deposit.received))} / ${esc(money(r.job_deposit.required))}${r.job_deposit.arrangement?' · Agreed scheduling arrangement':''}</p><p>Outstanding ${esc(money(r.invoice.outstanding))} · Due ${esc(r.invoice.due_date)} ${r.overdue?'· OVERDUE':''}</p><p>${esc(filters.find(f=>f[0]===r.finance_state)?.[1] || r.finance_state)}${r.invoice.reconciliation_required?' · Sevlink reconciliation hold':''}</p><p>${r.invoice.payments.map(p=>`${esc(p.paid_on)}: ${esc(money(p.amount))}`).join('<br>') || 'No confirmed payments recorded.'}</p><a href="${esc(r.invoice.document.download_url)}">Download invoice PDF</a>${jobButton({...r,target:'invoice',target_id:r.invoice.id})}</article>`).join('') || '<p>No invoices match this filter.</p>'}</div></section>`;
@@ -495,7 +496,7 @@
       } else if(section==='operationsIssues'){
         app.innerHTML=heading('Website Issues','Private customer website reports.')+data.issues.map(i=>`<article class="panel"><h2>${esc(i.subject)}</h2><p>${esc(i.agency)} · ${esc(i.status)} · ${esc(date(i.created_at))}</p><p>${esc(i.description)}</p></article>`).join('');
       }
-    }catch(error){if(view===active)app.innerHTML=`<p class="notice" role="alert">${esc(error.message)}</p>`;}
+    }catch(error){if(view===active && request===customerRequest)app.innerHTML=`<p class="notice" role="alert">${esc(error.message)}</p>`;}
   }
 
   async function start() {

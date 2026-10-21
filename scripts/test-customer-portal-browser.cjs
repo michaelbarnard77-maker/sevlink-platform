@@ -13,6 +13,20 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   assert(/1[^0-9]?000[.,]00/.test(await p.locator('#app').textContent()));
   const file=p.locator('#app a').filter({hasText:'Download invoice PDF'});assert.equal((await p.request.get(url+await file.getAttribute('href'))).status(),200);
   assert.equal(await p.locator('.invoicePayment').count(),0);
+  // An older invoice response must not overwrite a newer navigation/filter choice.
+  let hold=true,release,started;const held=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);
+  let heldRequest;
+  const delay=async route=>{if(hold && new URL(route.request().url()).searchParams.get('filter')==='unpaid'){hold=false;heldRequest=route.request();const response=await route.fetch();started();await held;await route.fulfill({response});}else await route.continue();};
+  await p.route('**/api/maintenance/portal/accounts/**',delay);
+  await p.locator('#accountFilter').selectOption('unpaid');await ready;
+  await p.locator('#nav [data-view=properties]').click();await p.locator('#app').getByText('Original Gauteng address',{exact:true}).waitFor();
+  await p.locator('#nav [data-view=accounts]').click();await p.locator('#accountFilter').waitFor();await p.locator('#accountFilter').selectOption('paid');
+  await p.getByText('No invoices match this filter.',{exact:true}).waitFor();
+  const finished=p.waitForEvent('requestfinished',{predicate:r=>r===heldRequest});release();await finished;
+  await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await p.locator('#accountFilter').inputValue(),'paid');assert.equal(await p.locator('#app .attention-card').count(),0);
+  await p.unroute('**/api/maintenance/portal/accounts/**',delay);
+
   await p.locator('#nav [data-view=quotes]').click();await p.locator('#app').getByRole('button',{name:'Open quotation'}).click();await p.locator('.quoteDecision [name=reason]').fill('Browser approval');await p.locator('.quoteDecision button').click();await p.locator('.card .badge').filter({hasText:'approved'}).waitFor();await p.getByRole('button',{name:'Close',exact:true}).click();
   await p.locator('#nav [data-view=publicCalendar]').click();await p.locator('#customerWeek').fill(week);await p.locator('#customerWeek').dispatchEvent('change');await p.locator('.customer-week .attention-card').waitFor();
   const calendar=await p.locator('.customer-week').textContent();assert(calendar.includes('scheduled'));for(const privateValue of ['PRIVATE','Team A','commission','subcontractor'])assert(!calendar.includes(privateValue));
