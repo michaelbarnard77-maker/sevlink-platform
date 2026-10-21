@@ -255,6 +255,8 @@ class SupplierTests(TestCase):
         self.assertEqual(booking(self.client,self.partner,allocation).status_code,201)
         self.assertEqual(booking(self.client,self.partner,other).status_code,201)
         third_job=MaintenanceRequest.objects.create(property=self.home,reported_by=self.tenant,title='Another',description='Test',category='Plumbing')
+        from .models import SchedulingArrangement
+        SchedulingArrangement.objects.create(request=third_job,actor=self.ops,reason='Synthetic agreed scheduling terms')
         self.assertEqual(assignment(self.client,third_job,self.partner,crew).status_code,201)
         third=JobAssignment.objects.get(request=third_job)
         self.assertEqual(booking(self.client,self.partner,third).status_code,409)
@@ -314,7 +316,7 @@ class SupplierConcurrencyTests(TransactionTestCase):
 
 class SupplierMigrationTests(TransactionTestCase):
     def test_preserves_historical_unallocated_assignment_and_inactive_supplier(self):
-        old=[('portal','0015_seed_sa_regions')];new=[('portal','0024_staffmfarecovery')]
+        old=[('portal','0015_seed_sa_regions')];new=[('portal','0026_jobactionrequest_job_active_action_unique')]
         try:
             MigrationExecutor(connection).migrate(old)
             apps=MigrationExecutor(connection).loader.project_state(old).apps

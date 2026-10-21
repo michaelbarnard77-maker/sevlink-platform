@@ -36,7 +36,7 @@ def checked(view):
 def appointment_data(a):
     start=a.starts_at.astimezone(TZ);end=a.ends_at.astimezone(TZ)
     override=AppointmentOverride.objects.filter(appointment=a).first()
-    return {'id':a.pk,'job':str(a.assignment.request_id),'reference':'SV-'+str(a.assignment.request_id).upper(),
+    return {'id':a.pk,'job':str(a.assignment.request_id),'reference':a.assignment.request.reference, 'customer_visible':a.customer_visible,
         'property':a.assignment.request.property.address,'status':a.assignment.request.status,
         'status_label':a.assignment.request.get_status_display(),'title':a.assignment.request.title,
         'subcontractor':str(a.team.subcontractor_id),'supplier':a.team.subcontractor.name,
@@ -72,7 +72,7 @@ def week(request):
     if len(search)>180: raise ValueError
     reference=search[3:] if search.upper().startswith('SV-') else search
     jobs=MaintenanceRequest.objects.exclude(status__in=['completed','cancelled']).filter(
-        Q(title__icontains=search)|Q(property__address__icontains=search)|Q(id__icontains=reference))
+        Q(title__icontains=search)|Q(property__address__icontains=search)|Q(id__icontains=reference)| (Q(job_number=int(reference)) if reference.isdecimal() and len(reference)<18 else Q(pk__isnull=True)))
     return JsonResponse({'week_start':str(start),'previous':str(start-timedelta(days=7)),'next':str(end),
         'days':[str(start+timedelta(days=i)) for i in range(7)],'timezone':'Africa/Johannesburg',
         'teams':[{'id':str(t.pk),'name':t.name,'subcontractor':str(t.subcontractor_id),'supplier':t.subcontractor.name,
@@ -84,7 +84,7 @@ def week(request):
         'trades':list(TradeCategory.objects.values_list('name',flat=True)),
         'suppliers':[{'id':str(s.pk),'name':s.name} for s in Subcontractor.objects.all()],
         'all_teams':[{'id':str(t.pk),'name':t.name,'subcontractor':str(t.subcontractor_id)} for t in SubcontractorTeam.objects.filter(active=True,subcontractor__active=True,subcontractor__archived=False)],
-        'jobs':[{'id':str(j.pk),'title':j.title,'property':j.property.address,'version':j.version} for j in jobs.select_related('property')[:100]],
+        'jobs':[{'id':str(j.pk),'reference':j.reference,'title':j.title,'property':j.property.address,'version':j.version} for j in jobs.select_related('property')[:100]],
         'job_count':jobs.count(),'can_override':request.user.is_superuser})
 
 
@@ -101,7 +101,7 @@ def accept(response):
 @require_POST
 @checked
 def save(request):
-    data=payload(request,('job','version','subcontractor','team','starts_at','ends_at','submission_key','appointment','reason','override_reason','cancel'))
+    data=payload(request,('job','version','subcontractor','team','starts_at','ends_at','submission_key','appointment','reason','override_reason','cancel','customer_visible'))
     if 'cancel' in data:
         if set(data)!={'cancel','reason'} or type(data['cancel'])is not int: raise ValueError
         a=get_object_or_404(appointments(),pk=data['cancel'])
@@ -113,6 +113,7 @@ def save(request):
             if result.status_code<400 and changed:
                 record(job,request.user,'appointment_changed','calendar-cancel:'+str(a.pk),{'appointment_id':str(a.pk),'action':'cancelled'},private=True)
             return result
+    if 'customer_visible' in data and type(data['customer_visible'])is not bool: raise ValueError
     required={'job','version','subcontractor','team','starts_at','ends_at','submission_key'}
     if not required<=set(data) or type(data['version'])is not int: raise ValueError
     if any(not isinstance(data[k],str) for k in required-{'version'}): raise ValueError
@@ -149,7 +150,7 @@ def save(request):
             if 'override_reason' in data: booking['override_reason']=data['override_reason']
             response=accept(save_appointment(request.user,supplier_id,booking))
             entry=TeamAppointment.objects.get(pk=response['id'])
-            entry.submission_key=key;entry.fingerprint=fingerprint;entry.rescheduled_from=old;entry.save(update_fields=['submission_key','fingerprint','rescheduled_from'])
+            entry.submission_key=key;entry.fingerprint=fingerprint;entry.rescheduled_from=old;entry.customer_visible=data.get('customer_visible',old.customer_visible if old else False);entry.save(update_fields=['submission_key','fingerprint','rescheduled_from','customer_visible'])
             record(job,request.user,'appointment_changed','calendar:'+str(key),{'appointment_id':str(entry.pk),'action':'rescheduled' if old else 'created'},private=True)
         return JsonResponse(appointment_data(appointments().get(pk=entry.pk)),status=201)
     except Rejected as failure: return failure.response
@@ -160,7 +161,8 @@ def save(request):
 @checked
 def job_detail(request,job_id):
     job=get_object_or_404(MaintenanceRequest.objects.select_related('property'),pk=job_id)
-    return JsonResponse({'id':str(job.pk),'reference':'SV-'+str(job.pk).upper(),'title':job.title,'property':job.property.address,
+    from .customer_portal import deposit_state
+    return JsonResponse({'deposit_ready':deposit_state(job)['ready'],'id':str(job.pk),'reference':job.reference,'title':job.title,'property':job.property.address,
         'status':job.status,'status_label':job.get_status_display(),'version':job.version,'description':job.description,
         'allowed_statuses':[{'value':s,'label':MaintenanceRequest.Status(s).label} for s in TRANSITIONS[job.status]],
         'history':[{'status':h.status,'at':h.at.isoformat()} for h in job.status_events.all()],
@@ -196,5 +198,5 @@ def monday(request):
         'outstanding_total':f'{total:.2f}','overdue_total':f'{overdue:.2f}',
         'suppliers':[{'id':str(s.pk),'name':s.name} for s in Subcontractor.objects.all()],
         'results':[dict(invoice_data(i,request.user),supplier_name=i.subcontractor.name,job=str(i.request_id),
-            job_number='SV-'+str(i.request_id).upper(),overdue=i.due_date<today,attention=i.reconciliation_required)
+            job_number=i.request.reference,overdue=i.due_date<today,attention=i.reconciliation_required)
             for i in qs.select_related('subcontractor').order_by('due_date','pk')[(page-1)*50:page*50]]})

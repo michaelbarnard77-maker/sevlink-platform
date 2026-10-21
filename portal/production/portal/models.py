@@ -1,4 +1,5 @@
 import uuid
+from builtins import property as model_property
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models.functions import Lower
@@ -165,6 +166,8 @@ class MaintenanceRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name='maintenance_requests')
     reported_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='maintenance_requests')
+    job_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
+    urgency = models.CharField(max_length=10, choices=[('normal','Normal'),('urgent','Urgent'),('safety','Safety concern')], default='normal')
     title = models.CharField(max_length=180)
     description = models.TextField(max_length=2500)
     category = models.CharField(max_length=80)
@@ -184,6 +187,28 @@ class MaintenanceRequest(models.Model):
         constraints = [models.CheckConstraint(condition=models.Q(status__in=[
             'awaiting_review', 'reviewed', 'in_progress', 'scheduled', 'on_site', 'attended', 'completed', 'cancelled'
         ]), name='maintenance_valid_status')]
+
+    @model_property
+    def reference(self):
+        return f'SV-{self.job_number:06d}' if self.job_number else 'SV-' + str(self.pk).upper()
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction
+        from django.core.exceptions import ValidationError
+        if not self._state.adding:
+            original = type(self).objects.filter(pk=self.pk).values_list('job_number', flat=True).first()
+            if original != self.job_number:
+                raise ValidationError('Saved job numbers cannot be changed.')
+            return super().save(*args, **kwargs)
+        with transaction.atomic():
+            if self.job_number is not None:
+                raise ValidationError('Job numbers are allocated by Sevlink.')
+            row, _ = DocumentSequence.objects.get_or_create(prefix='SV',year=0)
+            row = DocumentSequence.objects.select_for_update().get(pk=row.pk)
+            row.last_value += 1
+            row.save(update_fields=['last_value'])
+            self.job_number = row.last_value
+            return super().save(*args, **kwargs)
 
 
 class MaintenanceStatusEvent(models.Model):
@@ -418,7 +443,7 @@ class QuoteApprovalReplacement(AppendOnlyModel):
 
 
 class DocumentSequence(models.Model):
-    prefix = models.CharField(max_length=2, choices=[('SQ','Quotation'),('SI','Invoice')])
+    prefix = models.CharField(max_length=2, choices=[('SQ','Quotation'),('SI','Invoice'),('SV','Job')])
     year = models.PositiveIntegerField()
     last_value = models.PositiveIntegerField(default=0)
 
@@ -757,6 +782,7 @@ class TeamUnavailableDate(models.Model):
 
 
 class TeamAppointment(models.Model):
+    customer_visible = models.BooleanField(default=False)
     submission_key = models.UUIDField(null=True,blank=True,unique=True)
     fingerprint = models.CharField(max_length=64,blank=True)
     rescheduled_from = models.OneToOneField('self',null=True,blank=True,on_delete=models.PROTECT,related_name='rescheduled_to')
@@ -798,4 +824,42 @@ class AppointmentOverride(AppendOnlyModel):
     actor = models.ForeignKey(User,on_delete=models.PROTECT)
     reason = models.CharField(max_length=1000)
     overlapping_ids = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class PortalAcknowledgement(AppendOnlyModel):
+    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    key = models.CharField(max_length=160)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user','key'],name='portal_ack_user_key')]
+
+
+class JobActionRequest(models.Model):
+    request = models.ForeignKey(MaintenanceRequest,on_delete=models.PROTECT,related_name='action_requests')
+    created_by = models.ForeignKey(User,on_delete=models.PROTECT,related_name='+')
+    text = models.CharField(max_length=500)
+    audience = models.CharField(max_length=10,choices=[('pm','Property manager'),('tenant','Reporting tenant')])
+    due_date = models.DateField(null=True,blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True,blank=True)
+    resolved_by = models.ForeignKey(User,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['request','audience','text'],condition=models.Q(resolved_at=None),name='job_active_action_unique')]
+
+
+class SchedulingArrangement(AppendOnlyModel):
+    request = models.ForeignKey(MaintenanceRequest,on_delete=models.PROTECT,related_name='scheduling_arrangements')
+    actor = models.ForeignKey(User,on_delete=models.PROTECT)
+    reason = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WebsiteIssue(models.Model):
+    id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    reporter = models.ForeignKey(User,on_delete=models.PROTECT)
+    agency = models.ForeignKey(Agency,on_delete=models.PROTECT,null=True)
+    subject = models.CharField(max_length=180)
+    description = models.TextField(max_length=2500)
+    status = models.CharField(max_length=12,choices=[('open','Open'),('reviewed','Reviewed'),('closed','Closed')],default='open')
     created_at = models.DateTimeField(auto_now_add=True)

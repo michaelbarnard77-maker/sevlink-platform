@@ -301,6 +301,9 @@ def save_appointment(user,subcontractor_id,data):
             prop=Property.objects.select_for_update().get(pk=a.request.property_id)
             job=MaintenanceRequest.objects.select_for_update().get(pk=a.request_id)
             job.property=prop; a.request=job
+            from .customer_portal import deposit_state
+            if not deposit_state(job)['ready']:
+                return JsonResponse({'error':'A confirmed 50% customer deposit or an authorised Sevlink scheduling arrangement is required.'},status=409)
         item=get_object_or_404(Subcontractor.objects.select_for_update(),pk=subcontractor_id)
         if data.get('cancel'):
             if set(data)!={'cancel','reason'} or type(data['cancel'])is not int or not isinstance(data['reason'],str) or not data['reason'].strip() or len(data['reason'])>500: raise ValueError

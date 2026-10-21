@@ -83,12 +83,12 @@ def notification_message(event):
         summary = 'Job status: ' + details.get('status', event.kind)
     link = settings.SITE_URL + reverse('maintenance_workspace') + '?' + urlencode({'job': str(event.request_id)})
     body = '\n'.join([
-        f'Job: SV-{str(event.request_id).upper()}', f'Property: {one_line(event.property_name)}',
+        f'Job: {event.request.reference}', f'Property: {one_line(event.property_name)}',
         f'Address: {one_line(event.property_address)}', f'Agency: {one_line(event.agency_name)}',
         f'Event: {event.get_kind_display()}', f'Details: {summary}',
         f'Actor role: {event.actor_role}', f'Timestamp: {timezone.localtime(event.created_at).isoformat()}',
         '', 'Sign in with your authorized Sevlink account:', link,
         '', 'This link does not grant access or contain a login token.',
     ])
-    subject = f'Sevlink SV-{str(event.request_id).upper()} — {event.get_kind_display()}'
+    subject = f'Sevlink {event.request.reference} — {event.get_kind_display()}'
     return subject, body

@@ -1,3 +1,5 @@
+> PM/tenant workspace update: [dashboard, accounts and customer calendar](docs/PM-DASHBOARD-AND-CUSTOMER-CALENDAR.md) now use scoped Django data. [Safe Windows update instructions](docs/WINDOWS-PM-DASHBOARD-UPDATE.md) preserve existing local records and private files. Numeric SV job references retain legacy UUID links; customer appointments require explicit sharing.
+
 > Controlled-launch preparation: see [current readiness and acceptance gates](docs/CONTROLLED-LAUNCH-READINESS.md). Account lifecycle controls, privileged MFA, fail-closed scanner integration, account-email queue readiness and fresh-account browser coverage extend the existing platform. CK Properties (80–100 properties) is the proposed pilot; launch, live email and deployment remain unapproved.
 
 > Step 7.5 development update: refunds, invoice void/correction holds, approved quotation amendments, annual SQ/SI internal IDs and disabled email operations tooling are documented in [Step 7.5 acceptance](docs/STEP-7-5-ACCEPTANCE.md). No production deployment or live email is active.

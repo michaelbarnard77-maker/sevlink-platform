@@ -19,7 +19,7 @@ process.stdin.on('end', async () => {
       page.on('pageerror', error => errors.push(error.message));
       page.on('response', response => {if (response.url().includes('/static/') && response.status() >= 400) failedAssets.push(response.url());});
       await page.goto(url + '/maintenance/');
-      await page.getByRole('button', {name:'Repair jobs', exact:false}).waitFor();
+      await page.locator(width<800?'#phoneNav':'#nav').getByRole('button', {name:role.startsWith('tenant')?'My Repairs':/Repair jobs/i, exact:false}).waitFor();
       assert.equal(await page.locator('#role').count(), 0, 'No simulated role picker');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No page overflow');
       return {context, page};

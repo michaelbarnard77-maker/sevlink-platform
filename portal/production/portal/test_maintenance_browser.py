@@ -150,3 +150,29 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertIn('PASS',result.stdout)
         self.assertEqual(User.objects.filter(is_active=True).count(),2)
         self.assertFalse(Tenancy.objects.get().active)
+
+    def test_property_manager_dashboard_accounts_and_customer_calendar(self):
+        from .test_scheduling import fixtures,data,save
+        from .models import SchedulingArrangement
+        from django.urls import reverse
+        import uuid
+        fixtures(self)
+        client=Client();client.force_login(self.ops)
+        self.monday=timezone.localdate()+timedelta(days=7)
+        self.monday-=timedelta(days=self.monday.weekday())
+        self.assertEqual(save(client,data(self.job,self.partner,self.crew,day=self.monday,customer_visible=True)).status_code,201)
+        invoice=client.post(reverse('maintenance_invoice',args=[self.job.pk]),{
+            'number':'CUSTOMER-PDF-001','amount':'1000','due_date':str(timezone.localdate()-timedelta(days=1)),
+            'visibility':'shared','attachments':document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(invoice.status_code,201,invoice.content)
+        quote=client.post(reverse('maintenance_quote',args=[self.job.pk]),{'reference':'Q-PM-001','amount':'1000','attachments':document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())).json()
+        response=client.post(reverse('maintenance_quote_action',args=[self.job.pk,quote['id'],'send']),json.dumps({'version':quote['version']}),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,200,response.content)
+        sessions={}
+        for role,user in [('pm',self.pm),('tenant',self.tenant)]:
+            c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
+        script=Path(settings.BASE_DIR).parents[1]/'scripts'/'test-customer-portal-browser.cjs'
+        result=subprocess.run(['node',str(script)],input=json.dumps({'url':self.live_server_url,'sessions':sessions,'week':str(self.monday)}),text=True,capture_output=True,timeout=150)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr+'\n'.join(self.server_errors))
+        self.assertEqual(self.server_errors,[])
+        self.assertIn('PASS',result.stdout)

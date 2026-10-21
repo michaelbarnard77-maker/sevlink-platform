@@ -27,6 +27,8 @@ def fixtures(cls):
     cls.finance=User.objects.create_user(username='finance',email='finance@example.test',is_staff=True)
     cls.finance.user_permissions.add(Permission.objects.get(codename='manage_supplier_payments'))
     cls.more_jobs=[MaintenanceRequest.objects.create(property=cls.home,reported_by=cls.tenant,title=f'Schedule job {i}',description='Synthetic scheduling test',category='Plumbing') for i in range(3)]
+    from .models import SchedulingArrangement
+    for job in cls.more_jobs:SchedulingArrangement.objects.create(request=job,actor=cls.ops,reason='Synthetic agreed scheduling terms')
     cls.monday=timezone.localdate()-timedelta(days=timezone.localdate().weekday())
 
 

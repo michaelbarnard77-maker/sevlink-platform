@@ -1,7 +1,12 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
-from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers, scheduling, lifecycle, mfa
+from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers, scheduling, lifecycle, mfa, customer_portal
 urlpatterns = [
+    path('api/maintenance/portal/<str:section>/',customer_portal.section,name='customer_portal_section'),
+    path('api/maintenance/portal-acknowledge/',customer_portal.acknowledge,name='customer_portal_acknowledge'),
+    path('api/maintenance/portal-issues/',customer_portal.report_issue,name='customer_portal_issue'),
+    path('api/maintenance/operations/website-issues/',customer_portal.operations_issues,name='operations_website_issues'),
+    path('api/maintenance/requests/<uuid:job_id>/portal-actions/',customer_portal.action,name='customer_portal_action'),
     path('security/mfa/', mfa.verify, name='mfa_verify'),
     path('accounts/<uuid:agency_id>/', lifecycle.accounts, name='agency_accounts'),
     path('accounts/<uuid:agency_id>/<str:kind>/<str:object_id>/', lifecycle.change, name='agency_account_change'),

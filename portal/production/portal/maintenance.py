@@ -116,7 +116,7 @@ def serialize(job, user):
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
     return {
-        'id': str(job.pk), 'reference': 'SV-' + str(job.pk).upper(),
+        'id': str(job.pk), 'reference': job.reference, 'legacy_reference': 'SV-' + str(job.pk).upper(), 'urgency': job.urgency,
         'property': property_data(job.property), 'title': job.title,
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),
@@ -140,6 +140,10 @@ class ReportForm(forms.Form):
     title = forms.CharField(max_length=180)
     description = forms.CharField(max_length=2500)
     category = forms.ChoiceField(choices=[(c, c) for c in CATEGORIES])
+    urgency = forms.ChoiceField(choices=[('normal','Normal'),('urgent','Urgent'),('safety','Safety concern')],required=False)
+
+    def clean_urgency(self):
+        return self.cleaned_data.get('urgency') or 'normal'
 
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
@@ -189,9 +193,9 @@ def collection(request):
             except ValueError:
                 raise ValueError('Idempotency-Key must be a UUID.')
         if request.content_type == 'multipart/form-data':
-            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category'))
+            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency'))
         else:
-            data = payload(request, ('property', 'title', 'description', 'category'))
+            data = payload(request, ('property', 'title', 'description', 'category', 'urgency'))
             uploads = []
         if any(not isinstance(value, str) for value in data.values()):
             raise ValueError('Report fields must be text.')
@@ -200,7 +204,7 @@ def collection(request):
             return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
         prepared = attachments.prepare(uploads)
         fingerprint = hashlib.sha256(json.dumps({
-            'fields': {key: str(value.pk) if key == 'property' else value for key, value in form.cleaned_data.items()},
+            'fields': {key: str(value.pk) if key == 'property' else value for key, value in form.cleaned_data.items() if key != 'urgency' or value != 'normal'},
             'attachments': [(item['filename'], hashlib.sha256(item['data']).hexdigest()) for item in prepared],
         }, sort_keys=True).encode()).hexdigest()
         with transaction.atomic():
@@ -263,6 +267,11 @@ def update_status(user,job,data,operations=False):
     if data['status'] not in TRANSITIONS[job.status]:
         return JsonResponse({'error': 'Invalid status transition.'}, status=400)
     with transaction.atomic():
+        if data['status'] == 'scheduled':
+            locked = MaintenanceRequest.objects.select_for_update().get(pk=job.pk)
+            from .customer_portal import deposit_state
+            if not deposit_state(locked)['ready']:
+                return JsonResponse({'error':'Confirm the 50% customer deposit or an authorised scheduling arrangement before marking work scheduled.'},status=409)
         updated = MaintenanceRequest.objects.filter(
             pk=job.pk, version=data['version'], property__in=Property.objects.all() if operations else properties_for(user)
         ).update(

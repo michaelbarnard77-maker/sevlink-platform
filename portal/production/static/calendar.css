@@ -21,3 +21,19 @@
  .week-scroll {width:100%}
  .calendar-tools select,.calendar-tools input {max-width:100%}
 }
+/* Customer workspace additions reuse the existing navy/turquoise theme. */
+#nav button {display:flex;align-items:center;gap:12px;text-align:left;min-height:44px}
+.nav-icon {display:inline-flex;align-items:center;justify-content:center;width:24px;flex:0 0 24px;color:var(--turquoise,#21b8b5);font-size:19px}
+.attention-panel {border-top:4px solid #21b8b5;margin-bottom:26px}
+.attention-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin-top:16px}
+.attention-card {padding:18px;border:1px solid #dae4e8;border-radius:12px;background:#fff;overflow-wrap:anywhere}
+.attention-card.urgency-0 {border-left:4px solid #b23939}.attention-card.urgency-1 {border-left:4px solid #c88a27}
+.customer-week {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
+#phoneNav {overflow-y:auto;max-height:calc(100dvh - 70px)}
+@media(max-width:800px){.attention-grid,.customer-week{grid-template-columns:1fr}.attention-card .actions{display:flex;flex-wrap:wrap;gap:8px}#phoneNav button{min-height:44px;text-align:left}}
+@media(max-width:800px){
+ #phoneNav.customer-nav{overflow-x:auto;overflow-y:hidden;justify-content:flex-start}
+ #phoneNav.customer-nav button{flex:0 0 112px;white-space:normal;line-height:1.3}
+ #phoneNav button.active{background:#def5f2;color:#082f57}
+}
+#nav button.active{background:#def5f2;color:#082f57;border-left:3px solid #21b8b5}

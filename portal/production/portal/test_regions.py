@@ -38,6 +38,8 @@ def fixtures(cls):
     Tenancy.objects.create(property=cls.home, user=cls.tenant, name='Test tenant', email=cls.tenant.email, phone='test')
     cls.job = MaintenanceRequest.objects.create(property=cls.home, reported_by=cls.tenant, title='GP repair', description='test', category='Plumbing')
     cls.cape_job = MaintenanceRequest.objects.create(property=cls.coastal, reported_by=cls.tenant, title='Cape repair', description='test', category='Plumbing')
+    from .models import SchedulingArrangement
+    for job in (cls.job,cls.cape_job):SchedulingArrangement.objects.create(request=job,actor=cls.ops,reason='Synthetic reviewed scheduling terms')
     cls.partner = Subcontractor.objects.create(name='PRIVATE multi-region partner', created_by=cls.ops)
     cls.partner.cities.add(cls.joburg, cls.cape)
     cls.local = Subcontractor.objects.create(name='PRIVATE Sea Point only', created_by=cls.ops)
@@ -225,7 +227,7 @@ class RegionalConcurrencyTests(TransactionTestCase):
 class RegionalMigrationTests(TransactionTestCase):
     def test_preserves_gauteng_records_without_guessing_coordinates(self):
         old = [('portal', '0013_reserve_historical_document_numbers')]
-        new = [('portal', '0024_staffmfarecovery')]
+        new = [('portal', '0026_jobactionrequest_job_active_action_unique')]
         try:
             MigrationExecutor(connection).migrate(old)
             apps = MigrationExecutor(connection).loader.project_state(old).apps
