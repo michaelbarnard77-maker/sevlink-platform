@@ -100,6 +100,10 @@ class AttachmentTests(TestCase):
 
     def test_authorized_tenant_pm_admin_and_superadmin_can_download(self):
         attachment = self.uploaded()
+        # Consume streaming_content through Django's test-client wrapper. Calling
+        # response.close() again emits request_finished twice and can close the
+        # PostgreSQL connection owned by TestCase's still-active transaction.
+        # Repeated logins below also verify the connection survives each download.
         for user in [self.tenant, self.pm, self.admin, self.superadmin]:
             self.client.force_login(user)
             response = self.client.get(attachment['download_url'])
