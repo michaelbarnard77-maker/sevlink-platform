@@ -43,3 +43,22 @@ def live_email_configuration(app_configs, **kwargs):
         if not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD or settings.EMAIL_USE_TLS == settings.EMAIL_USE_SSL:
             return [Error('Live SMTP requires host/secret credentials and exactly one TLS mode.', id='portal.E004')]
     return []
+
+
+@register(deploy=True)
+def launch_security_configuration(app_configs, **kwargs):
+    if settings.DEBUG:
+        return []
+    errors = []
+    for enabled, message, identifier in [
+        (settings.PRIVILEGED_MFA_REQUIRED, 'Production requires privileged MFA.', 'portal.E010'),
+        (settings.PORTAL_API_THROTTLING, 'Production requires API throttling.', 'portal.E011'),
+        (settings.UPLOAD_SCAN_REQUIRED, 'Production requires private upload scanning.', 'portal.E012'),
+    ]:
+        if not enabled:
+            errors.append(Error(message, id=identifier))
+    if settings.UPLOAD_SCAN_REQUIRED and not Path(settings.UPLOAD_CLAMAV_SOCKET).is_absolute():
+        errors.append(Error('Configure a private absolute ClamAV socket path.', id='portal.E013'))
+    if settings.AGENCY_REGISTRATION_ENABLED and not settings.AGENCY_REGISTRATION_ALLOWED_EMAILS:
+        errors.append(Error('Controlled launch registration requires an explicit approved-email list.', id='portal.E014'))
+    return errors

@@ -13,8 +13,8 @@ if not DEBUG and ('REPLACE_' in SECRET_KEY or 'REPLACE_' in secret_value('DB_PAS
     raise ImproperlyConfigured('Replace deployment secret placeholders before starting.')
 if not DEBUG and (not SITE_URL.startswith('https://') or not os.environ.get('DB_HOST')):
     raise ImproperlyConfigured('Production requires an HTTPS SITE_URL and PostgreSQL DB_HOST.')
-INSTALLED_APPS = ['django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','portal']
-MIDDLEWARE = ['django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware']
+INSTALLED_APPS = ['django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','django_otp','django_otp.plugins.otp_totp','portal']
+MIDDLEWARE = ['django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django_otp.middleware.OTPMiddleware','portal.readiness_security.PrivilegedMFAMiddleware','portal.readiness_security.PortalThrottleMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
 TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[BASE_DIR/'templates'],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
@@ -30,7 +30,7 @@ else:
         DATABASES['default']['TEST'] = {'NAME': os.environ['SEVLINK_SQLITE_TEST_DATABASE']}
 EMAIL_BACKEND = 'portal.mail.QueueBackend'
 SMTP_DELIVERY_ENABLED = os.environ.get('SMTP_DELIVERY_ENABLED') == '1'
-SECURE_REFERRER_POLICY = 'no-referrer'
+SECURE_REFERRER_POLICY = 'same-origin'
 EMAIL_HOST = os.environ.get('EMAIL_HOST','')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT','587'))
 EMAIL_HOST_USER = secret_value('EMAIL_HOST_USER')
@@ -95,3 +95,18 @@ EMAIL_FILE_PATH = Path(os.environ.get('OPERATIONS_PREVIEW_DIR', BASE_DIR / 'priv
 
 # SES SMTP tagging allows a future verified provider-feedback adapter to correlate events.
 OPERATIONS_SES_TAGGING_ENABLED = os.environ.get('OPERATIONS_SES_TAGGING_ENABLED') == '1'
+
+# Secure production defaults. Local development has explicit non-live defaults.
+PRIVILEGED_MFA_REQUIRED = os.environ.get('PRIVILEGED_MFA_REQUIRED', '0' if DEBUG else '1') == '1'
+PORTAL_API_THROTTLING = os.environ.get('PORTAL_API_THROTTLING', '0' if DEBUG else '1') == '1'
+PORTAL_UPLOADS_PER_MINUTE = int(os.environ.get('PORTAL_UPLOADS_PER_MINUTE', '10'))
+PORTAL_WRITES_PER_MINUTE = int(os.environ.get('PORTAL_WRITES_PER_MINUTE', '60'))
+PORTAL_READS_PER_MINUTE = int(os.environ.get('PORTAL_READS_PER_MINUTE', '180'))
+UPLOAD_SCAN_REQUIRED = os.environ.get('UPLOAD_SCAN_REQUIRED', '0' if DEBUG else '1') == '1'
+UPLOAD_CLAMAV_SOCKET = os.environ.get('UPLOAD_CLAMAV_SOCKET', '')
+UPLOAD_SCAN_TIMEOUT = int(os.environ.get('UPLOAD_SCAN_TIMEOUT', '5'))
+
+OTP_TOTP_ISSUER = 'Sevlink'
+AGENCY_REGISTRATION_ENABLED = os.environ.get('AGENCY_REGISTRATION_ENABLED', '1' if DEBUG else '0') == '1'
+AGENCY_REGISTRATION_ALLOWED_EMAILS = [email.strip().casefold() for email in
+    os.environ.get('AGENCY_REGISTRATION_ALLOWED_EMAILS', '').split(',') if email.strip()]

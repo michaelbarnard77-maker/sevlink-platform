@@ -1,11 +1,15 @@
 from django.core.mail.backends.base import BaseEmailBackend
+from datetime import timedelta
+from django.conf import settings
+from django.utils import timezone
 from .models import MailQueue
 class QueueBackend(BaseEmailBackend):
     def send_messages(self,email_messages):
         count = 0
         for message in email_messages:
             for recipient in message.to:
-                MailQueue.objects.create(recipient=recipient,subject=message.subject,body=message.body)
+                MailQueue.objects.create(recipient=recipient,subject=message.subject,body=message.body,
+                    expires_at=timezone.now()+timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT))
                 count += 1
         return count
 

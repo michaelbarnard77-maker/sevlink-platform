@@ -34,7 +34,23 @@ class PrivateAttachmentStorage(FileSystemStorage):
             raise FileExistsError('Attachment key already exists.')
         return name
 
+    def _open(self, name, mode='rb'):
+        if settings.UPLOAD_SCAN_REQUIRED:
+            from .upload_scanning import scan
+            from django.core.files.base import ContentFile
+            with super()._open(name, mode) as source:
+                data = source.read(5 * 1024 * 1024 + 1)
+            scan(data)
+            return ContentFile(data, name=name)
+        return super()._open(name, mode)
+
     def _save(self, name, content):
+        if settings.UPLOAD_SCAN_REQUIRED:
+            from .upload_scanning import scan
+            from django.core.files.base import ContentFile
+            data = content.read(5 * 1024 * 1024 + 1)
+            scan(data)
+            content = ContentFile(data)
         path = Path(self.path(name))
         # All names are server-generated UUIDs; never use a browser filename as a path.
         root = Path(self.location)

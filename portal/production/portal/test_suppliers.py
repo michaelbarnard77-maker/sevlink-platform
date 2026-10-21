@@ -314,7 +314,7 @@ class SupplierConcurrencyTests(TransactionTestCase):
 
 class SupplierMigrationTests(TransactionTestCase):
     def test_preserves_historical_unallocated_assignment_and_inactive_supplier(self):
-        old=[('portal','0015_seed_sa_regions')];new=[('portal','0019_weekly_operations_calendar')]
+        old=[('portal','0015_seed_sa_regions')];new=[('portal','0024_staffmfarecovery')]
         try:
             MigrationExecutor(connection).migrate(old)
             apps=MigrationExecutor(connection).loader.project_state(old).apps

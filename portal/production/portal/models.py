@@ -32,9 +32,39 @@ class AppendOnlyModel(models.Model):
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
+    session_version = models.PositiveIntegerField(default=0)
+
+    def _get_session_auth_hash(self, secret=None):
+        original = super()._get_session_auth_hash(secret=secret)
+        if not self.session_version:
+            return original
+        from django.utils.crypto import salted_hmac
+        return salted_hmac('portal.User.session_version', f'{original}:{self.session_version}',
+                           secret=secret, algorithm='sha256').hexdigest()
     class Meta:
         constraints = [models.UniqueConstraint(Lower('email'),name='unique_user_email_casefold')]
         permissions = [('operate_schedule','Operate private weekly scheduling'),('manage_supplier_payments','Review and record private supplier payments')]
+
+class PrivilegedSecurityEvent(AppendOnlyModel):
+    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    action = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class StaffMFARecovery(AppendOnlyModel):
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mfa_recoveries')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT, related_name='authorised_mfa_recoveries')
+    reason = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AccountLifecycleEvent(AppendOnlyModel):
+    agency = models.ForeignKey('Agency', on_delete=models.PROTECT)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    action = models.CharField(max_length=40)
+    object_reference = models.CharField(max_length=80)
+    reason = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
 class Agency(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=180)
@@ -96,6 +126,19 @@ class MailQueue(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True,blank=True)
     attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    lease_token = models.UUIDField(null=True, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    error_code = models.CharField(max_length=40, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
+class AccountMailAttempt(AppendOnlyModel):
+    message = models.ForeignKey(MailQueue, on_delete=models.PROTECT, related_name='delivery_attempts')
+    number = models.PositiveIntegerField()
+    outcome = models.CharField(max_length=30)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Audit(models.Model):
     agency = models.ForeignKey(Agency,on_delete=models.PROTECT)
     actor = models.ForeignKey(User,on_delete=models.PROTECT)

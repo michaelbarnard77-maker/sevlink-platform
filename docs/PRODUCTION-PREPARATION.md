@@ -67,9 +67,11 @@ Use `import_operations_feedback <local-file> --verified` only after external sig
 
 ## Remaining safeguards and limits
 
-- Privileged-user MFA and least-privilege Operations roles: currently Operations means active Django Super Admin; MFA/enforced step-up authorization and narrower finance roles are not implemented. Refund/void confirmations prevent accidental clicks, not stolen-account abuse or independent dual authorization.
-- Rate limits: existing authentication controls remain, but comprehensive per-user/agency API/upload throttling and edge abuse protection need implementation/testing.
-- Upload malware scanning/CDR/quarantine: type/size/PDF action checks are not antivirus. Add scan-before-release with private quarantine and fail-closed policies. Retention, immutable approved-document storage, orphan reconciliation and full storage quotas remain future work.
+- Privileged-user MFA now uses django-otp with production enforcement, audited enrollment and trusted administrator recovery; explicit scheduler/finance roles exist. Rehearse staff enrollment/recovery and review remaining Super Admin-only administration before launch. Refund/void confirmations prevent accidental clicks, not stolen-account abuse or independent dual authorization.
+- Rate limits: authentication and per-user API/read/write/upload budgets exist. Per-agency quotas, trusted edge abuse protection and production capacity testing remain required.
+- Upload scanning now has a fail-closed private ClamAV socket adapter for saves and historical reads. A real engine, signature updates, integration probes, monitoring and operational quarantine handling still require infrastructure verification. Structural PDF checks alone are not antivirus. Retention, immutable approved-document storage, orphan reconciliation and full storage quotas remain future work.
 - Financial adjustments: no automatic bank refunds, credit allocation/transfers between invoices, or reversal of incorrectly recorded refunds. Invoices requiring allocation remain held. Do not fabricate a refund to clear a hold; use accountant-reviewed real records and design a separately audited allocation/reversal workflow if needed.
 - Legal/tax retention, accounting correctness, backup/restore, multi-worker/load/security validation and independent review remain launch gates. Test suites cannot certify them.
 - Original browser demo finance/deposit/dispatch/scheduling/subcontractor planner remain simulated. Real authenticated Django features are described in the Step 7.5 acceptance guide.
+
+Current implementation and owner gates: [controlled launch readiness](CONTROLLED-LAUNCH-READINESS.md).

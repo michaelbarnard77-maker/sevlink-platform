@@ -296,5 +296,5 @@ def workspace(request):
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)
-    html = re.sub(r'<footer>.*?</footer>', '<footer>Sevlink · Property maintenance</footer>', html, flags=re.DOTALL)
+    html = re.sub(r'<footer>.*?</footer>', '<footer>Sevlink · Django development workspace · Saved records · Separate demo unchanged</footer>', html, flags=re.DOTALL)
     return HttpResponse(html)

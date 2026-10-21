@@ -55,10 +55,23 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r portal/production/requirements.lock
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Install PostgreSQL browser test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sevlink-browser" --no-save playwright@1.62.1
+          "$RUNNER_TEMP/sevlink-browser/node_modules/.bin/playwright" install --with-deps chromium
       - name: Django checks and tests against PostgreSQL
         working-directory: portal/production
         run: |
           export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
           python manage.py check
           python manage.py migrate --noinput
+          export NODE_PATH="$RUNNER_TEMP/sevlink-browser/node_modules"
+          export SEVLINK_BROWSER_TESTS=1
           python manage.py test portal
+      - name: Rehearse database recovery and confirm test database cleanup
+        env:
+          SEVLINK_CI_POSTGRES_CONTAINER: ${{ job.services.db.id }}
+        run: bash scripts/test-postgres-recovery.sh

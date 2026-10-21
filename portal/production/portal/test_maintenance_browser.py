@@ -134,3 +134,19 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(AppointmentOverride.objects.count(),1)
         self.assertEqual(InvoicePayment.objects.count(),2)
         self.assertEqual(JobInvoice.objects.get().payment_status,'paid')
+
+    def test_fresh_account_onboarding_and_password_login(self):
+        from unittest.mock import patch
+        # Deterministic synthetic mail links allow two isolated browser contexts to
+        # exercise forms without starting an email service or injecting sessions.
+        tokens=['synthetic-owner-verification-482','synthetic-tenant-invitation-482']
+        script=Path(settings.BASE_DIR).parents[1]/'scripts'/'test-onboarding-browser.cjs'
+        with patch('portal.services.secrets.token_urlsafe',side_effect=tokens):
+            result=subprocess.run(['node',str(script)],input=json.dumps({
+                'url':self.live_server_url,'verificationToken':tokens[0],'invitationToken':tokens[1]}),
+                text=True,capture_output=True,timeout=120)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr+'\n'.join(self.server_errors))
+        self.assertEqual(self.server_errors,[])
+        self.assertIn('PASS',result.stdout)
+        self.assertEqual(User.objects.filter(is_active=True).count(),2)
+        self.assertFalse(Tenancy.objects.get().active)
