@@ -251,6 +251,7 @@ class JobQuotation(models.Model):
 
 
 class JobInvoice(models.Model):
+    subcontractor = models.ForeignKey("Subcontractor", null=True, blank=True, on_delete=models.PROTECT, related_name="supplier_invoices")
     record_number = models.CharField(max_length=24, unique=True, null=True, blank=True)
     previous = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT, related_name='replacement')
     correction_reason = models.TextField(max_length=1000, blank=True)
@@ -287,14 +288,16 @@ class JobInvoice(models.Model):
                 models.Q(payment_status='paid', paid_amount=models.F('amount')+models.F('refunded_amount')) |
                 models.Q(payment_status='partially_paid', paid_amount__gt=models.F('refunded_amount'), paid_amount__lt=models.F('amount')+models.F('refunded_amount'))), name='invoice_payment_state'),
             models.CheckConstraint(condition=models.Q(document_status__in=['active','void']), name='invoice_document_state'),
-            models.UniqueConstraint(fields=['request', 'visibility', 'number'], name='invoice_job_number_unique'),
+            models.UniqueConstraint(fields=['request', 'visibility', 'number'], condition=models.Q(subcontractor__isnull=True), name='invoice_job_number_unique'),
+            models.UniqueConstraint(Lower('number'), 'subcontractor', condition=models.Q(subcontractor__isnull=False), name='supplier_invoice_reference_unique'),
+            models.CheckConstraint(condition=models.Q(subcontractor__isnull=True) | models.Q(visibility='internal'), name='supplier_invoice_private'),
         ]
 
     def save(self, *args, **kwargs):
         from django.core.exceptions import ValidationError
         old = type(self).objects.filter(pk=self.pk).first()
         if old and any(getattr(old, field) != getattr(self, field) for field in (
-                'record_number','previous_id','correction_reason','request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
+                'subcontractor_id','record_number','previous_id','correction_reason','request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
             raise ValidationError('Invoice PDF and recorded invoice details are immutable.')
         if old and old.document_status == 'void' and any(getattr(old, f) != getattr(self, f) for f in (
                 'document_status','void_reason','voided_on','voided_at','voided_by_id','accounting_reference')):
@@ -606,7 +609,6 @@ class Subcontractor(models.Model):
 
     class Meta:
         ordering = ['name', 'id']
-        permissions = [('manage_subcontractor_finance', 'Manage private subcontractor bank details')]
 
 
 class JobAssignment(AppendOnlyModel):
@@ -645,18 +647,6 @@ class SubcontractorTerms(AppendOnlyModel):
         ordering = ['-created_at', '-pk']
         constraints = [models.CheckConstraint(condition=models.Q(commission_percent__isnull=True) | models.Q(commission_percent__gte=0, commission_percent__lte=100), name='supplier_commission_range'),
                        models.CheckConstraint(condition=models.Q(rate__isnull=True) | models.Q(rate__gte=0), name='supplier_rate_nonnegative')]
-
-
-class SubcontractorBank(models.Model):
-    subcontractor = models.OneToOneField(Subcontractor, on_delete=models.PROTECT, related_name='bank')
-    bank_name = models.CharField(max_length=120)
-    account_holder = models.CharField(max_length=180)
-    account_number = models.CharField(max_length=20)
-    branch_code = models.CharField(max_length=6)
-    account_type = models.CharField(max_length=40)
-    version = models.PositiveIntegerField(default=1)
-    updated_by = models.ForeignKey(User, on_delete=models.PROTECT)
-    updated_at = models.DateTimeField(auto_now=True)
 
 
 class SupplierActivity(AppendOnlyModel):

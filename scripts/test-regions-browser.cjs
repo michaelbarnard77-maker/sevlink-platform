@@ -46,8 +46,8 @@ process.stdin.on('end', async () => {
     await page.getByRole('button',{name:'Save private profile',exact:true}).click();
     await page.waitForFunction(old => document.querySelector('#supplierProfileForm')?.dataset.version !== old,oldProfileVersion);
     assert.equal(await page.locator('#supplierProfileForm [name=contact_person]').inputValue(),'Synthetic browser contact');
-    assert.equal(await page.locator('#supplierBank').count(),0,'Bank details require an explicit finance grant');
-    assert.equal((await page.request.get(url+`/api/maintenance/operations/subcontractors/${ids.partner}/bank/`)).status(),403);
+    assert.equal(await page.locator('#supplierBank').count(),0,'Banking controls have been removed');
+    assert.equal((await page.request.get(url+`/api/maintenance/operations/subcontractors/${ids.partner}/bank/`)).status(),404);
     for (const name of ['Team A','Team B']) {
       await page.locator('#supplierNewTeam').click();
       await page.locator('#supplierTeam [name=name]').fill(name);
@@ -86,6 +86,18 @@ process.stdin.on('end', async () => {
     await page.locator('#supplierAgreement [name=terms]').fill('PRIVATE browser agreement');
     await page.getByRole('button',{name:'Record agreement',exact:true}).click();
     await page.locator('#supplierProfile p').filter({hasText:'PRIVATE browser agreement'}).waitFor();
+    await page.locator('#supplierInvoiceUpload [name=job]').selectOption(ids.job);
+    await page.locator('#supplierInvoiceUpload [name=number]').fill('SUPPLIER-TEST-001');
+    await page.locator('#supplierInvoiceUpload [name=amount]').fill('500.00');
+    await page.locator('#supplierInvoiceUpload [name=due_date]').fill(expires);
+    await page.locator('#supplierInvoiceUpload [name=attachments]').setInputFiles({name:'supplier-invoice.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
+    await page.getByRole('button',{name:'Upload private supplier invoice',exact:true}).click();
+    await page.locator('.supplierPayment').waitFor();
+    await page.locator('.supplierPayment [name=amount]').fill('200.00');
+    await page.locator('.supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));
+    await page.locator('.supplierPayment [name=reference]').fill('EXTERNAL-TEST-PAYMENT');
+    await page.getByRole('button',{name:'Record manual payment',exact:true}).click();
+    await page.getByText('External payment: ZAR 200.00',{exact:false}).waitFor();
     await page.getByRole('button',{name:'Close',exact:true}).click();
     await page.locator('#nav [data-view=regions]').click();
     await page.getByRole('heading',{name:'Compliance expiry alerts (1)',exact:true}).waitFor();

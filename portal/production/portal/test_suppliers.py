@@ -9,7 +9,6 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.db import connection, connections
 from django.db.migrations.executor import MigrationExecutor
@@ -18,9 +17,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import (AssignmentReview, AssignmentReviewResolution, ComplianceDocument, JobAssignment,
-    MaintenanceRequest, Subcontractor, SubcontractorBank, SubcontractorTeam, SubcontractorTerms,
+    MaintenanceRequest, Subcontractor, SubcontractorTeam, SubcontractorTerms,
     SupplierActivity, TeamAppointment, TradeCategory, User)
-from .suppliers import can_finance
 from .test_attachments import document, photo
 from .test_regions import fixtures, assign, SETTINGS
 
@@ -110,23 +108,12 @@ class SupplierTests(TestCase):
         self.assertEqual([x['id'] for x in data['subcontractors']['results']],[str(self.partner.pk)])
         self.assertEqual(assign(self.client,self.job,self.partner).status_code,400)
 
-    def test_finance_requires_explicit_grant_even_for_superadmin(self):
-        body=dict(bank_name='SYNTHETIC BANK',account_holder='TEST HOLDER',account_number='12345678901',branch_code='123456',account_type='Cheque',version=0)
-        self.assertFalse(can_finance(self.ops))
-        self.assertEqual(post(self.client,'supplier_bank',body,self.partner.pk).status_code,403)
-        permission=Permission.objects.get(codename='manage_subcontractor_finance')
-        self.ops.user_permissions.add(permission)
-        self.assertEqual(post(self.client,'supplier_bank',body,self.partner.pk).status_code,200)
-        self.assertEqual(self.client.get(reverse('supplier_bank',args=[self.partner.pk])).json()['account_number'],body['account_number'])
-        self.assertEqual(post(self.client,'supplier_bank',body,self.partner.pk).status_code,409)
-        for url in (reverse('supplier_profile',args=[self.partner.pk]),reverse('operations_regions')):
-            text=self.client.get(url).content.decode()
-            self.assertNotIn(body['account_number'],text);self.assertNotIn(body['bank_name'],text)
-        self.assertNotIn(body['account_number'],json.dumps(list(SupplierActivity.objects.values('details'))))
-        self.ops.user_permissions.remove(permission)
-        self.assertEqual(self.client.get(reverse('supplier_bank',args=[self.partner.pk])).status_code,403)
-        self.pm.user_permissions.add(permission);self.client.force_login(self.pm)
-        self.assertEqual(self.client.get(reverse('supplier_bank',args=[self.partner.pk])).status_code,403)
+    def test_bank_api_and_fields_removed(self):
+        url=f'/api/maintenance/operations/subcontractors/{self.partner.pk}/bank/'
+        self.assertEqual(self.client.get(url).status_code,404)
+        self.assertEqual(self.client.post(url,{},content_type='application/json').status_code,404)
+        self.assertNotIn('bank',self.get_profile().json())
+        self.assertNotIn('can_finance',self.get_profile().json())
 
     def test_commercial_terms_are_decimal_append_only_and_idempotent(self):
         data=dict(commission_percent='12.50',rate='450.25',rate_basis='hour',terms='PRIVATE negotiated terms',submission_key=str(uuid.uuid4()))
@@ -192,7 +179,7 @@ class SupplierTests(TestCase):
         outsider=User.objects.create_user(username='supplier-private',email='supplier-private@example.test')
         for user in (self.pm,self.tenant,staff,outsider):
             self.client.force_login(user)
-            for endpoint in ('supplier_profile','supplier_bank'):
+            for endpoint in ('supplier_profile',):
                 self.assertEqual(self.client.get(reverse(endpoint,args=[self.partner.pk])).status_code,403)
             self.assertEqual(self.client.get(doc['url']).status_code,403)
             self.assertEqual(post(self.client,'supplier_team',{},self.partner.pk).status_code,403)
@@ -327,7 +314,7 @@ class SupplierConcurrencyTests(TransactionTestCase):
 
 class SupplierMigrationTests(TransactionTestCase):
     def test_preserves_historical_unallocated_assignment_and_inactive_supplier(self):
-        old=[('portal','0015_seed_sa_regions')];new=[('portal','0017_seed_supplier_trades')]
+        old=[('portal','0015_seed_sa_regions')];new=[('portal','0018_external_supplier_payments')]
         try:
             MigrationExecutor(connection).migrate(old)
             apps=MigrationExecutor(connection).loader.project_state(old).apps

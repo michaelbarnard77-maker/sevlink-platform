@@ -134,12 +134,14 @@ def adjust(request, job_id, invoice_id, operation):
             elif operation == 'correct':
                 if invoice.document_status != 'void' or JobInvoice.objects.filter(previous=invoice).exists():
                     return JsonResponse({'error':'Only a void invoice without a replacement can be corrected.'},status=409)
-                if JobInvoice.objects.filter(request=job,visibility=invoice.visibility,number__iexact=values['number']).exists():
+                matches=JobInvoice.objects.filter(subcontractor_id=invoice.subcontractor_id,number__iexact=values['number'])
+                if invoice.subcontractor_id is None: matches=matches.filter(request=job,visibility=invoice.visibility)
+                if matches.exists():
                     return JsonResponse({'error':'Replacement must use a distinct externally issued invoice number.'},status=409)
                 document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
                 old=invoice
                 invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,
-                    record_number=allocate('SI'),previous=old,correction_reason=reason,
+                    record_number=allocate('SI'),previous=old,correction_reason=reason,subcontractor_id=old.subcontractor_id,
                     visibility=old.visibility,reconciliation_required=old.reconciliation_required or net_paid(old)>0,
                     creation_key=key,fingerprint=fingerprint,**values)
                 invoice.refresh_from_db()

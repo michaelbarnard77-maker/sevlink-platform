@@ -24,27 +24,11 @@ validation rejects negative rates, fractional cents and commissions outside
 0–100%. Submission keys prevent duplicate retries. There is no automatic
 commission calculation, payroll, payout, quotation calculation or generated PDF.
 
-**Finance restriction.** Bank name, account holder/number, branch code and account
-type use a separate model and endpoint, never the directory/profile/job payloads.
-An active Operations Super Admin must additionally receive an **explicit**
-`portal.manage_subcontractor_finance` user or group permission. Superuser's normal
-implicit permission bypass intentionally does not grant this access. Ordinary
-Operations accounts see a restricted notice, including in the API. Authorised
-reads and changes are audited without copying bank values to audit payloads.
-Bank updates require the current bank version; account values are fetched only
-when the authorised user opens the restricted bank panel.
-
-After development migrations, provision a designated finance Operations account:
-
-```sh
-python manage.py subcontractor_finance_access --email FINANCE_ACCOUNT_EMAIL
-python manage.py subcontractor_finance_access --email FINANCE_ACCOUNT_EMAIL --revoke
-```
-
-Group grants are managed separately; removing a direct grant does not remove a
-group grant. Existing Operations authorization remains Super Admin only; this
-slice does not introduce a separate, less-privileged general Operations role.
-No grant is automatic and no finance account or credentials are created.
+**External banking update.** Bank fields, management screens, bank-detail APIs and
+bank permission provisioning have been retired. Supplier invoices and manual
+payments reuse the private existing ledger. See [Supplier payments](SUPPLIER-PAYMENTS.md)
+for current workflows and the guarded migration/deletion proposal for any legacy
+bank rows. No automated transfers or bank integration exist.
 
 **Compliance PDFs.** CIPC, public liability insurance, qualifications/certificates
 and other compliance PDFs use the existing named private storage alias, bounded
@@ -132,10 +116,10 @@ screen and its new forms use Django; original website/assets/layout are preserve
 5. Change a property's location or supplier coverage after assignment. Confirm
    review flags appear without deleting/reassigning anything. Resolve with an
    explanation; check the activity/history and continued eligibility enforcement.
-6. An Operations account without an explicit finance grant must get HTTP 403 from
-   the bank endpoint. Grant finance access, save synthetic details, refresh and
-   verify persistence and stale-version rejection. Revoke access and verify 403.
-   Profile/directory/job JSON must never contain bank values, even for finance.
+6. Confirm the retired bank route returns 404. Upload a synthetic supplier invoice,
+   record a partial external payment/reference, then verify the outstanding list.
+   Record the balance and confirm paid status; retry/stale/overpaid writes must
+   not create extra payments. Follow the supplier payments guide for legacy rows.
 7. Sign in as PM, tenant, another agency and ordinary staff. Private API/document
    URLs must fail. Inspect external job JSON for absence of names, internal notes,
    agreements, supplier documents, team IDs and financial fields.
@@ -154,9 +138,8 @@ screen and its new forms use Django; original website/assets/layout are preserve
   accounting, generated quotations/invoices or automatic compliance approval.
 - Malware scanning/quarantine, file retention, encrypted production database/file
   volumes, backup/restore verification, privileged MFA and detailed staff role
-  separation remain production safeguards. Bank values are access-controlled in
-  Django but not application-encrypted; configure storage/database encryption and
-  restricted backup access before entering real financial details in production.
+  separation remain production safeguards. Configure encryption and restricted backups for private financial records;
+  bank account details are maintained outside Sevlink.
 - Profile histories currently return the latest 100 assignments/activity entries,
   and each team the latest 100 appointments; full database history is retained.
   Dashboard alerts show the earliest 50 due documents and latest 100 pending

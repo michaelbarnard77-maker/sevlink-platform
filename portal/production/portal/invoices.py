@@ -1,4 +1,5 @@
 """Manually uploaded invoices and an append-only manual payment ledger. No gateway."""
+import uuid
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -10,7 +11,7 @@ from .commercial import money, text, day, uploaded_pdf, file_fingerprint, docume
 from .collaboration import lock_job, request_key
 from .events import record
 from .maintenance import api_access, requests_for, payload, access
-from .models import JobInvoice, InvoicePayment, Membership
+from .models import JobInvoice, InvoicePayment, Membership, Subcontractor, JobAssignment
 from .quotations import digest
 from .numbering import allocate
 from .financial import net_paid, set_payment_state
@@ -65,23 +66,33 @@ def create(request, job_id):
     keys=[]
     try:
         key=request_key(request)
-        data,prepared=uploaded_pdf(request,('number','amount','due_date','visibility'))
+        data,prepared=uploaded_pdf(request,('number','amount','due_date','visibility','subcontractor'))
         values=dict(number=text(data.get('number'),80), amount=money(data.get('amount')),
                     due_date=day(data.get('due_date')), visibility=data.get('visibility','internal'))
         if values['visibility'] not in ('shared','internal'):
             raise ValueError('Choose agency-visible or Operations-only invoice visibility.')
-        fingerprint=digest(dict(values,file=file_fingerprint(prepared)))
+        supplier_id=uuid.UUID(data['subcontractor']) if data.get('subcontractor') else None
+        if supplier_id and values['visibility']!='internal':
+            raise ValueError('Subcontractor invoices are Operations-only.')
+        fingerprint_values=dict(values,file=file_fingerprint(prepared))
+        if supplier_id: fingerprint_values['subcontractor']=str(supplier_id)
+        fingerprint=digest(fingerprint_values)
         with transaction.atomic():
             job=lock_job(request.user,job_id)
+            supplier=get_object_or_404(Subcontractor,pk=supplier_id) if supplier_id else None
+            if supplier and not JobAssignment.objects.filter(request=job,subcontractor=supplier).exists():
+                raise ValueError('Select a job previously assigned to this subcontractor.')
             existing=JobInvoice.objects.filter(creation_key=key).first()
             if existing:
                 if existing.request_id != job.pk or existing.uploaded_by_id != request.user.pk or existing.fingerprint != fingerprint:
                     return JsonResponse({'error':'Idempotency key conflict.'},status=409)
                 return JsonResponse(invoice_data(existing,request.user))
-            if JobInvoice.objects.filter(request=job,visibility=values['visibility'],number__iexact=values['number']).exists():
+            matches=JobInvoice.objects.filter(subcontractor=supplier,number__iexact=values['number'])
+            if supplier is None: matches=matches.filter(request=job,visibility=values['visibility'])
+            if matches.exists():
                 return JsonResponse({'error':'This invoice number already exists for this job and visibility.'},status=409)
             document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
-            invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,
+            invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,subcontractor=supplier,
                 record_number=allocate('SI'),creation_key=key,fingerprint=fingerprint,**values)
             # Reload typed Decimal/Date values before serializing, including on SQLite.
             invoice.refresh_from_db()
@@ -119,6 +130,8 @@ def pay(request,job_id,invoice_id):
     with transaction.atomic():
         job=lock_job(request.user,job_id)
         invoice=get_object_or_404(JobInvoice.objects.select_for_update(),pk=invoice_id,request=job)
+        if invoice.subcontractor_id and not values['reference']:
+            return JsonResponse({'error':'Record the external payment reference.'},status=400)
         prior=InvoicePayment.objects.filter(key=key).first()
         if prior:
             if prior.invoice_id != invoice.pk or prior.actor_id != request.user.pk or prior.fingerprint != fingerprint:

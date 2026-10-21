@@ -8,7 +8,6 @@ from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
 from django import forms
-from django.contrib.auth.models import Permission
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import OuterRef, Subquery
@@ -22,7 +21,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from . import attachments
 from .maintenance import payload
 from .models import (AssignmentReview, AssignmentReviewResolution, ComplianceDocument,
-    JobAssignment, MaintenanceRequest, Property, Subcontractor, SubcontractorBank,
+    JobAssignment, MaintenanceRequest, Property, Subcontractor,
     SubcontractorTeam, SubcontractorTerms, SupplierActivity, TeamAppointment,
     TeamUnavailableDate, TradeCategory)
 from .regions import operations_only, contractor_data, eligible
@@ -32,16 +31,6 @@ TZ = ZoneInfo('Africa/Johannesburg')
 
 def audit(item, actor, action, **details):
     return SupplierActivity.objects.create(subcontractor=item, actor=actor, action=action, details=details)
-
-
-def can_finance(user):
-    # Explicit grants are intentional: superuser's implicit has_perm bypass must
-    # not give every Operations account access to bank details by default.
-    permission = Permission.objects.filter(content_type__app_label='portal',
-        content_type__model='subcontractor', codename='manage_subcontractor_finance')
-    return user.is_active and user.is_superuser and (
-        user.user_permissions.filter(pk__in=permission).exists() or
-        user.groups.filter(permissions__in=permission).exists())
 
 
 def current_assignments():
@@ -125,11 +114,14 @@ def profile(request, subcontractor_id):
                 flag_assignments(request.user, 'Subcontractor status changed', subcontractor=item)
             audit(item, request.user, 'Profile updated', status=data['status'])
     item = get_object_or_404(Subcontractor, pk=subcontractor_id)
+    from .invoices import invoice_data
     data = contractor_data(item)
+    data['invoices'] = [dict(invoice_data(i,request.user),job=str(i.request_id)) for i in item.supplier_invoices.all()]
+    data['invoice_jobs'] = [{'id':str(j.pk),'title':j.title} for j in MaintenanceRequest.objects.filter(assignments__subcontractor=item).distinct()]
     data.update({k:getattr(item,k) for k in ProfileForm.Meta.fields})
     data.update(version=item.version, status='archived' if item.archived else 'active' if item.active else 'inactive',
         trades=list(item.trades.values_list('pk',flat=True)), trade_options=list(TradeCategory.objects.values_list('pk',flat=True)),
-        can_finance=can_finance(request.user), teams=[team_data(t) for t in item.teams.all()],
+        teams=[team_data(t) for t in item.teams.all()],
         documents=[document_data(d) for d in item.compliance_documents.all()],
         agreements=[{'id': a.pk, 'commission_percent': str(a.commission_percent) if a.commission_percent is not None else '',
             'rate': str(a.rate) if a.rate is not None else '', 'currency':'ZAR', 'rate_basis':a.rate_basis,
@@ -141,41 +133,6 @@ def profile(request, subcontractor_id):
         activity=[{'action': a.action, 'at':a.created_at.isoformat(), 'actor':a.actor_id, 'details':a.details}
             for a in item.supplier_activity.all()[:100]])
     return JsonResponse(data)
-
-
-class BankForm(forms.ModelForm):
-    class Meta:
-        model = SubcontractorBank
-        fields = ['bank_name','account_holder','account_number','branch_code','account_type']
-
-
-@operations_only
-@require_http_methods(['GET', 'POST'])
-def bank(request, subcontractor_id):
-    if not can_finance(request.user):
-        return JsonResponse({'error': 'Explicit subcontractor finance permission required.'}, status=403)
-    with transaction.atomic():
-        item = get_object_or_404(Subcontractor.objects.select_for_update(), pk=subcontractor_id)
-        current = SubcontractorBank.objects.filter(subcontractor=item).first()
-        if request.method == 'POST':
-            data = payload(request, (*BankForm.Meta.fields, 'version'))
-            if set(data) != set(BankForm.Meta.fields) | {'version'} or type(data['version']) is not int:
-                raise ValueError
-            if data['version'] != (current.version if current else 0):
-                return JsonResponse({'error': 'Bank record changed. Refresh before saving.'}, status=409)
-            if any(not isinstance(data[k], str) for k in BankForm.Meta.fields):
-                raise ValueError
-            if not re.fullmatch(r'[0-9]{4,20}', data['account_number']) or not re.fullmatch(r'[0-9]{6}', data['branch_code']):
-                raise ValueError
-            form = BankForm({k:data[k] for k in BankForm.Meta.fields}, instance=current)
-            if not form.is_valid(): raise ValueError
-            current = form.save(commit=False); current.subcontractor = item
-            current.updated_by = request.user; current.version = data['version']+1; current.save()
-            audit(item, request.user, 'Bank details updated')
-        else:
-            audit(item, request.user, 'Bank details accessed')
-        return JsonResponse({'version':current.version if current else 0,
-            **{k:getattr(current,k) if current else '' for k in BankForm.Meta.fields}})
 
 
 @operations_only
@@ -382,3 +339,22 @@ def review(request, review_id):
         AssignmentReviewResolution.objects.create(review=entry,actor=request.user,reason=data['reason'])
         audit(entry.assignment.subcontractor,request.user,'Assignment review acknowledged',review=entry.pk)
     return JsonResponse({'resolved':True})
+
+
+@operations_only
+@require_http_methods(['GET'])
+def invoice_ledger(request):
+    from .models import JobInvoice
+    from .invoices import invoice_data
+    from .financial import net_paid
+    qs=JobInvoice.objects.filter(subcontractor__isnull=False).select_related('subcontractor','request__property__agency')
+    state=request.GET.get('state','outstanding')
+    if state not in ('all','outstanding','paid','void'): raise ValueError
+    if state=='outstanding': qs=qs.filter(document_status='active').exclude(payment_status='paid')
+    elif state=='void': qs=qs.filter(document_status='void')
+    elif state=='paid': qs=qs.filter(document_status='active',payment_status='paid')
+    page=int(request.GET.get('page','1'))
+    if not 1<=page<=1000000: raise ValueError
+    return JsonResponse({'count':qs.count(),'page':page,'results':[dict(invoice_data(i,request.user),
+        subcontractor=str(i.subcontractor_id),supplier_name=i.subcontractor.name,job=str(i.request_id))
+        for i in qs.order_by('due_date','pk')[(page-1)*50:page*50]]})
