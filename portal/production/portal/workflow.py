@@ -153,13 +153,13 @@ def dashboard(request):
     selected=request.GET.get('stage','')
     if selected and selected not in dict(definitions):return JsonResponse({'error':'Unknown stage.'},status=400)
     result=grouped[selected] if selected else rows
-    upcoming=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date__gte=timezone.localdate(),appointment__cancelled_at__isnull=True).select_related('request__property').order_by('agreed_date')[:12]
+    upcoming=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date__gte=timezone.localdate(),appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).select_related('request__property').order_by('agreed_date')[:12]
     summary=None
     if request.user.is_superuser:
         today=timezone.localdate()
-        summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','ready','underway','invoice')))]
+        summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','ready','underway','invoice')))]
     return JsonResponse({'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
-        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,status=j.get_status_display()) for j in result]})
+        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display()) for j in result]})
 
 
 @api_access

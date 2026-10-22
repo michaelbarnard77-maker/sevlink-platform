@@ -142,6 +142,9 @@ class AttendanceAndFinanceTests(TestCase):
         self.assertTrue(UserJobNotification.objects.filter(user=self.tenant,event__details__action='Attendance confirmed').exists())
         stages=self.client.get(reverse('workflow_stages')).json()['stages']
         self.assertEqual(next(s['count'] for s in stages if s['key']=='booked'),1)
+        self.assertEqual(len(self.client.get(reverse('workflow_stages')).json()['upcoming']),1)
+        MaintenanceRequest.objects.filter(pk=self.job.pk).update(status='completed')
+        self.assertEqual(self.client.get(reverse('workflow_stages')).json()['upcoming'],[])
     def test_alternative_requires_contact_confirmation_on_server(self):
         v=self.prepare();v.update(date=str(self.when+timedelta(days=1)),starts_at=str(self.when+timedelta(days=1))+'T12:00:00+02:00',ends_at=str(self.when+timedelta(days=1))+'T14:00:00+02:00',window='12:00–17:00')
         self.assertEqual(self.confirm(v).status_code,400);self.assertEqual(TeamAppointment.objects.count(),0)
@@ -261,3 +264,5 @@ class PMDashboardAdjustmentTests(TestCase):
         self.assertEqual(self.client.get(url,dict(register='1',property='bad-id')).status_code,400)
         self.client.force_login(self.cotenant);self.assertEqual(self.client.get(url,dict(register='1')).json()['count'],0)
         self.client.force_login(self.ops);self.assertEqual(self.client.get(url,dict(register='1')).json()['count'],2)
+        self.assertEqual(self.client.get(url,dict(register='1',stage='new')).json()['count'],2)
+        self.assertEqual(self.client.get(url,dict(register='1',stage='approval')).json()['count'],0)

@@ -194,6 +194,10 @@ def register_projection(user, params):
         if params.get(field):
             if params[field] not in choices:raise ValueError('Invalid '+field+' filter.')
             qs=qs.filter(**{field:params[field]})
+    if params.get('stage'):
+        from .workflow import stage,STAGES
+        if not user.is_superuser or params['stage'] not in dict(STAGES):raise ValueError('Invalid Operations pipeline stage.')
+        qs=qs.filter(pk__in=[j.pk for j in qs if stage(j)==params['stage']])
     ordering={'newest':('-created_at','pk'),'oldest':('created_at','pk'),'property':('property__address','pk')}
     sort=params.get('sort','newest')
     if sort not in ordering:raise ValueError('Invalid register sort order.')
@@ -202,6 +206,9 @@ def register_projection(user, params):
     agencies=list(scoped.order_by('property__agency__name').values('property__agency_id','property__agency__name').distinct()) if user.is_superuser else []
     metadata=dict(total_count=scoped.count(),buckets=dict(all=scoped.count(),open=scoped.exclude(status__in=['closed','cancelled']).count(),closed=scoped.filter(status='closed').count(),cancelled=scoped.filter(status='cancelled').count()),
         properties=[dict(id=str(p['property_id']),label=p['property__address']) for p in props],agencies=[dict(id=str(a['property__agency_id']),label=a['property__agency__name']) for a in agencies],categories=sorted(set(scoped.values_list('category',flat=True))),statuses=[dict(value=v,label=S(v).label) for v in sorted(set(scoped.values_list('status',flat=True)))])
+    if user.is_superuser:
+        from .workflow import STAGES
+        metadata['stages']=[dict(id=k,label=label) for k,label in STAGES]
     return qs.order_by(*ordering[sort]),metadata
 
 

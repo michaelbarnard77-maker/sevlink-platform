@@ -182,6 +182,8 @@ process.stdin.on('end', async () => {
     await context.close();
     ({context, page} = await signedIn('superadmin'));
     page.on('dialog', dialog => dialog.accept());
+    await page.locator('#nav [data-view=requests]').click();
+    await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.locator('#invoiceForm [name=visibility]').selectOption('shared');

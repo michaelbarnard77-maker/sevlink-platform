@@ -2,7 +2,7 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
 let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
  const {url,sessions,ids,day}=JSON.parse(input);const browser=await chromium.launch({headless:true,...(process.env.SEVLINK_CHROMIUM_PATH?{executablePath:process.env.SEVLINK_CHROMIUM_PATH}:{}),args:['--no-sandbox']});const errors=[];
  try{
-  async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');await p.locator('#rows').waitFor({state:'attached'});return {c,p};}
+  async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');if(role==='tenant')await p.locator('#rows').waitFor();else await p.locator('#workflowStages .stage-card').first().waitFor();return {c,p};}
   let {c,p}=await signed('scheduler');
   await p.locator('#nav [data-view=calendar]').click();await p.locator('#calendarWeek').waitFor();
   const originalWeek=await p.locator('#calendarWeek').textContent();

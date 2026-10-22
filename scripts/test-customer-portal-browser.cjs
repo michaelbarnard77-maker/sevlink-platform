@@ -11,7 +11,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   const attention=await (await p.request.get(url+'/api/maintenance/portal/attention/')).json();
   assert.equal(dashboard.stages[0].count,new Set(attention.items.map(a=>a.job)).size);
   await p.locator('[data-stage=attention]').click();
-  await p.locator('#stageJobs h2').waitFor();
+  await p.locator('#stageJobs > .panel > h2').waitFor();
   assert.equal(await p.locator('#stageJobs [data-stage-job]').count(),dashboard.stages[0].count);
   assert.deepEqual(await p.locator('#nav button').allTextContents(),['Overview','Report a Repair','Repair Jobs','Properties','Tenants','Quotations','Accounts & Payments','Maintenance Calendar','Updates & Notifications','Agency Profile','Report Website Issue']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
