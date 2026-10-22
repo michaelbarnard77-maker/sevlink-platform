@@ -5,6 +5,13 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');await p.locator('#attention').waitFor();return {c,p};}
   let {c,p}=await signed('pm');
   await p.locator('#workflowStages .stage-card').first().waitFor();
+  assert.equal(await p.locator('#rows').count(),0,'PM overview omits the duplicate repair register');
+  await p.locator('#nav [data-view=requests]').click();
+  await p.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
+  await p.locator('#rows [data-job]').first().waitFor();
+  await p.locator('#nav [data-view=overview]').click();
+  await p.locator('#workflowStages .stage-card').first().waitFor();
+  assert.equal(await p.locator('#rows').count(),0);
   assert.deepEqual(await p.locator('#workflowStages .stage-card b').allTextContents(),['Needs Your Attention','New Requests','Awaiting Quote Approval','Awaiting Deposit','Booked','Work Underway','Awaiting Final Payment','Closed']);
   assert(await p.evaluate(()=>document.querySelector('#attention').compareDocumentPosition(document.querySelector('#workflowStages')) & Node.DOCUMENT_POSITION_FOLLOWING));
   const dashboard=await (await p.request.get(url+'/api/maintenance/workflow/stages/')).json();

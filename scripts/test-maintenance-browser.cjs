@@ -69,6 +69,8 @@ process.stdin.on('end', async () => {
     await context.close();
 
     ({context, page} = await signedIn('pm'));
+    await page.locator('#nav [data-view=requests]').click();
+    await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
     const downloadEvent = page.waitForEvent('download');
     await page.getByRole('tab',{name:'Before & After Report',exact:true}).click();
@@ -155,6 +157,8 @@ process.stdin.on('end', async () => {
     await context.close();
 
     ({context, page} = await signedIn('pm'));
+    await page.locator('#nav [data-view=requests]').click();
+    await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     const jobId = new URL(downloadUrl, url).pathname.split('/')[4];
     await page.goto(url + '/maintenance/?job=' + jobId);
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();
@@ -254,6 +258,8 @@ process.stdin.on('end', async () => {
     await page.locator('.card .badge').filter({hasText:'sent'}).waitFor();
     await context.close();
     ({context, page} = await signedIn('pm'));
+    await page.locator('#nav [data-view=requests]').click();
+    await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button',{name:'Open job'}).click();
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();
     await page.locator('.quoteDecision').waitFor();
