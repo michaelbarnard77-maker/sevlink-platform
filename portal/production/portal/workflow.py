@@ -140,11 +140,21 @@ def dashboard(request):
     rows=list(requests_for(request.user))
     grouped={key:[] for key,label in STAGES}
     for job in rows:grouped[stage(job)].append(job)
+    definitions=STAGES
+    attention=[]
+    if access(request.user)[0] in ('pm','admin'):
+        from .customer_portal import attention_rows,public_appointments
+        confirmed=set(public_appointments(request.user).filter(cancelled_at=None).values_list('assignment__request_id',flat=True))
+        grouped['booked']=[job for job in grouped['booked'] if job.pk in confirmed]
+        attention=attention_rows(request.user)
+        ids={item['job'] for item in attention}
+        grouped['attention']=[job for job in rows if str(job.pk) in ids]
+        definitions=(('attention','Needs Your Attention'),('new','New Requests'),('approval','Awaiting Quote Approval'),('deposit','Awaiting Deposit'),('booked','Booked'),('underway','Work Underway'),('payment','Awaiting Final Payment'),('closed','Closed'))
     selected=request.GET.get('stage','')
-    if selected and selected not in grouped:return JsonResponse({'error':'Unknown stage.'},status=400)
+    if selected and selected not in dict(definitions):return JsonResponse({'error':'Unknown stage.'},status=400)
     result=grouped[selected] if selected else rows
     upcoming=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date__gte=timezone.localdate(),appointment__cancelled_at__isnull=True).select_related('request__property').order_by('agreed_date')[:12]
-    return JsonResponse({'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in STAGES],
+    return JsonResponse({'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
         'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,status=j.get_status_display()) for j in result]})
 
 

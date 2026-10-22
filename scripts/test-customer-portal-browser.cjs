@@ -4,6 +4,15 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
  try{
   async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');await p.locator('#attention').waitFor();return {c,p};}
   let {c,p}=await signed('pm');
+  await p.locator('#workflowStages .stage-card').first().waitFor();
+  assert.deepEqual(await p.locator('#workflowStages .stage-card b').allTextContents(),['Needs Your Attention','New Requests','Awaiting Quote Approval','Awaiting Deposit','Booked','Work Underway','Awaiting Final Payment','Closed']);
+  assert(await p.evaluate(()=>document.querySelector('#attention').compareDocumentPosition(document.querySelector('#workflowStages')) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const dashboard=await (await p.request.get(url+'/api/maintenance/workflow/stages/')).json();
+  const attention=await (await p.request.get(url+'/api/maintenance/portal/attention/')).json();
+  assert.equal(dashboard.stages[0].count,new Set(attention.items.map(a=>a.job)).size);
+  await p.locator('[data-stage=attention]').click();
+  await p.locator('#stageJobs h2').waitFor();
+  assert.equal(await p.locator('#stageJobs [data-stage-job]').count(),dashboard.stages[0].count);
   assert.deepEqual(await p.locator('#nav button').allTextContents(),['Overview','Report a Repair','Repair Jobs','Properties','Tenants','Quotations','Accounts & Payments','Maintenance Calendar','Updates & Notifications','Agency Profile','Report Website Issue']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
   await p.locator('#attention .attention-card').filter({hasText:'Review new maintenance request'}).filter({hasText:'GP repair'}).getByRole('button',{name:'Review job'}).click();

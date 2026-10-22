@@ -13,10 +13,16 @@ email activation is part of this update.
 - PMs can report their own portfolio repairs. Tenants can report their linked
   property repairs and flag a safety concern; that flag cannot set official
   urgency, work type or spending authority.
-- PM and Operations dashboards have ten saved-data stages and drill-down lists:
+- Operations retains ten saved-data stages and drill-down lists:
   New Requests, Quoting, Awaiting Quotation Approval, Awaiting Deposit, Ready to
   Schedule, Booked Appointments, Work Underway, Ready to Invoice, Awaiting Final
   Payment and Closed Jobs. No totals come from browser-local records.
+- PM/Agency Admin dashboards show exactly eight cards: Needs Your Attention, New
+  Requests, Awaiting Quote Approval, Awaiting Deposit, Booked, Work Underway,
+  Awaiting Final Payment and Closed. The attention banner stays above the cards;
+  its action count may exceed the unique-job count in the first card. Card clicks
+  open scoped job lists. Only confirmed, non-cancelled shared appointments enter
+  Booked; authorised call-outs and deposit-ready jobs await PM attendance action.
 - Needs Your Attention includes reviews, quote decisions, additional spending,
   attendance requests, customer balances and unread job comments. Saved state
   resolves the underlying action; read state is separate from work status.

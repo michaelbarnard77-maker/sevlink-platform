@@ -105,7 +105,7 @@ class OperationalWorkflowTests(TestCase):
         self.assertFalse(UserJobNotification.objects.filter(user=self.tenant,event__kind='comment_added').exists())
     def test_scoped_stages_and_persistent_notifications(self):
         self.review();self.client.force_login(self.pm);r=self.client.get(reverse('workflow_stages')).json()
-        self.assertEqual(sum(s['count'] for s in r['stages']),1);self.assertEqual(next(s['count'] for s in r['stages'] if s['key']=='ready'),1)
+        self.assertEqual([s['label'] for s in r['stages']],['Needs Your Attention','New Requests','Awaiting Quote Approval','Awaiting Deposit','Booked','Work Underway','Awaiting Final Payment','Closed']);self.assertEqual(r['stages'][0]['count'],1);self.assertEqual(next(s['count'] for s in r['stages'] if s['key']=='booked'),0)
         n=self.client.get(reverse('workflow_notifications')).json()['results'][0]
         self.assertEqual(self.post(reverse('workflow_notification_read',args=[n['id']]),{'read':True}).status_code,200)
         self.client.force_login(self.foreign);self.assertEqual(self.client.get(reverse('workflow_stages')).json()['results'],[])
@@ -140,6 +140,8 @@ class AttendanceAndFinanceTests(TestCase):
         response=self.client.get(reverse('customer_portal_section',args=['calendar']),{'week':str(self.when)});self.assertEqual(response.status_code,200,response.content)
         row=response.json()['appointments'][0];self.assertIn('13:00',row['ends_at']);self.assertNotIn('PRIVATE',str(row));self.assertNotIn('subcontractor',row)
         self.assertTrue(UserJobNotification.objects.filter(user=self.tenant,event__details__action='Attendance confirmed').exists())
+        stages=self.client.get(reverse('workflow_stages')).json()['stages']
+        self.assertEqual(next(s['count'] for s in stages if s['key']=='booked'),1)
     def test_alternative_requires_contact_confirmation_on_server(self):
         v=self.prepare();v.update(date=str(self.when+timedelta(days=1)),starts_at=str(self.when+timedelta(days=1))+'T12:00:00+02:00',ends_at=str(self.when+timedelta(days=1))+'T14:00:00+02:00',window='12:00–17:00')
         self.assertEqual(self.confirm(v).status_code,400);self.assertEqual(TeamAppointment.objects.count(),0)
@@ -202,3 +204,34 @@ class OperationalConcurrencyTests(TransactionTestCase):
         result=self.race([lambda c:self.api(c,url,dict(version=version,additional=first.pk,decision='approved')),lambda c:self.api(c,url,dict(version=version,additional=second.pk,decision='approved'))],user=self.pm)
         self.assertEqual(sorted(result),[200,409]);self.assertEqual(AdditionalAuthorisation.objects.filter(status='approved').count(),1)
         self.assertEqual(WorkflowDecision.objects.filter(operation='additional-decision').count(),1)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False,SESSION_COOKIE_SECURE=False,CSRF_COOKIE_SECURE=False)
+class PMDashboardAdjustmentTests(TestCase):
+    setUpTestData=OperationalWorkflowTests.__dict__['setUpTestData']
+    setUp=OperationalWorkflowTests.setUp
+    post=OperationalWorkflowTests.post
+    act=OperationalWorkflowTests.act
+    review=OperationalWorkflowTests.review
+    def test_unique_attention_jobs_confirmed_booking_and_operations_stages(self):
+        self.review()
+        AdditionalAuthorisation.objects.create(request=self.job,amount='2000',reason='Additional work',requested_by=self.ops)
+        self.client.force_login(self.pm)
+        url=reverse('workflow_stages')
+        data=self.client.get(url).json()
+        self.assertEqual(len(data['stages']),8)
+        self.assertGreaterEqual(data['attention_action_count'],2)
+        self.assertEqual(data['stages'][0]['count'],1)
+        self.assertEqual(len(self.client.get(url,{'stage':'attention'}).json()['results']),1)
+        self.assertEqual(self.client.get(url,{'stage':'booked'}).json()['results'],[])
+        self.act('attendance-request',preference='date',date=str(timezone.localdate()+timedelta(days=3)),window='09:00–13:00')
+        self.assertEqual(self.client.get(url,{'stage':'booked'}).json()['results'],[])
+        self.job.status='completed';self.job.save(update_fields=['status'])
+        self.job.additional_authorisations.update(status='declined')
+        self.assertEqual(self.client.get(url).json()['stages'][0]['count'],0)
+        self.client.force_login(self.foreign)
+        self.assertTrue(all(s['count']==0 for s in self.client.get(url).json()['stages']))
+        self.client.force_login(self.admin)
+        self.assertEqual(len(self.client.get(url).json()['stages']),8)
+        self.client.force_login(self.ops)
+        self.assertEqual(len(self.client.get(url).json()['stages']),10)
