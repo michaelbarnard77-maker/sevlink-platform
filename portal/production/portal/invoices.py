@@ -19,7 +19,7 @@ from .commercial import MAX_MONEY
 
 
 def invoice_data(invoice, user):
-    internal=user.is_superuser or (bool(invoice.subcontractor_id) and can_pay(user))
+    internal=user.is_superuser
     payments = []
     for payment in invoice.payments.all():
         row = {'amount': str(payment.amount), 'paid_on': payment.paid_on.isoformat(),
@@ -33,7 +33,7 @@ def invoice_data(invoice, user):
         'document_status':invoice.document_status,'reconciliation_required':invoice.reconciliation_required,
         'refunded_amount':str(invoice.refunded_amount),'net_paid_amount':str(net_paid(invoice)),
         'recorded_balance':str(invoice.amount-net_paid(invoice)),
-        'id': str(invoice.pk), 'number': invoice.number, 'amount': str(invoice.amount), 'currency':'ZAR',
+        'purpose':invoice.purpose, 'id': str(invoice.pk), 'number': invoice.number, 'amount': str(invoice.amount), 'currency':'ZAR',
         'due_date': invoice.due_date.isoformat(), 'uploaded_at': invoice.created_at.isoformat(),
         'paid_amount': str(invoice.paid_amount), 'outstanding': str(invoice.amount-net_paid(invoice) if invoice.document_status == 'active' else invoice.amount*0),
         'payment_status': invoice.payment_status, 'version': invoice.version, 'payments': payments,
@@ -67,15 +67,20 @@ def create(request, job_id):
     keys=[]
     try:
         key=request_key(request)
-        data,prepared=uploaded_pdf(request,('number','amount','due_date','visibility','subcontractor'))
+        data,prepared=uploaded_pdf(request,('number','amount','due_date','visibility','subcontractor','purpose'))
         values=dict(number=text(data.get('number'),80), amount=money(data.get('amount')),
-                    due_date=day(data.get('due_date')), visibility=data.get('visibility','internal'))
+                    due_date=day(data['due_date']) if data.get('due_date') else timezone.localdate(), visibility=data.get('visibility','internal'))
         if values['visibility'] not in ('shared','internal'):
             raise ValueError('Choose agency-visible or Operations-only invoice visibility.')
+        if values['visibility']=='shared' and not data.get('due_date'):raise ValueError('Record the due date printed on the agency invoice.')
         supplier_id=uuid.UUID(data['subcontractor']) if data.get('subcontractor') else None
         if supplier_id and values['visibility']!='internal':
             raise ValueError('Subcontractor invoices are Operations-only.')
-        fingerprint_values=dict(values,file=file_fingerprint(prepared))
+        purpose=data.get('purpose','final' if values['visibility']=='shared' else 'supplier')
+        if purpose not in ('deposit','final','supplier'):raise ValueError('Choose deposit, final or private supplier invoice.')
+        if values['visibility']=='shared' and purpose=='supplier':raise ValueError('Supplier invoices are private.')
+        if values['visibility']=='internal':purpose='supplier'
+        fingerprint_values=dict(values,purpose=purpose,file=file_fingerprint(prepared))
         if supplier_id: fingerprint_values['subcontractor']=str(supplier_id)
         fingerprint=digest(fingerprint_values)
         with transaction.atomic():
@@ -92,9 +97,20 @@ def create(request, job_id):
             if supplier is None: matches=matches.filter(request=job,visibility=values['visibility'])
             if matches.exists():
                 return JsonResponse({'error':'This invoice number already exists for this job and visibility.'},status=409)
+            if job.workflow_version and values['visibility']=='internal' and not supplier:raise ValueError('Select the subcontractor assigned to this job for a private supplier invoice.')
+            if job.workflow_version and values['visibility']=='shared':
+                from .workflow import completion_valid,check_ceiling
+                if purpose=='final' and (job.status!='completed' or not completion_valid(job)):
+                    raise ValueError('Accepted completion report, after photos, before photos or audited exception, and completed work are required before the final invoice.')
+                if purpose=='deposit' and job.job_type!='quoted':raise ValueError('Call-outs do not require deposit invoices.')
+                check_ceiling(job,values['amount'])
+            if supplier:
+                from datetime import timedelta
+                today=timezone.localdate()
+                values['due_date']=today+timedelta(days=(7-today.weekday())%7 or 7)
             document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
             invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,subcontractor=supplier,
-                creation_key=key,fingerprint=fingerprint,**values)
+                purpose=purpose,creation_key=key,fingerprint=fingerprint,**values)
             # Reload typed Decimal/Date values before serializing, including on SQLite.
             invoice.refresh_from_db()
             audit(invoice,request.user,'invoice_uploaded',key,invoice.amount)
@@ -159,6 +175,8 @@ def pay(request,job_id,invoice_id):
         invoice.version+=1
         invoice.save(update_fields=['paid_amount','payment_status','version'])
         audit(invoice,request.user,'invoice_payment',key,values['amount'])
+        from .workflow import after_payment
+        after_payment(job,request.user)
     return JsonResponse(invoice_data(invoice,request.user),status=201)
 
 
@@ -170,6 +188,6 @@ def pdf(request,job_id,invoice_id):
         return JsonResponse({'error':'Invoice access is restricted.'},status=403)
     qs=JobInvoice.objects.filter(request=job).select_related('document')
     if not request.user.is_superuser:
-        qs=qs.filter(visibility='internal',subcontractor__isnull=False) if can_pay(request.user) else qs.filter(visibility='shared')
+        qs=qs.filter(visibility='internal',subcontractor__isnull=False) if can_pay(request.user) else qs.filter(visibility='shared',subcontractor=None)
     invoice=get_object_or_404(qs,pk=invoice_id)
     return attachments.file_response(invoice.document)

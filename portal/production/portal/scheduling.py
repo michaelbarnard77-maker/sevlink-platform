@@ -72,7 +72,7 @@ def week(request):
     if len(search)>180: raise ValueError
     reference=search.split('-',1)[1] if search.upper().startswith(('SV-','REQ-')) else search
     number_field='request_number' if search.upper().startswith('REQ-') else 'job_number'
-    jobs=MaintenanceRequest.objects.exclude(status__in=['completed','cancelled']).filter(
+    jobs=MaintenanceRequest.objects.exclude(status__in=['completed','cancelled','closed']).filter(
         Q(title__icontains=search)|Q(property__address__icontains=search)|Q(id__icontains=reference)|Q(legacy_job_reference__iexact=search)| (Q(**{number_field:int(reference)}) if reference.isdecimal() and len(reference)<18 else Q(pk__isnull=True)))
     return JsonResponse({'week_start':str(start),'previous':str(start-timedelta(days=7)),'next':str(end),
         'days':[str(start+timedelta(days=i)) for i in range(7)],'timezone':'Africa/Johannesburg',
@@ -103,6 +103,10 @@ def accept(response):
 @checked
 def save(request):
     data=payload(request,('job','version','subcontractor','team','starts_at','ends_at','submission_key','appointment','reason','override_reason','cancel','customer_visible'))
+    return save_values(request,data)
+
+
+def save_values(request,data):
     if 'cancel' in data:
         if set(data)!={'cancel','reason'} or type(data['cancel'])is not int: raise ValueError
         a=get_object_or_404(appointments(),pk=data['cancel'])
@@ -130,8 +134,10 @@ def save(request):
                 if prior.actor_id!=request.user.pk or prior.fingerprint!=fingerprint:
                     return JsonResponse({'error':'Scheduling submission key conflict.'},status=409)
                 return JsonResponse(appointment_data(appointments().get(pk=prior.pk)))
-            if job.version!=data['version'] or job.status in ('completed','cancelled'):
+            if job.version!=data['version'] or job.status in ('completed','cancelled','closed'):
                 return JsonResponse({'error':'Job changed or closed. Refresh before scheduling.'},status=409)
+            if job.workflow_version and not getattr(request,'_attendance_authorised',False):
+                return JsonResponse({'error':'Confirm the attendance request and public arrival window through the attendance workflow.'},status=409)
             old=None
             if data.get('appointment'):
                 if type(data['appointment'])is not int or not isinstance(data.get('reason'),str) or not data['reason'].strip(): raise ValueError
@@ -149,7 +155,7 @@ def save(request):
                 raise Rejected(JsonResponse({'error':'Use reschedule to change the existing appointment.'},status=409))
             booking={'assignment':allocation.pk,'starts_at':data['starts_at'],'ends_at':data['ends_at']}
             if 'override_reason' in data: booking['override_reason']=data['override_reason']
-            response=accept(save_appointment(request.user,supplier_id,booking))
+            response=accept(save_appointment(request.user,supplier_id,booking,attendance_authorised=getattr(request,'_attendance_authorised',False)))
             entry=TeamAppointment.objects.get(pk=response['id'])
             entry.submission_key=key;entry.fingerprint=fingerprint;entry.rescheduled_from=old;entry.customer_visible=data.get('customer_visible',old.customer_visible if old else False);entry.save(update_fields=['submission_key','fingerprint','rescheduled_from','customer_visible'])
             record(job,request.user,'appointment_changed','calendar:'+str(key),{'appointment_id':str(entry.pk),'action':'rescheduled' if old else 'created'},private=True)
@@ -183,21 +189,38 @@ def progress(request,job_id):
 @require_GET
 @checked
 def monday(request):
+    from .models import Agency
+    from .commercial import day,money
     from .invoices import invoice_data
     today=timezone.localdate();upcoming=today+timedelta(days=(0-today.weekday())%7)
     period=request.GET.get('period','monday')
-    if period not in ('monday','all','overdue'): raise ValueError
-    qs=JobInvoice.objects.filter(subcontractor__isnull=False,visibility='internal',document_status='active').annotate(balance=F('amount')-F('paid_amount')+F('refunded_amount')).filter(balance__gt=0)
+    if period not in ('monday','upcoming','all','overdue','paid'): raise ValueError
+    qs=JobInvoice.objects.filter(subcontractor__isnull=False,visibility='internal').annotate(balance=F('amount')-F('paid_amount')+F('refunded_amount'))
+    if period!='all':qs=qs.filter(document_status='active')
+    if request.GET.get('document_status'):
+        if request.GET['document_status'] not in ('active','void'):raise ValueError
+        qs=qs.filter(document_status=request.GET['document_status'])
+    if period=='paid':qs=qs.filter(balance__lte=0)
+    elif period!='all':qs=qs.filter(balance__gt=0)
     if request.GET.get('subcontractor'): qs=qs.filter(subcontractor_id=uuid.UUID(request.GET['subcontractor']))
     if period=='monday': qs=qs.filter(due_date__lte=upcoming)
     elif period=='overdue': qs=qs.filter(due_date__lt=today)
-    total=qs.aggregate(amount=Sum('balance'))['amount'] or Decimal('0')
-    overdue=qs.filter(due_date__lt=today).aggregate(amount=Sum('balance'))['amount'] or Decimal('0')
+    elif period=='upcoming':qs=qs.filter(due_date__gte=today)
+    if request.GET.get('agency'):qs=qs.filter(request__property__agency_id=uuid.UUID(request.GET['agency']))
+    if request.GET.get('job'):qs=qs.filter(request_id=uuid.UUID(request.GET['job']))
+    if request.GET.get('due_date'):qs=qs.filter(due_date=day(request.GET['due_date']))
+    if request.GET.get('payment_date'):qs=qs.filter(payments__paid_on=day(request.GET['payment_date'])).distinct()
+    if request.GET.get('invoice_status'):qs=qs.filter(payment_status=request.GET['invoice_status'])
+    if request.GET.get('amount'):qs=qs.filter(amount=money(request.GET['amount']))
+    total=qs.filter(document_status='active',balance__gt=0).aggregate(amount=Sum('balance'))['amount'] or Decimal('0')
+    overdue=qs.filter(document_status='active',balance__gt=0,due_date__lt=today).aggregate(amount=Sum('balance'))['amount'] or Decimal('0')
     page=int(request.GET.get('page','1'))
     if not 1<=page<=1000000: raise ValueError
     return JsonResponse({'today':str(today),'monday':str(upcoming),'period':period,'page':page,'count':qs.count(),
         'outstanding_total':f'{total:.2f}','overdue_total':f'{overdue:.2f}',
+        'agencies':list(Agency.objects.values('id','name')),
+        'jobs':[{'id':str(j.pk),'name':j.reference} for j in MaintenanceRequest.objects.filter(invoices__subcontractor__isnull=False).distinct()],
         'suppliers':[{'id':str(s.pk),'name':s.name} for s in Subcontractor.objects.all()],
         'results':[dict(invoice_data(i,request.user),supplier_name=i.subcontractor.name,job=str(i.request_id),
-            job_number=i.request.reference,overdue=i.due_date<today,attention=i.reconciliation_required)
+            job_number=i.request.reference,overdue=i.document_status=='active' and i.amount-i.paid_amount+i.refunded_amount>0 and i.due_date<today,attention=i.reconciliation_required)
             for i in qs.select_related('subcontractor').order_by('due_date','pk')[(page-1)*50:page*50]]})

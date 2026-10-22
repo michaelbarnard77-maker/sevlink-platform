@@ -290,7 +290,7 @@ def appointment(request, subcontractor_id):
     return save_appointment(request.user,subcontractor_id,payload(request,('assignment','starts_at','ends_at','cancel','reason','override_reason')))
 
 
-def save_appointment(user,subcontractor_id,data):
+def save_appointment(user,subcontractor_id,data,attendance_authorised=False):
     from .staff_access import can_schedule
     if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     with transaction.atomic():
@@ -301,6 +301,8 @@ def save_appointment(user,subcontractor_id,data):
             prop=Property.objects.select_for_update().get(pk=a.request.property_id)
             job=MaintenanceRequest.objects.select_for_update().get(pk=a.request_id)
             job.property=prop; a.request=job
+            if job.workflow_version and not attendance_authorised:
+                return JsonResponse({'error':'Use the confirmed attendance workflow before booking this job.'},status=409)
             from .customer_portal import deposit_state
             if not deposit_state(job)['ready']:
                 return JsonResponse({'error':'A confirmed 50% customer deposit or an authorised Sevlink scheduling arrangement is required.'},status=409)
@@ -312,6 +314,11 @@ def save_appointment(user,subcontractor_id,data):
             a=TeamAppointment.objects.select_for_update().get(pk=a.pk)
             if a.cancelled_at: return JsonResponse(appointment_data(a))
             a.cancelled_at=timezone.now();a.cancelled_by=user;a.cancellation_reason=data['reason'];a.save()
+            job=a.assignment.request
+            if job.workflow_version:
+                job.status='reviewed';job.version+=1;job.save(update_fields=['status','version'])
+                from .workflow import attention_notifications
+                attention_notifications(job,user,'Attendance cancelled',f'attendance-cancel:{a.pk}',tenant=True)
             audit(item,user,'Appointment cancelled',appointment=a.pk)
             return JsonResponse(appointment_data(a))
         if set(data)-{'override_reason'}!={'assignment','starts_at','ends_at'} or type(data['assignment'])is not int: raise ValueError
@@ -321,7 +328,7 @@ def save_appointment(user,subcontractor_id,data):
         if not a.team_id: return JsonResponse({'error':'Assign a team before recording an appointment.'},status=400)
         t=SubcontractorTeam.objects.select_for_update().get(pk=a.team_id)
         if not item.active or item.archived or not t.active or not valid_window(t,start,end): raise ValueError
-        if not current_assignments().filter(pk=a.pk).exists() or a.request.status in ('completed','cancelled') or a.reviews.filter(resolution__isnull=True).exists():
+        if not current_assignments().filter(pk=a.pk).exists() or a.request.status in ('completed','cancelled','closed') or a.reviews.filter(resolution__isnull=True).exists():
             return JsonResponse({'error':'Assignment changed, closed or requires Operations review.'},status=409)
         if not eligible(a.request.property).filter(pk=item.pk).exists(): raise ValueError
         existing=t.appointments.filter(assignment=a,cancelled_at__isnull=True).first()
@@ -364,6 +371,8 @@ def invoice_ledger(request):
     from .models import JobInvoice
     from .invoices import invoice_data
     from .financial import net_paid
+    from .staff_access import can_pay
+    if not can_pay(request.user):return JsonResponse({'error':'Super Admin finance access required.'},status=403)
     qs=JobInvoice.objects.filter(subcontractor__isnull=False).select_related('subcontractor','request__property__agency')
     state=request.GET.get('state','outstanding')
     if state not in ('all','outstanding','paid','void'): raise ValueError

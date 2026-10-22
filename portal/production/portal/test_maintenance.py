@@ -72,6 +72,8 @@ class MaintenanceTests(TestCase):
         self.client.logout()
         self.login(self.pm)
         self.assertEqual(self.client.get(self.collection).json()['count'], 1)
+        # Historical regression retains its legacy progress semantics; strict new completion gates are independently tested.
+        MaintenanceRequest.objects.update(workflow_version=0)
         for version, status in enumerate(['reviewed', 'in_progress', 'completed'], start=1):
             response = self.update(status, version)
             self.assertEqual(response.status_code, 200, response.content)
@@ -164,7 +166,7 @@ class MaintenanceTests(TestCase):
             self.login(user)
             detail = self.client.get(self.detail_url)
             data = detail.json()
-            self.assertEqual(set(data), {'id', 'reference', 'legacy_reference', 'request_reference', 'official_job_reference', 'historical_reference', 'urgency', 'property', 'title', 'description', 'category',
+            self.assertEqual(set(data), {'workflow', 'id', 'reference', 'legacy_reference', 'request_reference', 'official_job_reference', 'historical_reference', 'urgency', 'property', 'title', 'description', 'category',
                                         'status', 'status_label', 'version', 'created_at', 'updated_at', 'allowed_statuses', 'history', 'attachments', 'comments', 'quotations', 'activity', 'tenant_comments_allowed', 'invoices'})
             for url in [self.detail_url, self.collection, self.context_url]:
                 content = self.client.get(url).content.decode()
@@ -228,16 +230,16 @@ class MaintenanceTests(TestCase):
         self.login(self.tenant)
         self.assertEqual(self.client.get(self.collection).status_code, 401)
 
-    def test_managers_cannot_create_tenant_reports_and_methods_are_restricted(self):
+    def test_managers_can_report_their_portfolio_and_methods_are_restricted(self):
         self.create_report()
         for user in [self.pm, self.admin, self.superadmin]:
             self.login(user)
-            self.assertEqual(self.report().status_code, 403)
+            self.assertEqual(self.report().status_code, 403 if user==self.superadmin else 201)
         self.assertEqual(self.client.delete(self.detail_url).status_code, 405)
         self.assertEqual(self.client.post(self.detail_url, '{}', content_type='application/json').status_code, 405)
         self.assertEqual(self.client.patch(self.collection, '{}', content_type='application/json').status_code, 405)
         self.assertEqual(self.client.post(self.context_url).status_code, 405)
-        self.assertEqual(MaintenanceRequest.objects.get().status, 'awaiting_review')
+        self.assertTrue(all(j.status=='awaiting_review' for j in MaintenanceRequest.objects.all()))
 
     def test_paginated_results_and_invalid_page(self):
         self.create_report()
@@ -294,7 +296,8 @@ class MaintenanceTests(TestCase):
             self.assertEqual(response.status_code, 403)
             self.assertNotContains(response, self.other_agency.name, status_code=403)
         self.login(self.superadmin)
-        self.assertContains(self.client.get('/'), self.other_agency.name)
+        self.assertRedirects(self.client.get('/'),reverse('maintenance_workspace'))
+        self.assertContains(self.client.get(reverse('workflow_agencies')),self.other_agency.name)
 
     def test_pm_reassignment_before_write_prevents_status_mutation(self):
         self.create_report()

@@ -137,10 +137,14 @@ def adjust(request, job_id, invoice_id, operation):
                 if invoice.subcontractor_id is None: matches=matches.filter(request=job,visibility=invoice.visibility)
                 if matches.exists():
                     return JsonResponse({'error':'Replacement must use a distinct externally issued invoice number.'},status=409)
+                if job.workflow_version and invoice.visibility=='shared':
+                    from .workflow import completion_valid,check_ceiling
+                    if invoice.purpose=='final' and not completion_valid(job):raise ValueError('Completion documents required.')
+                    check_ceiling(job,values['amount'],exclude=invoice.pk)
                 document=attachments.save_files(job,request.user,prepared,keys,visibility='internal',purpose='invoice')[0]
                 old=invoice
                 invoice=JobInvoice.objects.create(request=job,document=document,uploaded_by=request.user,
-                    previous=old,correction_reason=reason,subcontractor_id=old.subcontractor_id,
+                    purpose=old.purpose,previous=old,correction_reason=reason,subcontractor_id=old.subcontractor_id,
                     visibility=old.visibility,reconciliation_required=old.reconciliation_required or net_paid(old)>0,
                     creation_key=key,fingerprint=fingerprint,**values)
                 invoice.refresh_from_db()
@@ -163,6 +167,8 @@ def adjust(request, job_id, invoice_id, operation):
             invoice.version+=1
             invoice.save()
             ledger_action(invoice,request.user,kind,key,fingerprint,reason,reference)
+            from .workflow import after_payment
+            after_payment(job,request.user)
     except ValueError as error:
         attachments.cleanup(keys)
         return JsonResponse({'error':str(error)},status=400)
@@ -183,7 +189,7 @@ def credit_pdf(request,job_id,invoice_id,note_id):
         return JsonResponse({'error':'Commercial document access is restricted.'},status=403)
     qs=JobInvoice.objects.filter(request=job)
     if not request.user.is_superuser:
-        qs=qs.filter(visibility='shared')
+        qs=qs.filter(visibility='shared',subcontractor=None)
     invoice=get_object_or_404(qs,pk=invoice_id)
     note=get_object_or_404(InvoiceCreditNote.objects.select_related('document'),pk=note_id,invoice=invoice)
     return attachments.file_response(note.document)

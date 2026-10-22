@@ -68,9 +68,10 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(MaintenanceRequest.objects.get().attachments.filter(purpose='general').count(), 2)
         self.assertEqual(JobQuotation.objects.filter(status='approved').count(),2)
         self.assertEqual(QuoteApprovalReplacement.objects.count(),1)
-        self.assertEqual(JobComment.objects.filter(visibility='shared').count(), 2)
+        self.assertEqual(JobComment.objects.filter(visibility='shared').count(), 1)
+        self.assertEqual(JobComment.objects.filter(visibility='agency').count(),1)
         self.assertEqual(JobComment.objects.filter(visibility='internal').count(), 1)
-        self.assertEqual(OperationsNotification.objects.count(), 5)
+        self.assertEqual(OperationsNotification.objects.count(), 6)
         self.assertEqual(JobInvoice.objects.get(previous__isnull=True).document_status,'void')
         self.assertTrue(JobInvoice.objects.get(previous__isnull=False).reconciliation_required)
         self.assertEqual(InvoicePayment.objects.get().amount,250)
@@ -121,7 +122,7 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
             'number':'MONDAY-BROWSER-001','amount':'500.00','due_date':str(monday),'subcontractor':str(self.partner.pk),'attachments':document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(response.status_code,201,response.content)
         sessions={}
-        for role,user in [('scheduler',self.scheduler),('superadmin',self.ops),('finance',self.finance),('tenant',self.tenant)]:
+        for role,user in [('scheduler',self.scheduler),('superadmin',self.ops),('finance',self.ops),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
         script=Path(settings.BASE_DIR).parents[1]/'scripts'/'test-weekly-browser.cjs'
         result=subprocess.run(['node',str(script)],input=json.dumps({'url':self.live_server_url,'sessions':sessions,'day':str(self.monday),

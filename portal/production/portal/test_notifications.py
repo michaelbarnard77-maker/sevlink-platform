@@ -72,6 +72,8 @@ class EventWorkflowTests(TestCase):
             'description': 'Private tenant description', 'category': 'Plumbing'}, key)
         self.assertEqual(response.status_code, 201, response.content)
         self.job = MaintenanceRequest.objects.get(pk=response.json()['id'])
+        MaintenanceRequest.objects.filter(pk=self.job.pk).update(workflow_version=0)
+        self.job.refresh_from_db()
         self.detail_url = reverse('maintenance_detail', args=[self.job.pk])
         self.comment_url = reverse('maintenance_comment', args=[self.job.pk])
         self.quote_url = reverse('maintenance_quote', args=[self.job.pk])

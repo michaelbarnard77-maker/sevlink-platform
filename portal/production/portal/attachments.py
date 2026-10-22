@@ -224,11 +224,13 @@ def save_files(job, actor, prepared, saved_keys, comment=None, visibility="share
 
 
 def visible_attachments(job, user):
-    qs = job.attachments.filter(purpose='general')
+    qs = job.attachments.filter(purpose__in=['general','completion_before','completion_after','completion_report'])
     if user.is_superuser:
         return qs
-    qs = qs.filter(visibility='shared').exclude(comment__visibility='internal')
+    qs = qs.filter(visibility__in=['shared','agency']).exclude(comment__visibility='internal')
     membership = getattr(user, 'membership', None)
+    if membership and membership.role == 'tenant':
+        qs=qs.filter(visibility='shared').exclude(comment__visibility='agency')
     if membership and membership.role == 'tenant' and not job.tenant_comments_allowed:
         qs = qs.filter(comment__isnull=True)
     return qs
@@ -255,7 +257,7 @@ def upload(request, job_id):
         with transaction.atomic():
             MaintenanceRequest.objects.select_for_update().get(pk=job.pk)
             job = get_object_or_404(requests_for(request.user), pk=job.pk)
-            if job.status in ('completed', 'cancelled'):
+            if job.status in ('completed', 'cancelled', 'closed'):
                 raise UploadRejected('Attachments cannot be added to a closed request.')
             save_files(job, request.user, prepared, keys)
     except UploadRejected as error:

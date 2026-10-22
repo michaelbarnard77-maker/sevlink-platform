@@ -17,7 +17,7 @@ def approve_job_number(job):
     """Caller holds the job lock. Allocate only after a saved, authorised approval."""
     from .models import MaintenanceRequest
     if job.job_number is None:
-        if not job.quotations.filter(status='approved').exists():
+        if not job.quotations.filter(status='approved').exists() and not (job.job_type=='callout' and job.authorised_at and job.authorised_by_id):
             raise ValueError('An approved quotation is required before issuing a job number.')
         value = next_number('SV')
         if MaintenanceRequest.objects.filter(pk=job.pk, job_number__isnull=True).update(job_number=value) != 1:

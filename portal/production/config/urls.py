@@ -1,7 +1,16 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
 from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers, scheduling, lifecycle, mfa, customer_portal
+from portal import workflow
+
 urlpatterns = [
+    path('api/maintenance/workflow/agencies/',workflow.agencies,name='workflow_agencies'),
+    path('api/maintenance/workflow/stages/',workflow.dashboard,name='workflow_stages'),
+    path('api/maintenance/workflow/notifications/',workflow.inbox,name='workflow_notifications'),
+    path('api/maintenance/workflow/notifications/<int:notification_id>/',workflow.mark_read,name='workflow_notification_read'),
+    path('api/maintenance/requests/<uuid:job_id>/workflow/confirm-attendance/',workflow.confirm_attendance,name='workflow_confirm_attendance'),
+    path('api/maintenance/requests/<uuid:job_id>/workflow/documents/',workflow.documents,name='workflow_documents'),
+    path('api/maintenance/requests/<uuid:job_id>/workflow/<str:operation>/',workflow.action,name='workflow_action'),
     path('api/maintenance/portal/<str:section>/',customer_portal.section,name='customer_portal_section'),
     path('api/maintenance/portal-acknowledge/',customer_portal.acknowledge,name='customer_portal_acknowledge'),
     path('api/maintenance/portal-issues/',customer_portal.report_issue,name='customer_portal_issue'),

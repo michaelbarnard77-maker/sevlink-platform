@@ -58,10 +58,12 @@ def add_comment(request, job_id):
         if not isinstance(data.get('text'), str) or not form.is_valid():
             raise ValueError('A comment of 1–2500 characters is required.')
         visibility = data.get('visibility', 'shared')
-        if visibility not in ('shared', 'internal'):
+        if visibility not in ('shared', 'agency', 'internal'):
             raise ValueError('Invalid comment visibility.')
         if visibility == 'internal' and not request.user.is_superuser:
             return JsonResponse({'error': 'Internal notes are for Sevlink Operations only.'}, status=403)
+        if visibility=='agency' and access(request.user)[0]=='tenant':
+            return JsonResponse({'error':'Tenants cannot enter private agency discussions.'},status=403)
         prepared = attachments.prepare(uploads)
         fingerprint = digest({'text': form.cleaned_data['text'], 'visibility': visibility,
             'files': [(p['filename'], hashlib.sha256(p['data']).hexdigest()) for p in prepared]})
@@ -74,14 +76,17 @@ def add_comment(request, job_id):
                 if existing.author_id != request.user.pk or existing.request_id != job.pk or existing.fingerprint != fingerprint:
                     return JsonResponse({'error': 'Idempotency key conflict.'}, status=409)
                 return JsonResponse(comment_data(existing, request.user))
-            if prepared and job.status in ('completed', 'cancelled'):
+            if prepared and job.status in ('completed', 'cancelled', 'closed'):
                 raise ValueError('Attachments cannot be added to closed requests.')
             role, name = actor_identity(request.user)
             comment = JobComment.objects.create(request=job, author=request.user, author_name=name,
                 author_role=role, text=form.cleaned_data['text'], visibility=visibility, fingerprint=fingerprint, idempotency_key=key)
             attachments.save_files(job, request.user, prepared, keys, comment=comment, visibility=visibility)
             record(job, request.user, 'internal_note' if visibility == 'internal' else 'comment_added',
-                'comment:' + str(comment.pk), {'comment_id': str(comment.pk), 'text': comment.text})
+                'comment:' + str(comment.pk), {'comment_id': str(comment.pk), 'text': comment.text},private=visibility!='shared')
+            from .workflow import notify,participants,operators
+            event=JobActivity.objects.get(dedup_key='comment:'+str(comment.pk))
+            notify(event,list(operators())+(participants(job,visibility=='shared' and job.tenant_comments_allowed) if visibility!='internal' else []))
             Audit.objects.create(agency=job.property.agency, actor=request.user, action='Job comment added', object_id=str(comment.pk))
     except ValueError as error:
         attachments.cleanup(keys)

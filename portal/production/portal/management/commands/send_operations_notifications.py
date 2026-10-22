@@ -25,6 +25,10 @@ class Command(BaseCommand):
                 # Standalone workers remain in autocommit between batches.
                 if not connection.in_atomic_block:
                     close_old_connections()
+                from portal.models import User
+                from portal.workflow import refresh_overdue
+                actor=User.objects.filter(is_active=True,is_superuser=True).order_by('pk').first()
+                if actor:refresh_overdue(actor)
                 count = deliver(options['limit'])
                 self.stdout.write(f'Processed {count} Operations delivery attempts. Inspect outbox state for pending/failed records.')
                 if not options['watch']:

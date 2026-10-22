@@ -454,7 +454,7 @@ class FinancialConcurrencyTests(TransactionTestCase):
 class Financial75MigrationTests(TransactionTestCase):
     def test_preserves_paid_invoice_approved_quote_and_reserves_historical_ranges(self):
         old=[('portal','0010_jobquotation_document_jobquotation_reference_and_more')]
-        new=[('portal','0027_manual_document_references_and_approved_jobs')]
+        new=[('portal','0032_workflow_database_guards')]
         try:
             executor=MigrationExecutor(connection);executor.migrate(old)
             apps=executor.loader.project_state(old).apps
@@ -474,6 +474,13 @@ class Financial75MigrationTests(TransactionTestCase):
             quote=apps.get_model('portal','JobQuotation').objects.get(pk=quote.pk)
             self.assertEqual((quote.reference,quote.record_number,quote.status),('SQ-2024-0042',None,'approved'))
             self.assertEqual(quote.public_snapshot,{'amount':'100','legacy':'unchanged'})
+            preserved=apps.get_model('portal','MaintenanceRequest').objects.get(pk=job.pk)
+            self.assertEqual(preserved.workflow_version,0)
+            self.assertEqual(preserved.job_type,'unclassified')
+            self.assertIsNone(preserved.authorised_at)
+            self.assertIsNone(preserved.closed_at)
+            self.assertEqual(apps.get_model('portal','CompletionRecord').objects.count(),0)
+            self.assertEqual(apps.get_model('portal','WorkflowDecision').objects.count(),0)
             self.assertEqual(apps.get_model('portal','InvoiceRefund').objects.count(),0)
             self.assertEqual(apps.get_model('portal','OperationsNotification').objects.count(),0)
             self.assertIsNotNone(apps.get_model('portal','MaintenanceRequest').objects.get(pk=job.pk).job_number)
@@ -481,7 +488,7 @@ class Financial75MigrationTests(TransactionTestCase):
 
     def test_reference_correction_reserves_old_numbers_and_preserves_historical_aliases(self):
         old=[('portal','0026_jobactionrequest_job_active_action_unique')]
-        new=[('portal','0027_manual_document_references_and_approved_jobs')]
+        new=[('portal','0032_workflow_database_guards')]
         try:
             executor=MigrationExecutor(connection);executor.migrate(old)
             apps=executor.loader.project_state(old).apps

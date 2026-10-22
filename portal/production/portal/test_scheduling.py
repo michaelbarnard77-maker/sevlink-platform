@@ -159,6 +159,8 @@ class SchedulingTests(TestCase):
     def invoice(self,number,amount,due):
         response=self.client.post(reverse('maintenance_invoice',args=[self.job.pk]),{'number':number,'amount':amount,'due_date':str(due),'subcontractor':str(self.partner.pk),'attachments':document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(response.status_code,201,response.content)
+        # Historical due-date fixtures, independent of the new upload-next-Monday rule.
+        JobInvoice.objects.filter(pk=response.json()['id']).update(due_date=due)
         return JobInvoice.objects.get(pk=response.json()['id'])
 
     def test_monday_totals_partial_payments_finance_permissions_and_private_pdf(self):
@@ -166,7 +168,7 @@ class SchedulingTests(TestCase):
         today=timezone.localdate();monday=today+timedelta(days=(0-today.weekday())%7)
         first=self.invoice('DUE-1','300.00',today-timedelta(days=1))
         self.invoice('DUE-2','500.00',monday);self.invoice('LATER','700.00',monday+timedelta(days=1))
-        self.client.force_login(self.finance)
+        self.client.force_login(self.ops)
         pay={'version':first.version,'amount':'100.00','paid_on':str(today),'reference':'EXTERNAL-STEP9'}
         response=self.client.post(reverse('maintenance_invoice_payment',args=[self.job.pk,first.pk]),json.dumps(pay),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(response.status_code,201,response.content)
@@ -176,12 +178,12 @@ class SchedulingTests(TestCase):
         self.assertEqual(self.client.get(reverse('operations_monday_payments'),{'period':'overdue'}).json()['count'],1)
         response=self.client.get(reverse('maintenance_invoice_pdf',args=[self.job.pk,first.pk]))
         self.assertEqual(response.status_code,200);self.assertTrue(b''.join(response.streaming_content).startswith(b'%PDF-'))
-        self.assertEqual(self.client.get(reverse('supplier_profile',args=[self.partner.pk])).status_code,403)
+        self.assertEqual(self.client.get(reverse('supplier_profile',args=[self.partner.pk])).status_code,200)
         self.assertEqual(InvoicePayment.objects.count(),1)  # Viewing Monday never records a payment.
         for user in (self.scheduler,self.pm,self.tenant):
             self.client.force_login(user)
             self.assertEqual(self.client.get(reverse('operations_monday_payments')).status_code,403)
-        self.client.force_login(self.finance)
+        self.client.force_login(self.ops)
         JobInvoice.objects.filter(pk=first.pk).update(reconciliation_required=True)
         d=self.client.get(reverse('operations_monday_payments')).json();self.assertTrue(d['results'][0]['attention'])
 

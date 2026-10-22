@@ -162,6 +162,7 @@ class MaintenanceRequest(models.Model):
         ATTENDED = 'attended', 'Attended'
         COMPLETED = 'completed', 'Completed'
         CANCELLED = 'cancelled', 'Cancelled'
+        CLOSED = 'closed', 'Closed'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name='maintenance_requests')
@@ -169,7 +170,17 @@ class MaintenanceRequest(models.Model):
     job_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
     request_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
     legacy_job_reference = models.CharField(max_length=80, blank=True, editable=False)
-    urgency = models.CharField(max_length=10, choices=[('normal','Normal'),('urgent','Urgent'),('safety','Safety concern')], default='normal')
+    workflow_version = models.PositiveSmallIntegerField(default=0, editable=False)
+    job_type = models.CharField(max_length=16, default='unclassified', choices=[('unclassified','Needs review'),('callout','Call-Out'),('quoted','Quotation Required')])
+    safety_concern = models.BooleanField(default=False)
+    access_information = models.TextField(max_length=2500, blank=True)
+    access_responsibility = models.CharField(max_length=10, default='sevlink', choices=[('sevlink','Sevlink Arranges Access'),('pm','Property Manager Arranges Access')])
+    spending_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    authorised_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT, related_name='+')
+    authorised_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    parent_request = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='additional_work_requests')
+    urgency = models.CharField(max_length=10, choices=[('normal','Normal'),('high','High'),('urgent','Urgent'),('safety','Historical safety flag')], default='normal')
     title = models.CharField(max_length=180)
     description = models.TextField(max_length=2500)
     category = models.CharField(max_length=80)
@@ -187,8 +198,8 @@ class MaintenanceRequest(models.Model):
         ordering = ['-created_at', '-id']
         indexes = [models.Index(fields=['property', 'status'], name='maintenance_property_status')]
         constraints = [models.CheckConstraint(condition=models.Q(status__in=[
-            'awaiting_review', 'reviewed', 'in_progress', 'scheduled', 'on_site', 'attended', 'completed', 'cancelled'
-        ]), name='maintenance_valid_status')]
+            'awaiting_review', 'reviewed', 'in_progress', 'scheduled', 'on_site', 'attended', 'completed', 'cancelled', 'closed'
+        ]), name='maintenance_valid_status'),models.CheckConstraint(condition=~models.Q(status='closed')|models.Q(closed_at__isnull=False),name='closed_job_has_timestamp')]
 
     @model_property
     def request_reference(self):
@@ -226,11 +237,11 @@ class MaintenanceStatusEvent(models.Model):
 
 class MaintenanceAttachment(models.Model):
     # Commercial documents are never returned by the general job attachment API.
-    purpose = models.CharField(max_length=12, default='general', choices=[('general', 'Job attachment'), ('quotation', 'Quotation PDF'), ('invoice', 'Invoice PDF'), ('credit_note', 'External credit note PDF')])
+    purpose = models.CharField(max_length=24, default='general', choices=[('general', 'Job attachment'), ('quotation', 'Quotation PDF'), ('invoice', 'Invoice PDF'), ('credit_note', 'External credit note PDF'),('completion_before','Before-work photograph'),('completion_after','After-work photograph'),('completion_report','Completion report')])
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='attachments')
     comment = models.ForeignKey('JobComment', null=True, blank=True, on_delete=models.PROTECT, related_name='attachments')
-    visibility = models.CharField(max_length=10, choices=[('shared', 'Shared'), ('internal', 'Operations only')], default='shared')
+    visibility = models.CharField(max_length=10, choices=[('shared', 'Operations, PM and tenant'), ('agency','Operations and agency only'), ('internal', 'Operations only')], default='shared')
     uploaded_by = models.ForeignKey(User, on_delete=models.PROTECT)
     storage_key = models.CharField(max_length=200, unique=True)
     filename = models.CharField(max_length=160)
@@ -264,7 +275,7 @@ class JobComment(AppendOnlyModel):
     author_name = models.CharField(max_length=300)
     author_role = models.CharField(max_length=20)
     text = models.TextField(max_length=2500)
-    visibility = models.CharField(max_length=10, choices=[('shared', 'Shared'), ('internal', 'Operations only')], default='shared')
+    visibility = models.CharField(max_length=10, choices=[('shared', 'Operations, PM and tenant'), ('agency','Operations and agency only'), ('internal', 'Operations only')], default='shared')
     fingerprint = models.CharField(max_length=64, blank=True)
     idempotency_key = models.UUIDField(unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -326,6 +337,7 @@ class JobQuotation(models.Model):
 
 
 class JobInvoice(models.Model):
+    purpose = models.CharField(max_length=10, default='legacy', choices=[('legacy','Historical / review'),('deposit','Deposit'),('final','Final'),('supplier','Private supplier')])
     subcontractor = models.ForeignKey("Subcontractor", null=True, blank=True, on_delete=models.PROTECT, related_name="supplier_invoices")
     record_number = models.CharField(max_length=24, unique=True, null=True, blank=True)
     previous = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT, related_name='replacement')
@@ -372,7 +384,7 @@ class JobInvoice(models.Model):
         from django.core.exceptions import ValidationError
         old = type(self).objects.filter(pk=self.pk).first()
         if old and any(getattr(old, field) != getattr(self, field) for field in (
-                'subcontractor_id','record_number','previous_id','correction_reason','request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
+                'purpose','subcontractor_id','record_number','previous_id','correction_reason','request_id','document_id','number','amount','due_date','visibility','uploaded_by_id','created_at','creation_key','fingerprint')):
             raise ValidationError('Invoice PDF and recorded invoice details are immutable.')
         if old and old.document_status == 'void' and any(getattr(old, f) != getattr(self, f) for f in (
                 'document_status','void_reason','voided_on','voided_at','voided_by_id','accounting_reference')):
@@ -515,6 +527,7 @@ class QuotationAction(AppendOnlyModel):
 
 class JobActivity(AppendOnlyModel):
     class Kind(models.TextChoices):
+        WORKFLOW = 'workflow_event', 'Workflow decision'
         APPOINTMENT = 'appointment_changed', 'Private appointment changed'
         ASSIGNED = 'job_assigned', 'Private subcontractor assignment recorded'
         SUBMITTED = 'job_submitted', 'Maintenance request submitted'
@@ -874,4 +887,78 @@ class WebsiteIssue(models.Model):
     subject = models.CharField(max_length=180)
     description = models.TextField(max_length=2500)
     status = models.CharField(max_length=12,choices=[('open','Open'),('reviewed','Reviewed'),('closed','Closed')],default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WorkflowDecision(AppendOnlyModel):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='workflow_decisions')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    operation = models.CharField(max_length=40)
+    key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+    snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class UserJobNotification(models.Model):
+    event = models.ForeignKey(JobActivity, on_delete=models.PROTECT, related_name='recipient_notifications')
+    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ['-created_at','-id']
+        constraints = [models.UniqueConstraint(fields=['event','user'],name='job_event_recipient_unique')]
+
+
+class AdditionalAuthorisation(models.Model):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='additional_authorisations')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField(max_length=2500)
+    status = models.CharField(max_length=12, default='pending', choices=[('pending','Pending'),('approved','Approved'),('declined','Declined'),('quotation','Separate quotation requested')])
+    requested_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='+')
+    decided_by = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name='+')
+    decided_at = models.DateTimeField(null=True)
+    linked_request = models.OneToOneField(MaintenanceRequest, null=True, on_delete=models.PROTECT, related_name='source_authorisation')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='additional_limit_positive')]
+
+
+class DepositVerification(AppendOnlyModel):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='deposit_verifications')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    verified_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints=[models.CheckConstraint(condition=models.Q(amount__gt=0),name='verified_deposit_positive')]
+
+
+class AttendanceRequest(models.Model):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='attendance_requests')
+    requested_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='+')
+    preference = models.CharField(max_length=8, choices=[('date','Preferred date'),('call','Request a Call')])
+    requested_date = models.DateField(null=True)
+    requested_window = models.CharField(max_length=12, blank=True)
+    status = models.CharField(max_length=12, default='pending', choices=[('pending','Pending'),('declined','Alternative being arranged'),('confirmed','Confirmed')])
+    agreed_date = models.DateField(null=True)
+    agreed_window = models.CharField(max_length=12, blank=True)
+    contact_category = models.CharField(max_length=12, blank=True)
+    confirmed_by = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name='+')
+    confirmed_at = models.DateTimeField(null=True)
+    appointment = models.OneToOneField(TeamAppointment, null=True, on_delete=models.PROTECT, related_name='public_arrival')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['request'],condition=models.Q(status='pending'),name='one_pending_attendance_request'),models.CheckConstraint(condition=models.Q(preference='call',requested_date__isnull=True,requested_window='')|models.Q(preference='date',requested_date__isnull=False,requested_window__in=['09:00–13:00','12:00–17:00']),name='attendance_preference_window')]
+
+
+class CompletionRecord(AppendOnlyModel):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='completion_records')
+    report = models.TextField(max_length=5000)
+    before_unavailable = models.BooleanField(default=False)
+    exception_reason = models.TextField(max_length=1000, blank=True)
+    recorded_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    documents = models.ManyToManyField(MaintenanceAttachment)
     created_at = models.DateTimeField(auto_now_add=True)

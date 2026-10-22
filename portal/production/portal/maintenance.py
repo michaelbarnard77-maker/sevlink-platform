@@ -36,7 +36,7 @@ TRANSITIONS = {
     S.SCHEDULED: (S.ON_SITE,S.ATTENDED,S.COMPLETED,S.CANCELLED),
     S.ON_SITE: (S.ATTENDED,S.COMPLETED,S.CANCELLED),
     S.ATTENDED: (S.COMPLETED,S.CANCELLED),
-    S.COMPLETED: (), S.CANCELLED: (),
+    S.COMPLETED: (), S.CANCELLED: (), S.CLOSED: (),
 }
 
 
@@ -115,16 +115,18 @@ def serialize(job, user):
     from .attachments import visible_attachments
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
+    from .workflow import data as workflow_data
     return {
+        'workflow': workflow_data(job,user),
         'id': str(job.pk), 'reference': job.reference, 'legacy_reference': 'SV-' + str(job.pk).upper(), 'request_reference': job.request_reference, 'official_job_reference': job.reference if job.job_number else None, 'historical_reference': job.legacy_job_reference, 'urgency': job.urgency,
         'property': property_data(job.property), 'title': job.title,
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),
         'attachments': [attachment_data(a) for a in visible_attachments(job, user)],
         'tenant_comments_allowed': job.tenant_comments_allowed,
-        'comments': [comment_data(c, user) for c in job.comments.all() if (user.is_superuser or c.visibility == 'shared') and (role != Membership.TENANT or job.tenant_comments_allowed)],
+        'comments': [comment_data(c, user) for c in job.comments.all() if (user.is_superuser or c.visibility in (('shared',) if role==Membership.TENANT else ('shared','agency'))) and (role != Membership.TENANT or job.tenant_comments_allowed)],
         'quotations': [quote_data(q, user) for q in job.quotations.all() if user.is_superuser or q.status != 'draft'] if role != Membership.TENANT else [],
-        'invoices': [invoice_data(i, user) for i in job.invoices.select_related('document').prefetch_related('payments__actor') if user.is_superuser or i.visibility == 'shared'] if role != Membership.TENANT else [],
+        'invoices': [invoice_data(i, user) for i in job.invoices.select_related('document').prefetch_related('payments__actor') if user.is_superuser or (i.visibility == 'shared' and i.subcontractor_id is None)] if role != Membership.TENANT else [],
         'activity': [activity_data(e, user) for e in job.activities.all()
                      if (user.is_superuser or e.visibility == 'shared') and (role != Membership.TENANT or (not e.kind.startswith(('quote_', 'invoice_')) and (job.tenant_comments_allowed or e.kind != 'comment_added')))],
         'version': job.version, 'created_at': job.created_at.isoformat(),
@@ -140,6 +142,7 @@ class ReportForm(forms.Form):
     title = forms.CharField(max_length=180)
     description = forms.CharField(max_length=2500)
     category = forms.ChoiceField(choices=[(c, c) for c in CATEGORIES])
+    access_information = forms.CharField(max_length=2500,required=False)
     urgency = forms.ChoiceField(choices=[('normal','Normal'),('urgent','Urgent'),('safety','Safety concern')],required=False)
 
     def clean_urgency(self):
@@ -157,7 +160,7 @@ def context(request):
     role, _ = access(request.user)
     return JsonResponse({
         'user': {'name': request.user.get_full_name() or request.user.username, 'role': role},
-        'can_report': role == Membership.TENANT,
+        'can_report': role in (Membership.TENANT,Membership.PM,Membership.ADMIN),
         'can_schedule': can_schedule(request.user),
         'can_supplier_payments': can_pay(request.user),
         'properties': [property_data(p) for p in properties_for(request.user).select_related('agency', 'manager')],
@@ -180,8 +183,8 @@ def collection(request):
         jobs = qs[(page - 1) * 50:page * 50]
         return JsonResponse({'results': [serialize(j, request.user) for j in jobs], 'count': count,
                              'next': page + 1 if page * 50 < count else None})
-    if access(request.user)[0] != Membership.TENANT:
-        return JsonResponse({'error': 'Only linked tenants can submit reports.'}, status=403)
+    if access(request.user)[0] not in (Membership.TENANT,Membership.PM,Membership.ADMIN):
+        return JsonResponse({'error': 'Only authorised tenants and agency users can submit reports.'}, status=403)
     from . import attachments
     keys = []
     submission_key = None
@@ -193,9 +196,9 @@ def collection(request):
             except ValueError:
                 raise ValueError('Idempotency-Key must be a UUID.')
         if request.content_type == 'multipart/form-data':
-            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency'))
+            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information'))
         else:
-            data = payload(request, ('property', 'title', 'description', 'category', 'urgency'))
+            data = payload(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information'))
             uploads = []
         if any(not isinstance(value, str) for value in data.values()):
             raise ValueError('Report fields must be text.')
@@ -203,8 +206,10 @@ def collection(request):
         if not form.is_valid():
             return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
         prepared = attachments.prepare(uploads)
+        if access(request.user)[0]=='tenant' and data.get('urgency') not in (None,'','normal','safety'):
+            raise ValueError('Tenants may flag a safety concern; only the property manager selects official urgency.')
         fingerprint = hashlib.sha256(json.dumps({
-            'fields': {key: str(value.pk) if key == 'property' else value for key, value in form.cleaned_data.items() if key != 'urgency' or value != 'normal'},
+            'fields': {key: str(value.pk) if key == 'property' else value for key, value in form.cleaned_data.items() if not ((key=='urgency' and value=='normal') or (key=='access_information' and not value))},
             'attachments': [(item['filename'], hashlib.sha256(item['data']).hexdigest()) for item in prepared],
         }, sort_keys=True).encode()).hexdigest()
         with transaction.atomic():
@@ -214,8 +219,8 @@ def collection(request):
                     if existing.reported_by_id != request.user.pk or existing.submission_fingerprint != fingerprint:
                         return JsonResponse({'error': 'Idempotency key conflicts with an earlier report.'}, status=409)
                     return JsonResponse(serialize(get_object_or_404(requests_for(request.user), pk=existing.pk), request.user))
-            job = MaintenanceRequest.objects.create(reported_by=request.user, submission_key=submission_key,
-                                                     submission_fingerprint=fingerprint, **form.cleaned_data)
+            job = MaintenanceRequest.objects.create(reported_by=request.user,workflow_version=1,safety_concern=form.cleaned_data.get('urgency')=='safety', submission_key=submission_key,
+                                                     submission_fingerprint=fingerprint, **{**form.cleaned_data,'urgency':'normal'})
             MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=job.status)
             Audit.objects.create(agency=job.property.agency, actor=request.user,
                                  action='Maintenance request submitted', object_id=str(job.pk))
@@ -267,7 +272,13 @@ def update_status(user,job,data,operations=False):
     if data['status'] not in TRANSITIONS[job.status]:
         return JsonResponse({'error': 'Invalid status transition.'}, status=400)
     with transaction.atomic():
-        if data['status'] == 'scheduled':
+        if job.workflow_version:
+            if job.closed_at:return JsonResponse({'error':'Closed jobs retain their history.'},status=409)
+            if data['status'] in ('completed','in_progress','on_site','attended') and not user.is_superuser:return JsonResponse({'error':'Operations controls job progress.'},status=403)
+            if data['status']=='completed':
+                from .workflow import completion_valid
+                if not completion_valid(job):return JsonResponse({'error':'Completion report and required photographs must be accepted first.'},status=409)
+        if data['status'] == 'scheduled' or (job.workflow_version and data['status'] in ('in_progress','on_site','attended')):
             locked = MaintenanceRequest.objects.select_for_update().get(pk=job.pk)
             from .customer_portal import deposit_state
             if not deposit_state(locked)['ready']:
@@ -300,10 +311,10 @@ def workspace(request):
     from django.templatetags.static import static
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"></head>')
-    html = html.replace('</body>', '<script src="' + static('maintenance.js') + '"></script></body>')
+    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+static('workflow.css')+'"></head>')
+    html = html.replace('</body>', '<script src="'+static('workflow-ui.js')+'"></script><script src="' + static('maintenance.js') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)
-    html = re.sub(r'<footer>.*?</footer>', '<footer>Sevlink · Django development workspace · Saved records · Separate demo unchanged</footer>', html, flags=re.DOTALL)
+    html = re.sub(r'<footer>.*?</footer>', '<footer>Sevlink · Property maintenance · Private workspace</footer>', html, flags=re.DOTALL)
     return HttpResponse(html)

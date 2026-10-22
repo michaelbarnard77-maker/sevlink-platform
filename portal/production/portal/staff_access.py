@@ -13,7 +13,12 @@ def capability(user, permission):
 def can_schedule(user): return capability(user,'operate_schedule')
 
 
-def can_pay(user): return capability(user,'manage_supplier_payments')
+def can_pay(user): return bool(user.is_authenticated and user.is_active and user.is_superuser)
+
+
+def future_finance_capability(user):
+    # Reserved boundary only. It does not grant access to current finance APIs.
+    return capability(user,'manage_supplier_payments')
 
 
 def staff_only(check):

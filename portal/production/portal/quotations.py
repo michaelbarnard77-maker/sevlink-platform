@@ -34,7 +34,7 @@ def quote_data(quote, user=None):
                   has_next_revision=JobQuotation.objects.filter(previous=quote).exists(), approval_valid=quote.status == 'approved' and not replaced,
                   superseded_by_approval=str(replaced.replacement_id) if replaced else None, id=str(quote.pk), status=quote.status, version=quote.version,
                   revision=quote.revision, series_id=str(quote.series_id), decision_reason=quote.decision_reason,
-                  created_at=quote.created_at.isoformat(), sent_at=quote.sent_at.isoformat() if quote.sent_at else None,
+                  decision_actor=(quote.decided_by.get_full_name() or 'Agency decision') if quote.decided_by_id and (user and user.is_superuser or not quote.decided_by.is_superuser) else 'Sevlink Operations' if quote.decided_by_id else None, created_at=quote.created_at.isoformat(), sent_at=quote.sent_at.isoformat() if quote.sent_at else None,
                   decided_at=quote.decided_at.isoformat() if quote.decided_at else None,
                   history=[{'action': a.kind, 'reason': a.reason, 'at': a.created_at.isoformat(),
                             'actor': a.actor.get_full_name() if user and user.is_superuser else
@@ -89,7 +89,9 @@ def create(request, job_id):
                 return JsonResponse(quote_data(existing, request.user))
             if QuotationAction.objects.filter(key=key).exists():
                 return JsonResponse({'error': 'Idempotency key conflict.'}, status=409)
-            if job.status in ('completed', 'cancelled'):
+            if job.workflow_version and job.job_type!='quoted':
+                raise ValueError('The PM must classify this request as Quotation Required. Additional quoted call-out work needs its own linked request.')
+            if job.status in ('completed', 'cancelled', 'closed'):
                 return JsonResponse({'error': 'The request is closed.'}, status=400)
             series_id = uuid.uuid4()
             reserve_quote_reference(values['reference'], series_id)
@@ -143,6 +145,8 @@ def mutate(request, job_id, quote_id, operation):
         with transaction.atomic():
             job = lock_job(request.user, job_id)
             quote = get_object_or_404(JobQuotation.objects.select_for_update(), pk=quote_id, request=job)
+            if job.workflow_version and job.job_type!='quoted':
+                return JsonResponse({'error':'Quoted work must use a separately classified quotation-required request.'},status=409)
             if not request.user.is_superuser and quote.status == 'draft':
                 return JsonResponse({'error': 'Quotation not found.'}, status=404)
             prior = QuotationAction.objects.filter(key=key).first()
@@ -152,7 +156,7 @@ def mutate(request, job_id, quote_id, operation):
                 return JsonResponse(quote_data(prior.quote, request.user))
             if JobQuotation.objects.filter(creation_key=key).exists():
                 return JsonResponse({'error': 'Idempotency key conflict.'}, status=409)
-            if quote.version != data['version'] or job.status in ('completed', 'cancelled'):
+            if quote.version != data['version'] or job.status in ('completed', 'cancelled', 'closed'):
                 return JsonResponse({'error': 'The quotation or job changed. Refresh before continuing.'}, status=409)
             if decision:
                 if quote.status != 'sent' or not quote.document_id:

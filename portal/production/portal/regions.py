@@ -142,13 +142,14 @@ def dashboard(request):
     from .suppliers import compliance_alerts
     from .models import AssignmentReview, TradeCategory
 
+    from .customer_portal import deposit_state
     return JsonResponse({
         'provinces': list(Province.objects.values('id', 'code', 'name')),
         'cities': list(City.objects.values('id', 'province_id', 'name')),
         'suburbs': list(Suburb.objects.values('id', 'city_id', 'name')),
         'properties': page_data(props.order_by('name', 'pk'), page, property_data),
         'subcontractors': page_data(contractors, page, contractor_data),
-        'jobs': page_data(jobs, page, lambda j: {'id': str(j.pk), 'reference':j.reference, 'title': j.title,
+        'jobs': page_data(jobs, page, lambda j: {'id': str(j.pk), 'reference':j.reference, 'assignment_ready': deposit_state(j)['ready'] if j.workflow_version else True, 'title': j.title,
             'status': j.status, 'property': property_data(j.property)}),
         'page': page,
         'trade_options': list(TradeCategory.objects.values_list('name',flat=True)),
@@ -244,6 +245,9 @@ def assign_job(user,job_id,data):
         # included in PostgreSQL's default FOR UPDATE lock targets.
         prop = Property.objects.select_for_update().get(pk=job.property_id)
         job = MaintenanceRequest.objects.select_for_update().get(pk=job_id)
+        from .customer_portal import deposit_state
+        if job.workflow_version and not deposit_state(job)['ready']:
+            return JsonResponse({'error':'Assignment is locked until call-out authorisation or quotation approval and verified deposit.'},status=409)
         item = get_object_or_404(Subcontractor.objects.select_for_update(), pk=contractor_id)
         from .models import SubcontractorTeam
         team_id = uuid.UUID(str(data['team'])) if data.get('team') else None
@@ -253,7 +257,7 @@ def assign_job(user,job_id,data):
             if prior.request_id != job.pk or prior.subcontractor_id != item.pk or prior.actor_id != user.pk or prior.team_id != team_id:
                 return JsonResponse({'error': 'Submission key conflicts with an earlier assignment.'}, status=409)
             return JsonResponse({'id': prior.pk})
-        if job.version != data['version'] or job.status in ('completed', 'cancelled'):
+        if job.version != data['version'] or job.status in ('completed', 'cancelled', 'closed'):
             return JsonResponse({'error': 'Job changed or is closed. Refresh before assigning.'}, status=409)
         if not eligible(prop).filter(pk=item.pk).exists():
             return JsonResponse({'error': 'Subcontractor does not cover the mapped property location or is inactive.'}, status=400)

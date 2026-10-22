@@ -14,7 +14,7 @@ from .models import (Membership, JobInvoice, JobQuotation, TeamAppointment, JobA
     PortalAcknowledgement, JobActionRequest, SchedulingArrangement, WebsiteIssue, Audit, Tenancy)
 
 ZERO=Decimal('0.00')
-CLOSED=('completed','cancelled')
+CLOSED=('completed','cancelled','closed')
 
 
 def checked(view):
@@ -53,9 +53,14 @@ def deposit_state(job):
     net=paid-refunded
     arranged=job.scheduling_arrangements.exists()
     held=invoices.filter(reconciliation_required=True).exists()
+    verified=job.deposit_verifications.order_by('-created_at').first() if job.workflow_version else None
+    if job.workflow_version:
+        if job.job_type=='callout':ready=bool(job.authorised_at and job.spending_limit)
+        else:ready=bool(approved is not None and job.job_number and not held and (arranged or (verified and verified.amount>=required and net>=required and required>ZERO)))
+    else:ready=arranged or (basis>ZERO and net>=required and not held)
     return dict(basis=str(basis),required=str(required),received=str(net),
                 outstanding=str(max(ZERO,required-net)),arrangement=arranged,
-                ready=arranged or (basis>ZERO and net>=required and not held))
+                ready=ready)
 
 
 def public_appointments(user):
@@ -65,6 +70,9 @@ def public_appointments(user):
 def appointment_row(a):
     job=a.assignment.request
     state='cancelled' if a.cancelled_at else 'rescheduled' if a.rescheduled_from_id else 'scheduled'
+    if job.workflow_version and hasattr(a,'public_arrival'):
+        arrival=a.public_arrival
+        return dict(job_row(job),id=a.pk,starts_at=str(arrival.agreed_date)+'T'+arrival.agreed_window.split('–')[0]+':00+02:00',ends_at=str(arrival.agreed_date)+'T'+arrival.agreed_window.split('–')[1]+':00+02:00',appointment_status=state,changed_at=(a.cancelled_at or a.created_at).isoformat())
     return dict(job_row(job),id=a.pk,starts_at=a.starts_at.isoformat(),ends_at=a.ends_at.isoformat(),
                 appointment_status=state,changed_at=(a.cancelled_at or a.created_at).isoformat())
 
@@ -81,7 +89,7 @@ def attention_rows(user):
         if job.pk not in deposits:deposits[job.pk]=deposit_state(job)
         return deposits[job.pk]
     def add(job,key,action,priority=5,**details):
-        result.append(dict(job_row(job),key=key,action=action,priority=0 if job.urgency in ('urgent','safety') and job.status not in CLOSED else priority,
+        result.append(dict(job_row(job),key=key,action=action,priority=0 if (job.urgency in ('urgent','safety') or (job.safety_concern and job.job_type=='unclassified')) and job.status not in CLOSED else priority,
                            **details))
     qs=requests_for(user)
     if finance:
@@ -122,11 +130,21 @@ def attention_rows(user):
         key=appointment_key(a)
         if key in ack or (not a.cancelled_at and a.ends_at<now):continue
         add(a.assignment.request,key,'Appointment cancelled' if a.cancelled_at else 'Appointment rescheduled' if a.rescheduled_from_id else 'Upcoming maintenance appointment',
-            4,target='appointment',target_id=a.pk,appointment_date=a.starts_at.isoformat(),acknowledge=True)
+            4,target='appointment',target_id=a.pk,appointment_date=appointment_row(a)['starts_at'],acknowledge=True)
     audience='pm' if finance else 'tenant'
     for item in JobActionRequest.objects.filter(request__in=qs,audience=audience,resolved_at=None).exclude(request__status__in=CLOSED).select_related('request__property'):
         add(item.request,'action:'+str(item.pk),item.text,1 if item.due_date and item.due_date<today else 5,
             target='action',target_id=item.pk,due_date=str(item.due_date) if item.due_date else None)
+    if finance:
+        from .models import AdditionalAuthorisation,UserJobNotification
+        from .workflow import eligible
+        for extra in AdditionalAuthorisation.objects.filter(request__in=qs,status='pending',request__closed_at__isnull=True).exclude(request__status='cancelled').select_related('request__property'):
+            add(extra.request,'additional:'+str(extra.pk),'Additional-work authorisation required',2,target='job')
+        for job in qs:
+            if job.workflow_version and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True).exists():
+                add(job,'attendance-ready:'+str(job.pk),'Please confirm attendance date',3,target='job')
+        for n in UserJobNotification.objects.filter(user=user,read_at=None,event__kind='comment_added',event__request__in=qs).select_related('event__request__property'):
+            add(n.event.request,'comment:'+str(n.event_id),'Unread job comment',5,target='job')
     # Stable identity per underlying action; derived items disappear as soon as saved state resolves them.
     return sorted({row['key']:row for row in result}.values(),key=lambda r:(r['priority'],r.get('due_date') or r.get('appointment_date') or '9999',r['key']))
 
@@ -251,6 +269,7 @@ def action(request,job_id):
         elif 'urgency' in data:
             if role not in ('superadmin','admin','pm'):return JsonResponse({'error':'Manager access required.'},status=403)
             if data['urgency'] not in ('normal','urgent','safety'):return JsonResponse({'error':'Invalid urgency.'},status=400)
+            if job.workflow_version:return JsonResponse({'error':'Use the audited Review and Route Request workflow.'},status=409)
             job.urgency=data['urgency'];job.save(update_fields=['urgency'])
         else:
             if not request.user.is_superuser:return JsonResponse({'error':'Sevlink Operations access required.'},status=403)

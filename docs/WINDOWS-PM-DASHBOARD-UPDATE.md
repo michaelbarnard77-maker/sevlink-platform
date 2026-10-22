@@ -148,3 +148,40 @@ Stop all app writers while migrating. **Do not reverse 0027 on a populated DB**:
 it refuses to drop historical identifiers. Do not reset counters, flush, reseed or
 restore only half a backup. If recovery is needed, stop the server and restore the
 matching previous code, complete verified database and private files together.
+
+
+## Operational workflow and visual integration update (0028–0032)
+
+Use the same stop/back-up/fetch/pull/check/migrate/test process above for the
+existing **Windows Sevlink 2.0** checkout. Do not replace its folder with an export,
+copy a fresh database over `development.sqlite3`, delete private attachments,
+flush/reseed records or change the secret key. Keep the previous commit and
+verified matching database/private-file backup outside the repository.
+
+Review `manage.py migrate --plan`: the forward plan includes 0028 through 0032
+(and any earlier unapplied migrations). Existing jobs receive compatibility
+fields only; no historical payment or authorisation is invented. Existing approved
+jobs/documents must be reviewed before adopting a stricter workflow. Do not
+mass-edit workflow flags. See [the full workflow/acceptance guide](OPERATIONAL-WORKFLOW-AND-DEMO-INTEGRATION.md).
+
+After migration, run `manage.py check`, `manage.py makemigrations --check --dry-run`
+and `manage.py test portal`. Keep email delivery flags at 0. Start `runserver`,
+hard-refresh `/maintenance/`, and use separate browser profiles for actual accounts.
+A PM now lands directly on Maintenance Overview; Properties/Tenants are in the
+sidebar. The separate browser-local demo is not the real data test environment.
+
+Test a newly submitted synthetic request rather than changing real legacy records:
+review it as Call-Out or Quotation Required, verify gates, request/confirm attendance,
+record completion evidence and external invoice, and confirm manual settlement.
+Check the other agency cannot access API records or files. Keep real customer
+migration and accounting sign-off separate from this local rehearsal.
+
+For local queued previews and overdue alerts, open another correctly configured
+PowerShell window in `portal\production` and run your existing local Operations
+worker, with the same email-off settings. The one-off `refresh_payment_alerts`
+command also persists overdue supplier notifications without sending money or email.
+Do not enable SMTP/SES merely to test the in-app workflow.
+
+If a migration/test fails, stop. Preserve the full error and backup. Do not reverse
+0027, reset counters, drop the database or partially restore files. Restore matching
+code/database/private files together through the reviewed recovery procedure.

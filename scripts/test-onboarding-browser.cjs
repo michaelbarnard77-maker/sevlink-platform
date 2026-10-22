@@ -16,10 +16,12 @@ process.stdin.on('end',async()=>{
     // Synthetic local tokens are supplied by the Python test, never a live mailbox.
     await p.goto(url+'/invitation/'+verificationToken+'/');
     await p.getByRole('button',{name:'Verify & open workspace'}).click();
-    await p.getByRole('link',{name:'Add property',exact:false}).click();
+    await p.locator('#nav [data-view=properties]').click();
+    await p.getByRole('link',{name:'Add Property',exact:false}).click();
     for(const [name,value] of Object.entries({name:'Acceptance Home',address:'Synthetic Cape Town address'})) await p.locator(`[name=${name}]`).fill(value);
     await p.getByRole('button',{name:'Save & continue'}).click();
-    await p.getByRole('link',{name:'Link tenant'}).click();
+    await p.locator('#nav [data-view=properties]').click();
+    await p.getByRole('link',{name:'Link Tenant'}).click();
     await p.locator('[name=name]').fill('Acceptance Tenant');
     await p.locator('[name=email]').fill('browser-tenant@example.test');
     await p.getByRole('button',{name:'Save & continue'}).click();
@@ -27,7 +29,7 @@ process.stdin.on('end',async()=>{
     await t.locator('[name=new_password1]').fill(password);await t.locator('[name=new_password2]').fill(password);
     await t.getByRole('button',{name:'Create my account'}).click();
     await t.getByText('Synthetic Cape Town address',{exact:true}).waitFor();
-    await t.getByRole('link',{name:'Maintenance requests'}).click();
+    await t.getByRole('link',{name:'Maintenance Requests'}).click();
     await t.getByRole('button',{name:'My Repairs',exact:false}).waitFor();
     assert.equal(await t.locator('#role').count(),0);
     await t.getByRole('button',{name:'Sign out',exact:true}).click();
@@ -36,6 +38,7 @@ process.stdin.on('end',async()=>{
     await t.getByRole('button').click();
     await t.getByText('Synthetic Cape Town address',{exact:true}).waitFor();
     assert.equal(await t.getByRole('link',{name:'Manage account access'}).count(),0);
+    await p.goto(url+'/maintenance/');await p.locator('#nav [data-view=profile]').click();
     await p.getByRole('link',{name:'Manage account access'}).click();
     await p.getByRole('link',{name:'Record move-out'}).click();
     await p.locator('[name=reason]').fill('Synthetic acceptance move-out');await p.locator('[name=confirm]').check();

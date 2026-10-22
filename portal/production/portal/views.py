@@ -81,10 +81,12 @@ def dashboard(request):
         if not request.user.is_superuser and (can_schedule(request.user) or can_pay(request.user)):
             return redirect('maintenance_workspace')
         if request.user.is_superuser:
-            return render(request,'portal/staff.html',{'agencies':Agency.objects.all(),'property_count':Property.objects.count(),'tenant_count':Tenancy.objects.filter(active=True).count()})
+            return redirect('maintenance_workspace')
         return HttpResponseForbidden('No workspace access. Contact Sevlink.')
     if m.role not in (Membership.ADMIN, Membership.PM, Membership.TENANT):
         return HttpResponseForbidden('No workspace access. Contact Sevlink.')
+    if m.role in (Membership.PM,Membership.ADMIN) and request.GET.get('setup')!='1':
+        return redirect('maintenance_workspace')
     props = properties_for(m).select_related('manager')
     tenants = Tenancy.objects.filter(property__in=props,active=True)
     if m.role==Membership.TENANT:

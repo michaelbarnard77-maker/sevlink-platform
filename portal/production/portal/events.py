@@ -36,6 +36,7 @@ def record(job, actor, kind, dedup_key, details=None, *, private=False):
     fields.update({kind: {'quote_id', 'amount', 'status', 'reason'} for kind in ('quote_edited', 'quote_sent', 'quote_revised', 'quote_superseded', 'quote_revision_requested', 'quote_amended', 'quote_amendment_active')})
     fields.update({kind: {'invoice_id','number','amount','status'} for kind in ('invoice_uploaded','invoice_payment','invoice_refund','invoice_void','invoice_corrected','invoice_reconciled','invoice_credit_note')})
     fields.update({'conversation_permission': {'tenant_comments_allowed'}, 'internal_note': {'comment_id', 'text'}, 'notification_state': {'notification_id', 'read'}})
+    fields['workflow_event']={'action','decision_id'}
     fields['appointment_changed'] = {'appointment_id','action'}
     fields['job_assigned'] = {'assignment_id', 'subcontractor_id'}
     if set(details or {}) != fields[kind] or any(not isinstance(value, str) for value in (details or {}).values()):
@@ -49,12 +50,17 @@ def record(job, actor, kind, dedup_key, details=None, *, private=False):
     })
     if not created and (event.request_id != job.pk or event.actor_id != actor.pk or event.kind != kind or event.details != (details or {}) or (private and event.visibility != 'internal')):
         raise ValueError('Event key conflicts with an existing event.')
-    notify_kinds = {JobActivity.Kind.SUBMITTED, JobActivity.Kind.COMMENT, JobActivity.Kind.QUOTE_APPROVED,
+    notify_kinds = {JobActivity.Kind.WORKFLOW, JobActivity.Kind.SUBMITTED, JobActivity.Kind.COMMENT, JobActivity.Kind.QUOTE_APPROVED,
                     JobActivity.Kind.QUOTE_REJECTED, JobActivity.Kind.QUOTE_REVISION, JobActivity.Kind.CANCELLED, JobActivity.Kind.COMPLETED}
     should_notify = kind in notify_kinds and (kind != JobActivity.Kind.COMMENT or role in ('tenant', 'pm', 'admin'))
     if created and should_notify:
         OperationsNotification.objects.create(event=event, recipient=settings.OPERATIONS_NOTIFICATION_EMAIL)
         OperationsInboxItem.objects.create(event=event)
+    if created:
+        from .workflow import notify,participants,operators
+        if kind=='job_submitted':notify(event,participants(job))
+        elif kind in ('quote_sent','invoice_uploaded') and not private:notify(event,participants(job))
+        elif kind in ('quote_approved','quote_rejected','quote_revision_requested'):notify(event,operators())
     return event
 
 
@@ -73,7 +79,9 @@ def notification_message(event):
     # notes, attachment filenames/contents, internal notes or subcontractor fields.
     details = event.details
     one_line = lambda value: ' '.join(str(value).split())
-    if event.kind == JobActivity.Kind.SUBMITTED:
+    if event.kind == JobActivity.Kind.WORKFLOW:
+        summary=one_line(details['action'])
+    elif event.kind == JobActivity.Kind.SUBMITTED:
         summary = 'New report: ' + one_line(event.job_title)
     elif event.kind == JobActivity.Kind.COMMENT:
         summary = 'A shared comment was added. Sign in to read the comment.'

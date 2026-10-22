@@ -96,7 +96,7 @@ process.stdin.on('end', async () => {
     await page.locator('.supplierPayment [name=amount]').fill('200.00');
     await page.locator('.supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));
     await page.locator('.supplierPayment [name=reference]').fill('EXTERNAL-TEST-PAYMENT');
-    await page.getByRole('button',{name:'Record manual payment',exact:true}).click();
+    await page.getByRole('button',{name:'Record payment / Mark as Paid',exact:true}).click();
     await page.getByText('External payment: ZAR 200.00',{exact:false}).waitFor();
     await page.getByRole('button',{name:'Close',exact:true}).click();
     await page.locator('#nav [data-view=regions]').click();
