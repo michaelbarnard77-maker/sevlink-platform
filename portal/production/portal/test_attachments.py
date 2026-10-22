@@ -315,7 +315,8 @@ class AttachmentTests(TestCase):
         record = MaintenanceAttachment.objects.get()
         response = self.client.get(reverse('maintenance_detail', args=[self.job.pk])).json()
         item = response['attachments'][0]
-        self.assertEqual(set(item), {'id', 'filename', 'content_type', 'size', 'created_at', 'download_url'})
+        self.assertEqual(set(item), {'id', 'filename', 'content_type', 'size', 'purpose', 'created_at', 'download_url'})
+        self.assertEqual(item['purpose'], 'general')
         self.assertNotIn(record.storage_key, str(response))
         self.assertNotIn('uploaded_by', str(response))
         self.assertIsNone(finders.find(record.storage_key))

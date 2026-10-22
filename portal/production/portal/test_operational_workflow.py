@@ -234,4 +234,30 @@ class PMDashboardAdjustmentTests(TestCase):
         self.client.force_login(self.admin)
         self.assertEqual(len(self.client.get(url).json()['stages']),8)
         self.client.force_login(self.ops)
-        self.assertEqual(len(self.client.get(url).json()['stages']),10)
+        operations=self.client.get(url).json()
+        self.assertEqual(len(operations['stages']),10)
+        self.assertEqual([item['label'] for item in operations['summary']],['New today','Urgent attention','Visits today','Waiting on Sevlink'])
+        self.assertEqual(operations['summary'][0]['count'],1)
+
+    def test_real_register_filters_search_beyond_first_page_and_number_references(self):
+        for i in range(51):
+            target=MaintenanceRequest.objects.create(property=self.home,reported_by=self.tenant,title='Target across pages' if i==50 else f'Other repair {i}',description='Synthetic',category='Plumbing',urgency='high' if i==50 else 'normal')
+        self.client.force_login(self.pm)
+        url=reverse('maintenance_collection')
+        result=self.client.get(url,dict(register='1',search=target.request_reference,property=str(self.home.pk),category='Plumbing',urgency='high',bucket='open',sort='oldest')).json()
+        self.assertEqual(result['count'],1);self.assertEqual(result['results'][0]['id'],str(target.pk));self.assertEqual(result['register']['total_count'],52)
+        result=self.client.get(url,dict(register='1',page=2,sort='oldest')).json()
+        self.assertEqual(result['count'],52);self.assertEqual(len(result['results']),2)
+        self.assertIn(str(target.pk),[j['id'] for j in result['results']])
+
+    def test_register_facets_counts_and_filters_cannot_broaden_portfolio(self):
+        from .models import Property
+        other=Property.objects.create(agency=self.foreign_agency,manager=self.foreign,name='Foreign private property',address='Foreign private address')
+        MaintenanceRequest.objects.create(property=other,reported_by=self.foreign,title='Foreign private job',description='Synthetic',category='Electrical')
+        self.client.force_login(self.pm);url=reverse('maintenance_collection')
+        result=self.client.get(url,dict(register='1')).json()
+        self.assertEqual(result['count'],1);self.assertNotIn('Foreign private',str(result));self.assertEqual(result['register']['agencies'],[])
+        self.assertEqual(self.client.get(url,dict(register='1',agency=str(self.foreign_agency.pk))).json()['count'],0)
+        self.assertEqual(self.client.get(url,dict(register='1',property='bad-id')).status_code,400)
+        self.client.force_login(self.cotenant);self.assertEqual(self.client.get(url,dict(register='1')).json()['count'],0)
+        self.client.force_login(self.ops);self.assertEqual(self.client.get(url,dict(register='1')).json()['count'],2)

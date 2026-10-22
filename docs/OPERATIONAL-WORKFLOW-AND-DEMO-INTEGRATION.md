@@ -29,8 +29,8 @@ email activation is part of this update.
 - The sidebar, category cards, navy/blue styling and outline icons use reusable
   styling. All 19 repair categories have different outline artwork. Properties
   have Add Property, Edit Property and Link Tenant buttons.
-- Job detail has functional Overview, Comments, Quotations, Invoices, Attendance,
-  Reports & Photos and Activity / Timeline tabs. Super Admin alone also gets
+- Job detail has functional Overview, Comments, Attendance, Quotes, Invoices,
+  Before & After Report and Timeline tabs. Super Admin alone also gets
   Private Costs and the FINANCE navigation section.
 - Operations can drill into registered agencies, properties, managers, active
   tenants and maintenance jobs. The existing region/supplier directory, teams,
@@ -190,3 +190,12 @@ Actual Windows acceptance, real mailbox setup/approval and production security/
 infrastructure acceptance remain manual. Existing scanner/quarantine, MFA,
 private-storage, backup/restore and launch-readiness requirements still apply.
 No production infrastructure or live service is activated by this work.
+
+## Source-design alignment follow-up
+
+See [the exact source inventory and comparison](DEMO-SOURCE-DESIGN-COMPARISON.md).
+The authenticated portal now reuses the original Operations stage-card classes,
+job header/modal/tab styles and completion-report components. The Repair Job
+Register ports the source filter grid and buckets to portfolio-scoped Django
+queries across pages. The original demo remains separate and unchanged.
+No additional migrations, account reset or document replacement are needed.

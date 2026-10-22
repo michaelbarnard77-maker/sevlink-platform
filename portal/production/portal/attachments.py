@@ -238,7 +238,7 @@ def visible_attachments(job, user):
 
 def attachment_data(attachment):
     return {'id': str(attachment.pk), 'filename': attachment.filename,
-            'content_type': attachment.content_type, 'size': attachment.size,
+            'content_type': attachment.content_type, 'size': attachment.size, 'purpose': attachment.purpose,
             'created_at': attachment.created_at.isoformat(),
             'download_url': reverse('maintenance_attachment_download', args=[attachment.request_id, attachment.pk])}
 

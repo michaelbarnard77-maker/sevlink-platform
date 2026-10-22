@@ -8,7 +8,7 @@ from functools import wraps
 from django import forms
 from django.conf import settings
 from django.db import transaction, IntegrityError
-from django.db.models import F
+from django.db.models import F, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -168,6 +168,43 @@ def context(request):
     })
 
 
+def register_projection(user, params):
+    """Adapt the demo register filters to the existing authorised queryset."""
+    scoped=requests_for(user)
+    qs=scoped
+    search=params.get('search','').strip()
+    if len(search)>180:raise ValueError('Search is too long.')
+    if search:
+        match=Q(title__icontains=search)|Q(description__icontains=search)|Q(category__icontains=search)|Q(property__address__icontains=search)|Q(property__name__icontains=search)|Q(property__agency__name__icontains=search)|Q(property__manager__first_name__icontains=search)|Q(property__manager__last_name__icontains=search)
+        number=re.fullmatch(r'(REQ|SV)-(\d+)',search,re.I)
+        if number and len(number[2])<=10:match|=Q(**{('request_number' if number[1].upper()=='REQ' else 'job_number'):int(number[2])})
+        try:match|=Q(pk=uuid.UUID(re.sub(r'^SV-','',search,flags=re.I)))
+        except ValueError:pass
+        qs=qs.filter(match)
+    bucket=params.get('bucket','all')
+    if bucket not in ('all','open','closed','cancelled'):raise ValueError('Invalid job category.')
+    if bucket=='open':qs=qs.exclude(status__in=['closed','cancelled'])
+    elif bucket!='all':qs=qs.filter(status=bucket)
+    for field,lookup in [('property','property_id'),('agency','property__agency_id')]:
+        if params.get(field):
+            try:value=uuid.UUID(params[field])
+            except (ValueError,TypeError):raise ValueError('Invalid location or agency filter.')
+            qs=qs.filter(**{lookup:value})
+    for field,choices in [('status',S.values),('urgency',['normal','high','urgent','safety']),('category',CATEGORIES)]:
+        if params.get(field):
+            if params[field] not in choices:raise ValueError('Invalid '+field+' filter.')
+            qs=qs.filter(**{field:params[field]})
+    ordering={'newest':('-created_at','pk'),'oldest':('created_at','pk'),'property':('property__address','pk')}
+    sort=params.get('sort','newest')
+    if sort not in ordering:raise ValueError('Invalid register sort order.')
+    # Facets and bucket counts derive only from the same authorised portfolio.
+    props=list(scoped.order_by('property__address').values('property_id','property__address').distinct())
+    agencies=list(scoped.order_by('property__agency__name').values('property__agency_id','property__agency__name').distinct()) if user.is_superuser else []
+    metadata=dict(total_count=scoped.count(),buckets=dict(all=scoped.count(),open=scoped.exclude(status__in=['closed','cancelled']).count(),closed=scoped.filter(status='closed').count(),cancelled=scoped.filter(status='cancelled').count()),
+        properties=[dict(id=str(p['property_id']),label=p['property__address']) for p in props],agencies=[dict(id=str(a['property__agency_id']),label=a['property__agency__name']) for a in agencies],categories=sorted(set(scoped.values_list('category',flat=True))),statuses=[dict(value=v,label=S(v).label) for v in sorted(set(scoped.values_list('status',flat=True)))])
+    return qs.order_by(*ordering[sort]),metadata
+
+
 @api_access
 @require_http_methods(['GET', 'POST'])
 def collection(request):
@@ -178,10 +215,12 @@ def collection(request):
                 raise ValueError
         except ValueError:
             return JsonResponse({'error': 'Invalid page.'}, status=400)
-        qs = requests_for(request.user)
+        metadata={}
+        try:qs,metadata=register_projection(request.user,request.GET) if request.GET.get('register')=='1' else (requests_for(request.user),{})
+        except ValueError as error:return JsonResponse({'error':str(error)},status=400)
         count = qs.count()
         jobs = qs[(page - 1) * 50:page * 50]
-        return JsonResponse({'results': [serialize(j, request.user) for j in jobs], 'count': count,
+        return JsonResponse({'register':metadata,'results': [serialize(j, request.user) for j in jobs], 'count': count,
                              'next': page + 1 if page * 50 < count else None})
     if access(request.user)[0] not in (Membership.TENANT,Membership.PM,Membership.ADMIN):
         return JsonResponse({'error': 'Only authorised tenants and agency users can submit reports.'}, status=403)
