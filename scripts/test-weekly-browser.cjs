@@ -29,7 +29,11 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   await form(ids.jobs[3],ids.a,'12:30','13:30');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('#calendarError').filter({hasText:'overlapping'}).waitFor();await p.locator('#calendarBooking [name=override_reason]').fill('Super Admin approved joint appointment');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('.week-booking.has-override').waitFor();
   await c.close();
   ({c,p}=await signed('scheduler',390));await p.locator('#phoneNav [data-view=calendar]').click();await p.locator('#calendarMobileDay').waitFor();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.locator('#calendarMobileDay').selectOption('1');assert.equal(await p.locator('[data-cal-day="0"]').first().isVisible(),false);await c.close();
-  ({c,p}=await signed('finance'));await p.locator('#nav [data-view=monday]').click();await p.locator('#mondayInvoices .supplierPayment').waitFor();assert((await p.locator('.stats').textContent()).includes('500.00'));
+  ({c,p}=await signed('finance'));await p.locator('#nav [data-view=monday]').click();await p.locator('#mondayFilters').waitFor();
+  // Supplier uploads are due the following Monday, including when uploaded on a
+  // Monday. Review Upcoming rather than assuming the default cutoff includes it.
+  await p.locator('#mondayFilters [name=period]').selectOption('upcoming');await p.getByRole('button',{name:'Review payments',exact:true}).click();
+  await p.locator('#mondayInvoices .supplierPayment').waitFor();assert((await p.locator('.stats').textContent()).includes('500.00'));
   const pdf=await p.locator('#mondayInvoices a').first().getAttribute('href');assert.equal((await p.request.get(url+pdf)).status(),200);
   for(const amount of ['200.00','300.00']){await p.locator('#mondayInvoices .supplierPayment [name=amount]').fill(amount);await p.locator('#mondayInvoices .supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));await p.locator('#mondayInvoices .supplierPayment [name=reference]').fill('EXTERNAL-MONDAY-'+amount);await p.getByRole('button',{name:'Record payment / Mark as Paid',exact:true}).click();if(amount==='200.00')await p.getByText('Outstanding 300.00',{exact:false}).waitFor();else await p.getByText('No outstanding invoices in this filter.',{exact:true}).waitFor();}
   assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),200);await c.close();

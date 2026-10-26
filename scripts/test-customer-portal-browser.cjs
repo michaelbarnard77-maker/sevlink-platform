@@ -20,9 +20,17 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   await p.locator('[data-stage=attention]').click();
   await p.locator('#stageJobs > .panel > h2').waitFor();
   assert.equal(await p.locator('#stageJobs [data-stage-job]').count(),dashboard.stages[0].count);
+  for(const item of attention.items){
+   const card=p.locator('#stageJobs .job-card').filter({has:p.locator(`[data-stage-job="${item.job}"]`)});
+   assert((await card.locator('.job-attention-reasons').innerText()).includes(item.action));
+  }
   assert.deepEqual(await p.locator('#nav button').allTextContents(),['Overview','Report a Repair','Repair Jobs','Properties','Tenants','Quotations','Accounts & Payments','Maintenance Calendar','Updates & Notifications','Agency Profile','Report Website Issue']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
   await p.locator('#attention .attention-card').filter({hasText:'Review new maintenance request'}).filter({hasText:'GP repair'}).getByRole('button',{name:'Review job'}).click();
+  assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'(1)');
+  assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)');
+  await p.getByRole('tab',{name:'Invoices',exact:true}).click();
+  assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)','Opening an unpaid invoice does not resolve it');
   await p.getByRole('tab',{name:'Timeline',exact:true}).click();await p.locator('#statusForm [name=status]').selectOption('reviewed');await p.locator('#statusForm button').click();await p.locator('#jobcontent').getByText('Reviewed',{exact:false}).waitFor();await p.getByRole('button',{name:'Close',exact:true}).click();
   await p.locator('#attention .attention-card').filter({hasText:'GP repair'}).filter({hasText:'Review new maintenance request'}).waitFor({state:'detached'});
   await p.locator('#nav [data-view=accounts]').click();await p.locator('#accountFilter').selectOption('overdue');await p.locator('.attention-card').filter({hasText:'CUSTOMER-PDF-001'}).waitFor();
@@ -43,7 +51,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   assert.equal(await p.locator('#accountFilter').inputValue(),'paid');assert.equal(await p.locator('#app .attention-card').count(),0);
   await p.unroute('**/api/maintenance/portal/accounts/**',delay);
 
-  await p.locator('#nav [data-view=quotes]').click();await p.locator('#app').getByRole('button',{name:'Open quotation'}).click();await p.getByRole('tab',{name:'Quotes',exact:true}).click();await p.locator('.quoteDecision [name=reason]').fill('Browser approval');await p.locator('.quoteDecision button').click();await p.locator('.card .badge').filter({hasText:'approved'}).waitFor();await p.getByRole('button',{name:'Close',exact:true}).click();
+  await p.locator('#nav [data-view=quotes]').click();await p.locator('#app').getByRole('button',{name:'Open quotation'}).click();await p.getByRole('tab',{name:'Quotes',exact:true}).click();await p.locator('.quoteDecision [name=reason]').fill('Browser approval');await p.locator('.quoteDecision button').click();await p.locator('.card .badge').filter({hasText:'approved'}).waitFor();assert.equal(await p.locator('#job-tab-quotes .job-tab-count').count(),0);assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)');await p.getByRole('button',{name:'Close',exact:true}).click();
   await p.locator('#nav [data-view=publicCalendar]').click();await p.locator('#customerWeek').fill(week);await p.locator('#customerWeek').dispatchEvent('change');await p.locator('.customer-week .attention-card').waitFor();
   const calendar=await p.locator('.customer-week').textContent();assert(calendar.includes('scheduled'));for(const privateValue of ['PRIVATE','Team A','commission','subcontractor'])assert(!calendar.includes(privateValue));
   await p.locator('#nav [data-view=properties]').click();await p.locator('#app').getByText('Original Gauteng address',{exact:true}).waitFor();

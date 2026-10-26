@@ -35,7 +35,7 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
     assert.equal(await p.locator('#workflowStages .stage-card').count(),role==='pm'?8:10);
     await shot(p,role+'-overview',role,role==='pm'?'PM overview/dashboard':'Operations overview/dashboard',role==='pm'?differences.pmDashboard:differences.dashboard,null,true);
    }
-   if(role==='pm'){await p.locator('#workflowStages').scrollIntoViewIfNeeded();await shot(p,'pm-overview-cards',role,'PM eight-card dashboard detail',differences.pmDashboard);await p.evaluate(()=>window.scrollTo(0,0));}
+   if(role==='pm'){await p.locator('#workflowStages').scrollIntoViewIfNeeded();await shot(p,'pm-overview-cards',role,'PM eight-card dashboard detail',differences.pmDashboard);await p.locator('[data-stage=attention]').click();await p.locator('#stageJobs .job-attention-reasons').first().waitFor();await shot(p,'pm-needs-attention-reasons',role,'Why each job needs attention',['Each unique job lists its actual unresolved backend actions, amounts and dates.'],'#stageJobs');await p.evaluate(()=>window.scrollTo(0,0));}
    await shot(p,role+'-sidebar',role,'Left sidebar navigation',differences.sidebar,'aside');
    if(role!=='tenant'){
     await p.locator('#nav [data-view=requests]').click();await p.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();await p.locator('#rows [data-job]').first().waitFor();await shot(p,role+'-repair-register',role,role==='pm'?'PM repair jobs':'Operations repair register',differences.register);

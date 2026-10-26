@@ -143,8 +143,12 @@ def attention_rows(user):
         for job in qs:
             if job.workflow_version and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True).exists():
                 add(job,'attendance-ready:'+str(job.pk),'Please confirm attendance date',3,target='job')
-        for n in UserJobNotification.objects.filter(user=user,read_at=None,event__kind='comment_added',event__request__in=qs).select_related('event__request__property'):
-            add(n.event.request,'comment:'+str(n.event_id),'Unread job comment',5,target='job')
+        conversations={}
+        for n in UserJobNotification.objects.filter(user=user,read_at=None,event__kind='comment_added',event__request__in=qs).exclude(event__actor=user).select_related('event__request__property'):
+            job,count=conversations.get(n.event.request_id,(n.event.request,0))
+            conversations[job.pk]=(job,count+1)
+        for job,count in conversations.values():
+            add(job,'comments:'+str(job.pk),'Unread job comment' if count==1 else f'Unread job comments ({count})',5,target='job')
     # Stable identity per underlying action; derived items disappear as soon as saved state resolves them.
     return sorted({row['key']:row for row in result}.values(),key=lambda r:(r['priority'],r.get('due_date') or r.get('appointment_date') or '9999',r['key']))
 

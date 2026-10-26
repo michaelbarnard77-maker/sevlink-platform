@@ -126,6 +126,60 @@ def data(job,user):
         history=[] if tenant else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot) for d in job.workflow_decisions.select_related('actor').all()])
 
 
+def tab_attention(job,user,visible):
+    """Counts use the same authorised documents/comments as the job response.
+
+    Opening a tab acknowledges recipient notifications, never a business action.
+    An outstanding item takes precedence over its unread update to avoid counting
+    one quote/invoice/attendance action twice. No new read-state model is needed.
+    """
+    role,_=access(user)
+    tenant=role=='tenant';staff=user.is_superuser;pm=role in ('pm','admin')
+    counts=dict(overview=0,comments=0,attendance=0,activity=0,reports=0)
+    if not tenant:counts.update(quotes=0,invoices=0)
+    if staff:counts['costs']=0
+    unread={key:[] for key in counts}
+    w=visible['workflow'];terminal=job.status in ('completed','closed','cancelled')
+    if pm and not terminal:
+        counts['overview']=int(job.status=='awaiting_review')+sum(a['status']=='pending' for a in w['additional'])
+        counts['attendance']=int(w['attendance_ready'] and not any(a['status'] in ('pending','confirmed') for a in w['attendance']))
+    elif staff and not terminal:
+        counts['attendance']=sum(a['status']=='pending' for a in w['attendance'])
+    quotes={q['id']:q for q in visible['quotations']}
+    invoices={i['id']:i for i in visible['invoices']}
+    comments={c['id'] for c in visible['comments']}
+    if not tenant:
+        actionable=('draft','sent','rejected','revision_requested') if staff else ('sent',)
+        counts['quotes']=sum(q['status'] in actionable and not q['has_next_revision'] and not q['superseded_by_approval'] for q in quotes.values())
+        for invoice in invoices.values():
+            if invoice['document_status']=='active' and Decimal(invoice['outstanding'])>0:
+                key='costs' if invoice.get('visibility')=='internal' else 'invoices'
+                if key in counts:counts[key]+=1
+    updates={'Please confirm attendance date':'attendance','Attendance arrangements requested':'attendance',
+        'Alternative attendance date being arranged':'attendance','Attendance confirmed':'attendance',
+        'Alternative attendance confirmed':'attendance','Completion report and photographs available':'reports'}
+    notices=UserJobNotification.objects.filter(user=user,event__request=job,read_at=None).exclude(event__actor=user).select_related('event')
+    for notice in notices:
+        e=notice.event;key=None
+        if e.kind in ('comment_added','internal_note'):
+            if e.details.get('comment_id') in comments:key='comments'
+        elif e.kind=='quote_sent' and e.details.get('quote_id') in quotes:key='quotes'
+        elif e.kind.startswith('invoice_') and e.details.get('invoice_id') in invoices:
+            key='costs' if invoices[e.details['invoice_id']].get('visibility')=='internal' else 'invoices'
+        elif e.kind=='workflow_event':
+            key=updates.get(e.details.get('action'))
+            # Only a currently eligible PM may receive a private readiness signal.
+            if e.visibility!='shared' and not staff and not (pm and key=='attendance' and w['attendance_ready']):key=None
+        elif e.kind in ('status_changed','job_cancelled','job_completed') and (staff or e.visibility=='shared'):
+            key='activity'
+        if key in unread:unread[key].append(notice.pk)
+    # Quote/invoice badges describe unresolved records, not stale upload alerts.
+    for key in ('comments','reports','activity'):
+        counts[key]=len(unread[key])
+    if not counts['attendance']:counts['attendance']=len(unread['attendance'])
+    return dict(counts=counts,unread=unread)
+
+
 def checked(view):
     @wraps(view)
     def wrapped(*args,**kwargs):
@@ -150,6 +204,9 @@ def dashboard(request):
         ids={item['job'] for item in attention}
         grouped['attention']=[job for job in rows if str(job.pk) in ids]
         definitions=(('attention','Needs Your Attention'),('new','New Requests'),('approval','Awaiting Quote Approval'),('deposit','Awaiting Deposit'),('booked','Booked'),('underway','Work Underway'),('payment','Awaiting Final Payment'),('closed','Closed'))
+    attention_by_job={}
+    for item in attention:
+        attention_by_job.setdefault(item['job'],[]).append({key:item[key] for key in ('action','amount','due_date','appointment_date') if key in item})
     selected=request.GET.get('stage','')
     if selected and selected not in dict(definitions):return JsonResponse({'error':'Unknown stage.'},status=400)
     result=grouped[selected] if selected else rows
@@ -159,7 +216,7 @@ def dashboard(request):
         today=timezone.localdate()
         summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','ready','underway','invoice')))]
     return JsonResponse({'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
-        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display()) for j in result]})
+        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
 
 
 @api_access

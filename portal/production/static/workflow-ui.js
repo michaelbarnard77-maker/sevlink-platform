@@ -39,7 +39,7 @@ window.SevlinkWorkflowUI = (() => {
       app.querySelectorAll('[data-upcoming]').forEach(b=>b.onclick=async()=>{try{showDetail(await api(`requests/${b.dataset.upcoming}/`));}catch(e){toast(e.message);}});
       app.querySelectorAll('[data-stage]').forEach(b=>b.onclick=async event=>{
         try{const r=await api('workflow/stages/?stage='+b.dataset.stage);app.querySelectorAll('[data-stage]').forEach(c=>{c.classList.toggle('selected',c===b);c.setAttribute('aria-pressed',String(c===b));});const panel=app.querySelector('#stageJobs');if(!panel)return;
-          panel.innerHTML=`<section class="panel"><h2>${esc(d.stages.find(s=>s.key===b.dataset.stage).label)}</h2><div class="cards">${r.results.map(j=>`<article class="card job-card"><div class="toolbar"><span class="eyebrow">${esc(j.reference)}</span><span class="badge">${esc(({normal:'Normal',high:'High',urgent:'Urgent',safety:'Safety'})[j.urgency]||j.status)}</span>${j.safety_concern?'<span class="badge Urgent">Safety concern flagged</span>':''}</div><h2>${esc(j.property)}</h2><p><b>${esc(j.title)}</b><br>${esc(j.property_name||'')}<br>${esc(j.agency||'')}</p><button class="secondary" data-stage-job="${j.id}">Open job</button></article>`).join('')||'<p>No jobs in this stage.</p>'}</div></section>`;
+          panel.innerHTML=`<section class="panel"><h2>${esc(d.stages.find(s=>s.key===b.dataset.stage).label)}</h2><div class="cards">${r.results.map(j=>`<article class="card job-card"><div class="toolbar"><span class="eyebrow">${esc(j.reference)}</span><span class="badge">${esc(({normal:'Normal',high:'High',urgent:'Urgent',safety:'Safety'})[j.urgency]||j.status)}</span>${j.safety_concern?'<span class="badge Urgent">Safety concern flagged</span>':''}</div><h2>${esc(j.property)}</h2><p><b>${esc(j.title)}</b><br>${esc(j.property_name||'')}<br>${esc(j.agency||'')}</p>${b.dataset.stage==='attention'&&j.attention_actions?.length?`<div class="notice job-attention-reasons"><h3>Action required</h3><ul>${j.attention_actions.map(a=>`<li><strong>${esc(a.action)}</strong>${Number(a.amount)>0?` · R ${esc(Number(a.amount).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2}))}`:''}${a.due_date?` · Due ${esc(a.due_date)}`:''}${a.appointment_date?` · Appointment ${esc(new Date(a.appointment_date).toLocaleString('en-ZA',{timeZone:'Africa/Johannesburg'}))}`:''}</li>`).join('')}</ul></div>`:''}<button class="secondary" data-stage-job="${j.id}">Open job</button></article>`).join('')||'<p>No jobs in this stage.</p>'}</div></section>`;
           panel.querySelectorAll('[data-stage-job]').forEach(c=>c.onclick=async()=>{try{showDetail(await api(`requests/${c.dataset.stageJob}/`));}catch(e){toast(e.message);}});
           if(event?.isTrusted)panel.scrollIntoView({block:'nearest',behavior:'smooth'});
         }catch(e){toast(e.message);}
@@ -60,10 +60,21 @@ window.SevlinkWorkflowUI = (() => {
     const pm=['pm','admin'].includes(context.user.role),staff=context.user.role==='superadmin',tenant=context.user.role==='tenant';
     const previous=modal.dataset.job===job.id?modal.dataset.tab:'overview';modal.dataset.job=job.id;
     const children=[...modal.children],panels={};const names={overview:'Overview',comments:'Comments',attendance:'Attendance',...(!tenant?{quotes:'Quotes',invoices:'Invoices'}:{}),activity:'Timeline',reports:'Before & After Report',...(staff?{costs:'Private Costs'}:{})};
+    const attention=job.tab_attention||{counts:{},unread:{}};
+    const informational=new Set(['comments','reports','activity']);
     const nav=document.createElement('div');nav.className='tabs workflow-tabs';nav.setAttribute('role','tablist');modal.append(nav);
+    const updateBadge=key=>{
+      const b=nav.querySelector(`[data-tab="${key}"]`);if(!b)return;
+      const count=attention.counts[key]||0;
+      b.innerHTML=esc(names[key])+(count?` <span class="job-tab-count" aria-hidden="true">(${count})</span>`:'');
+      b.setAttribute('aria-label',names[key]);
+      b.setAttribute('aria-description',count+ (informational.has(key)?' unread updates':' items requiring attention'));
+      b.title=names[key]+(count?` — ${count} ${informational.has(key)?'unread updates':'items requiring attention'}`:'');
+    };
     for(const [key,label] of Object.entries(names)){
       const button=document.createElement('button');button.textContent=label;button.dataset.tab=key;button.setAttribute('role','tab');nav.append(button);
       button.id='job-tab-'+key;button.setAttribute('aria-controls','job-panel-'+key);const panel=document.createElement('section');panel.id='job-panel-'+key;panel.setAttribute('aria-labelledby',button.id);panel.dataset.tabPanel=key;panel.className='workflow-tab-panel';panel.setAttribute('role','tabpanel');panels[key]=panel;modal.append(panel);
+      updateBadge(key);
     }
     const back=document.createElement('button');back.className='back-link';back.textContent='← Back to jobs';back.onclick=()=>modal.close();modal.prepend(back);
     const summary=document.createElement('section');summary.className='job-summary';modal.insertBefore(summary,nav);let inSummary=true;
@@ -86,7 +97,20 @@ window.SevlinkWorkflowUI = (() => {
     }
     const nextSteps={new:pm?'Review and route this maintenance request.':'The property manager is reviewing this request.',quoting:'Sevlink is preparing the quotation.',approval:tenant?'Your property manager is reviewing the proposed work.':'Review the quotation and record your decision.',deposit:tenant?'Sevlink is preparing attendance arrangements.':'Awaiting the required confirmed payment and Sevlink verification.',ready:'Please confirm attendance date.',booked:'Review the confirmed attendance window and access arrangements.',underway:'Follow the work and share permitted progress updates.',invoice:'Completion documentation and the final invoice are being prepared.',payment:tenant?'The completed work is being finalised.':'Review the final invoice and outstanding payment.',closed:'This job remains available in the authorised history.'};
     summary.insertAdjacentHTML('beforeend',`<div class="professional-next-step"><span class="eyebrow">NEXT STEP</span><p>${esc(job.status==='cancelled'?'This job is cancelled. Its records remain available.':nextSteps[w.stage]||'Review the job record.')}</p></div>`);
-    const show=tab=>{modal.dataset.tab=tab;Object.entries(panels).forEach(([key,p])=>p.hidden=key!==tab);nav.querySelectorAll('button').forEach(b=>{b.classList.toggle('selected',b.dataset.tab===tab);b.setAttribute('aria-selected',String(b.dataset.tab===tab));});};
+    const reading=new Set();
+    const acknowledge=async tab=>{
+      const ids=attention.unread[tab]||[];if(!ids.length||reading.has(tab))return;
+      reading.add(tab);
+      try{
+        const results=await Promise.allSettled(ids.map(id=>api(`workflow/notifications/${id}/`,{method:'POST',body:JSON.stringify({read:true})})));
+        const failed=ids.filter((id,i)=>results[i].status==='rejected');attention.unread[tab]=failed;
+        if(informational.has(tab))attention.counts[tab]=failed.length;
+        else if(tab==='attendance' && !((pm&&w.attendance_ready&&!w.attendance.some(a=>['pending','confirmed'].includes(a.status)))||(staff&&w.attendance.some(a=>a.status==='pending'))))attention.counts[tab]=failed.length;
+        updateBadge(tab);
+        if(failed.length)toast('Some updates could not be marked read. Open this tab again to retry.');
+      }finally{reading.delete(tab);}
+    };
+    const show=tab=>{modal.dataset.tab=tab;Object.entries(panels).forEach(([key,p])=>p.hidden=key!==tab);nav.querySelectorAll('button').forEach(b=>{b.classList.toggle('selected',b.dataset.tab===tab);b.setAttribute('aria-selected',String(b.dataset.tab===tab));});acknowledge(tab);};
     nav.querySelectorAll('button').forEach(b=>b.onclick=()=>show(b.dataset.tab));show(names[previous]?previous:'overview');
     const submit=(form,operation,transform=x=>x)=>{
       const key=crypto.randomUUID();form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');if(b)b.disabled=true;

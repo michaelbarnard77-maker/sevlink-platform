@@ -121,6 +121,7 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         response=client.post('/api/maintenance/requests/'+str(self.job.pk)+'/invoices/',{
             'number':'MONDAY-BROWSER-001','amount':'500.00','due_date':str(monday),'subcontractor':str(self.partner.pk),'attachments':document()},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(response.status_code,201,response.content)
+        self.assertEqual(response.json()['due_date'],str(today+timedelta(days=(7-today.weekday())%7 or 7)))
         sessions={}
         for role,user in [('scheduler',self.scheduler),('superadmin',self.ops),('finance',self.ops),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value

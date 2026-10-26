@@ -7,3 +7,5 @@ aside #nav{min-height:0;overflow-y:auto;flex:1}aside footer{font-size:11px;paddi
 .job-summary .toolbar{margin:16px 0}.job-summary .professional-next-step{margin-bottom:0}.completion-report .report-summary{white-space:pre-wrap}.photo-placeholder{background:#f2f7fb;padding:35px 12px;color:#64748b}.photo-pair section{min-width:0}.photo-pair a{display:block;color:var(--green);overflow-wrap:anywhere}.job-summary .notice p{margin:8px 0}
 
 .ops-overview{margin-top:0}body[data-portal-role="superadmin"] #nav button.active{background:#124c7e;color:white;border-left:0}
+
+.job-tab-count{display:inline-block;min-width:22px;padding:1px 5px;border-radius:10px;background:#fff;color:#006bb0;font-size:12px;font-weight:700}.workflow-tabs button.selected .job-tab-count{background:#e1f7fa;color:#075b79}.job-attention-reasons ul{padding-left:20px;margin:10px 0}.job-attention-reasons li{margin:8px 0}

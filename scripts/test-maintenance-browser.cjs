@@ -72,6 +72,11 @@ process.stdin.on('end', async () => {
     await page.locator('#nav [data-view=requests]').click();
     await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
+    await page.locator('#job-tab-comments .job-tab-count').filter({hasText:'(1)'}).waitFor();
+    await page.getByRole('tab',{name:'Comments',exact:true}).click();
+    await page.locator('#job-tab-comments .job-tab-count').waitFor({state:'detached'});
+    const persistedTabs=await (await page.request.get(url+'/api/maintenance/requests/'+(await page.locator('#modal').getAttribute('data-job'))+'/')).json();
+    assert.equal(persistedTabs.tab_attention.counts.comments,0,'Comment read state persists in Django');
     const downloadEvent = page.waitForEvent('download');
     await page.getByRole('tab',{name:'Before & After Report',exact:true}).click();
     await page.locator('#modal .file a').first().click();
@@ -114,7 +119,7 @@ process.stdin.on('end', async () => {
     if(process.env.SEVLINK_SCREENSHOT_DIR)await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/live-register-1440.png',fullPage:true});
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#modal .badge').filter({hasText:'Reviewed'}).waitFor();
-    assert.deepEqual(await page.getByRole('tab').allTextContents(),['Overview','Comments','Attendance','Quotes','Invoices','Timeline','Before & After Report','Private Costs']);
+    assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs=>tabs.map(t=>t.getAttribute('aria-label'))),['Overview','Comments','Attendance','Quotes','Invoices','Timeline','Before & After Report','Private Costs']);
     assert.equal(await page.locator('.job-summary .job-property-address').textContent(),'12 Test Road');
     assert.equal(await page.locator('.job-summary .professional-next-step').count(),1);
     if(referenceStyles)assert.deepEqual(await page.evaluate(()=>({tabBackground:getComputedStyle(document.querySelector('#modal .tabs button.selected')).backgroundColor,modalWidth:document.querySelector('#modal').getBoundingClientRect().width,headingSize:getComputedStyle(document.querySelector('.job-property-address')).fontSize})),referenceStyles,'Live tabs, modal and job heading reuse the original demo styles');

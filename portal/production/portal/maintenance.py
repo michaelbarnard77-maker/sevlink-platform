@@ -115,8 +115,8 @@ def serialize(job, user):
     from .attachments import visible_attachments
     role, _ = access(user)
     can_update = role in ('superadmin', Membership.ADMIN, Membership.PM)
-    from .workflow import data as workflow_data
-    return {
+    from .workflow import data as workflow_data, tab_attention
+    result = {
         'workflow': workflow_data(job,user),
         'id': str(job.pk), 'reference': job.reference, 'legacy_reference': 'SV-' + str(job.pk).upper(), 'request_reference': job.request_reference, 'official_job_reference': job.reference if job.job_number else None, 'historical_reference': job.legacy_job_reference, 'urgency': job.urgency,
         'property': property_data(job.property), 'title': job.title,
@@ -135,6 +135,8 @@ def serialize(job, user):
         'history': [{'status': event.status, 'label': S(event.status).label, 'at': event.at.isoformat()}
                     for event in job.status_events.all()],
     }
+    result['tab_attention']=tab_attention(job,user,result)
+    return result
 
 
 class ReportForm(forms.Form):
