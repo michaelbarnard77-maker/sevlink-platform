@@ -355,7 +355,7 @@ def workspace(request):
         return HttpResponse('No maintenance workspace access.', status=403)
     # Reuse the existing portal shell and all its CSS, without running demo scripts
     # or embedding demo identities/private browser data in the authenticated UI.
-    html = (settings.PORTAL_UI_DIR / 'index.html').read_text()
+    html = (settings.PORTAL_UI_DIR / 'index.html').read_text(encoding='utf-8')
     from django.templatetags.static import static
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)

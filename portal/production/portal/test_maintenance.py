@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from django.db import IntegrityError, transaction
@@ -279,7 +280,13 @@ class MaintenanceTests(TestCase):
 
     def test_workspace_uses_existing_styles_without_demo_scripts(self):
         self.login(self.tenant)
-        response = self.client.get(reverse('maintenance_workspace'))
+        read_text=Path.read_text
+        def windows_default(path,*args,**kwargs):
+            kwargs.setdefault('encoding','cp1252')
+            return read_text(path,*args,**kwargs)
+        # Reproduce Windows' non-UTF-8 default while reading the actual demo shell.
+        with patch.object(Path,'read_text',windows_default):
+            response = self.client.get(reverse('maintenance_workspace'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'maintenance.js')
         self.assertContains(response, 'professional-polish.css')
