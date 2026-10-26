@@ -30,7 +30,7 @@ pictures are the same existing website illustration, not genuine repair evidence
 
 The script performs real backend request, quotation approval, deposit receipt
 and verification, appointment, completion evidence and final invoice actions.
-It then opens Operations, PM and tenant sessions. It checks eight PM and ten
+It then opens Operations, PM, Agency Admin and tenant sessions. It checks eight PM and ten
 Operations cards, no demo IndexedDB in live sessions, no private supplier or
 internal-note sentinel in PM/tenant dialogs, and no tenant finance tabs.
 These capture assertions supplement the full security/browser suite.
@@ -62,7 +62,7 @@ certified from this local source comparison.
 | PM repair jobs | Source register styling | Portfolio-scoped status filters; no global agency/private data |
 | PM job tabs | Same live modal and tab styling as Operations | No Private Costs tab or internal finance/actions; agency-visible quotations and invoices retained |
 | Tenant job | Same header, conversation, attendance and report styling | No agency quote/invoice tabs, internal notes, private costs or supplier identity |
-| Sidebars | Source logo, navy panel, outline icons and spacing | Role-specific agreed links; FINANCE staff-only; no simulated account switching; approved turquoise PM/tenant selection state |
+| Sidebars | Source logo, navy panel, outline icons and spacing | Role-specific agreed links; FINANCE staff-only; no simulated account switching; the same blue selected state and white selected text for every role, on desktop and mobile |
 
 ## Fixes found during visual review
 
@@ -81,3 +81,19 @@ certified from this local source comparison.
 No schema migration is needed for these review fixes. Original demo files are
 unchanged. Merge and deployment remain blocked on the owner's screenshot review;
 Windows merge/deployment instructions will be supplied after that approval.
+
+## Navigation consistency update
+
+All roles now use the demo navigation palette: `#062f61` navy, `#124c7e`
+rounded selected links, white selected text and turquoise outline icons. The
+older pale-turquoise customer selection override is removed. Mobile drawers and
+mobile navigation share this palette. Role-specific links and the private staff
+FINANCE heading retain their existing server-side permission boundaries.
+The capture harness checks the actual computed palette for Operations, PM,
+Agency Admin and tenant accounts and captures desktop/mobile navigation.
+
+This visual update changes `static/calendar.css` and `static/workflow.css` only
+at runtime. No migrations or dependency changes are needed. For a Windows
+update, back up the working copy, stop the local server, replace these two files
+with the versions from the same latest development-branch checkout, restart
+the server and press Ctrl+F5. This does not update the AWS installation.

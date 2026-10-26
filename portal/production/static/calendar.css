@@ -34,6 +34,6 @@
 @media(max-width:800px){
  #phoneNav.customer-nav{overflow-x:auto;overflow-y:hidden;justify-content:flex-start}
  #phoneNav.customer-nav button{flex:0 0 112px;white-space:normal;line-height:1.3}
- #phoneNav button.active{background:#def5f2;color:#082f57}
+ #phoneNav button.active{background:#124c7e;color:#fff}
 }
-#nav button.active{background:#def5f2;color:#082f57;border-left:3px solid #21b8b5}
+#nav button.active{background:#124c7e;color:#fff;border-left:0}

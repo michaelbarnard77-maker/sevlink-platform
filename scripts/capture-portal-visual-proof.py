@@ -86,8 +86,10 @@ class VisualProof(StaticLiveServerTestCase):
         pending=self.create('Bathroom tap quotation — visual test');self.action(self.pm,pending,'review',job_type='quoted',urgency='high',access_responsibility='sevlink');self.quote(pending,'SQ-VISUAL-002')
         callout=self.create('Authorised call-out — visual test');self.action(self.pm,callout,'review',job_type='callout',urgency='normal',access_responsibility='pm',limit='1500.00')
         self.create('New repair needing review — visual test',category='Electrical',safety=True)
+        self.admin=User.objects.create_user(username='agency-admin-review',first_name='Agency Admin Review',email='agency-admin@example.test')
+        Membership.objects.create(user=self.admin,agency=agency,role='admin')
         sessions={}
-        for role,user in [('operations',self.ops),('pm',self.pm),('tenant',self.tenant)]:
+        for role,user in [('operations',self.ops),('pm',self.pm),('admin',self.admin),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
         r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
