@@ -24,7 +24,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
    const card=p.locator('#stageJobs .job-card').filter({has:p.locator(`[data-stage-job="${item.job}"]`)});
    assert((await card.locator('.job-attention-reasons').innerText()).includes(item.action));
   }
-  assert.deepEqual(await p.locator('#nav button').allTextContents(),['Overview','Report a Repair','Repair Jobs','Properties','Tenants','Quotations','Accounts & Payments','Maintenance Calendar','Updates & Notifications','Agency Profile','Report Website Issue']);
+  assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','profile','report','publicCalendar','updates','quotes','accounts','issues']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
   await p.locator('#attention .attention-card').filter({hasText:'Review new maintenance request'}).filter({hasText:'GP repair'}).getByRole('button',{name:'Review job'}).click();
   assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'(1)');

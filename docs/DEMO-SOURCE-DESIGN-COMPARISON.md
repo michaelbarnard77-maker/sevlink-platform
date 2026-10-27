@@ -103,3 +103,22 @@ and button height against the actual matching source for all four role fixtures.
 Windows update requires maintenance.js, calendar.css and workflow.css from this
 change in the existing production/static directory; no migration or database reset.
 The user's screenshot demonstrated the old workflow.css remained installed.
+
+## Owner's invoice and urgency follow-up
+
+Removed the legacy standalone urgency/deposit footer from all job tabs. Existing
+unresolved legacy actions remain in Overview. Official urgency remains only in
+the awaiting-review PM form, now labelled Send to Sevlink; it is no longer shown
+for requests already routed. Existing backend rules and deposit gates remain.
+
+Invoices now shows the demo's Invoices & payment status heading, same-invoice
+payment explanation, Upload invoice reveal button and no-invoices empty state.
+The PDF form is collapsed until requested and has exactly one purpose selector,
+including Deposit invoice before completion and Final invoice after completion.
+Purpose is posted with the PDF; private supplier invoices remain private. The
+workflow adapter no longer inserts a second purpose field. Existing payment and
+final-invoice evidence checks are preserved. Uploads are not payments.
+
+Local replacement files: static/maintenance.js and static/workflow-ui.js. No
+migrations or dependencies change. The empty-state screenshot's unrelated
+prototype quoting/assignment actions are not copied into customer invoice tabs.

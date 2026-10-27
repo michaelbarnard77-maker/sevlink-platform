@@ -195,7 +195,9 @@ process.stdin.on('end', async () => {
     await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
+    await page.getByRole('button',{name:'＋ Upload invoice',exact:true}).click();
     await page.locator('#invoiceForm [name=visibility]').selectOption('shared');
+    await page.locator('#invoiceForm [name=purpose]').selectOption('deposit');
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.locator('#invoiceForm [name=number]').fill('INV-BROWSER-001');
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();

@@ -86,7 +86,7 @@ window.SevlinkWorkflowUI = (() => {
       if(element.querySelector('h2')?.textContent.startsWith('Job attachments'))inSummary=false;
       if(inSummary){summary.append(element);continue;}
       if(element.tagName==='H2'){
-        if(element.textContent==='Quotations')group='quotes';else if(element.textContent==='Invoices')group='invoices';else if(element.textContent.includes('Job conversation'))group='comments';
+        if(element.textContent==='Quotations')group='quotes';else if(element.textContent==='Invoices & payment status')group='invoices';else if(element.textContent.includes('Job conversation'))group='comments';
       }
       if(element.id==='quoteForm')group='quotes';
       if(element.id==='invoiceForm')group='invoices';
@@ -122,8 +122,8 @@ window.SevlinkWorkflowUI = (() => {
       };
     };
     panels.overview.insertAdjacentHTML('afterbegin',`<section class="notice"><h2>${esc(w.job_type==='callout'?'Authorised Call-Out':w.job_type==='quoted'?'Quotation Required':'Awaiting PM review')}</h2>${w.spending_limit?`<p>Maximum authorised total: <strong>R ${esc(w.spending_limit)}</strong> · VAT-inclusive where applicable.</p>`:''}<p>${esc(w.access_responsibility==='pm'?'Property Manager Arranges Access':'Sevlink Arranges Access')}</p>${w.safety_concern?'<p><strong>Tenant has flagged a safety concern.</strong></p>':''}${w.compatibility?'<p>Historical workflow — review existing evidence before authorising further work.</p>':''}${w.closed_at?'<p>Closed after final agency payment. All job history is retained.</p>':''}${w.parent_request?'<p>Separately authorised additional work linked to the original call-out.</p>':''}</section>`);
-    if(pm && !w.authorised_at && !job.quotations.some(q=>q.status==='approved')){
-      panels.overview.insertAdjacentHTML('beforeend',`<form id="workflowReview" class="panel"><h2>Review and Route Request</h2>${select('job_type','Job type',[['quoted','Quotation Required'],['callout','Call-Out']])}${select('urgency','Official urgency',[['normal','Normal'],['high','High'],['urgent','Urgent']])}${select('access_responsibility','Access responsibility',[['sevlink','Sevlink Arranges Access'],['pm','Property Manager Arranges Access']])}<label>Maximum authorised call-out total in ZAR (VAT-inclusive)</label><input name="limit" type="number" min="0.01" step="0.01"><label>Access information / further details</label><textarea name="access_information" maxlength="2500">${esc(w.access_information)}</textarea><label>Reason for review or change</label><textarea name="reason" maxlength="2500"></textarea><button type="submit" class="primary">Save review and authorisation</button></form>`);
+    if(pm && job.status==='awaiting_review' && !w.authorised_at && !job.quotations.some(q=>q.status==='approved')){
+      panels.overview.insertAdjacentHTML('beforeend',`<form id="workflowReview" class="panel"><h2>Send request to Sevlink</h2>${select('job_type','Job type',[['quoted','Quotation Required'],['callout','Call-Out']])}${select('urgency','Official urgency',[['normal','Normal'],['high','High'],['urgent','Urgent']])}${select('access_responsibility','Access responsibility',[['sevlink','Sevlink Arranges Access'],['pm','Property Manager Arranges Access']])}<label>Maximum authorised call-out total in ZAR (VAT-inclusive)</label><input name="limit" type="number" min="0.01" step="0.01"><label>Access information / further details</label><textarea name="access_information" maxlength="2500">${esc(w.access_information)}</textarea><label>Reason for review or change</label><textarea name="reason" maxlength="2500"></textarea><button type="submit" class="primary">Send to Sevlink</button></form>`);
       const reviewForm=panels.overview.querySelector('form');if(w.job_type!=='unclassified')reviewForm.elements.job_type.value=w.job_type;reviewForm.elements.urgency.value=job.urgency==='high'?'high':job.urgency==='urgent'?'urgent':'normal';reviewForm.elements.access_responsibility.value=w.access_responsibility;
       submit(reviewForm,'review');
     }
@@ -162,7 +162,6 @@ window.SevlinkWorkflowUI = (() => {
       submit(panels.reports.querySelector('#completionAccept'),'completion',v=>({...v,before_unavailable:panels.reports.querySelector('[name=before_unavailable]').checked}));
     }
     const privateForm=panels.invoices?.querySelector('#invoiceForm');if(privateForm){
-      privateForm.insertAdjacentHTML('afterbegin',select('purpose','Invoice purpose',job.status==='completed'?[['final','Final agency invoice'],['deposit','Deposit invoice']]:[['deposit','Deposit invoice'],['final','Final agency invoice']]));
       const visibility=privateForm.elements.visibility;visibility.value='shared';visibility.innerHTML='<option value="shared">Agency-visible Sevlink invoice</option>';
     }
     if(staff){
