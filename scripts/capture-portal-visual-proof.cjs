@@ -25,6 +25,8 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
   await rp.locator('#nav [data-view=requests]').click();await rp.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();await shot(rp,'source-register','Source demo','Preserved source register',['Source reference only; prototype records.']);
   await rp.getByRole('button',{name:'Open job →',exact:true}).first().click();await shot(rp,'source-job-header','Source demo','Preserved source job header',['Source reference only; synthetic identities.']);
   for(const label of ['Comments','Attendance','Quotes','Invoices','Timeline','Before & after report']){await rp.locator('#modal .tabs').getByRole('button',{name:label,exact:false}).click();await rp.evaluate(()=>{const m=document.querySelector('#modal');m.scrollTop=m.querySelector('.tabs').offsetTop-24;});await shot(rp,'source-tab-'+label.toLowerCase().replace(/[^a-z]+/g,'-'),'Source demo','Source '+label,['Source reference only.']);}
+  const navigationMetrics=b=>{const s=getComputedStyle(b);return Object.fromEntries(['fontFamily','fontSize','lineHeight','paddingTop','paddingRight','paddingBottom','paddingLeft','marginTop','marginBottom','borderRadius','height'].map(k=>[k,s[k]]));};
+  const sourceNavigationMetrics=await rp.locator('#nav button').first().evaluate(navigationMetrics);
   await ref.close();
   for(const role of ['operations','pm','admin','tenant']){
    const c=await browser.newContext({viewport:{width:1440,height:1000}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(12000);p.on('pageerror',e=>errors.push(role+': '+e.message));
@@ -39,6 +41,7 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
    await p.locator('#nav button.active').waitFor();
    const navStyle=await p.locator('#nav button.active').evaluate(b=>({background:getComputedStyle(b).backgroundColor,color:getComputedStyle(b).color,border:getComputedStyle(b).borderLeftWidth,aside:getComputedStyle(document.querySelector('aside')).backgroundColor}));
    assert.deepEqual(navStyle,{background:'rgb(18, 76, 126)',color:'rgb(255, 255, 255)',border:'0px',aside:'rgb(6, 47, 97)'});
+   assert.deepEqual(await p.locator('#nav button').first().evaluate(navigationMetrics),sourceNavigationMetrics,'All profiles use the published source navigation metrics');
    if(role!=='operations')assert.equal(await p.locator('#nav .nav-heading').count(),0);
    await shot(p,role+'-sidebar',role,'Left sidebar navigation',differences.sidebar,'aside');
    if(role!=='tenant'){

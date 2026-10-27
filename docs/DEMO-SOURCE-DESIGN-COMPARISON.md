@@ -81,3 +81,25 @@ authenticated roles now share 12px navigation labels, white semantic symbols,
 rows retain a 44px touch target. Authorised links and their routing are preserved;
 the simulated profile picker and demo account label are not added to real sign-in.
 Only workflow-ui.js and workflow.css change at runtime.
+
+## Published reference verified and navigation corrected
+
+The Sites connector resolved the owner-supplied maintenance-demo URL to version 42
+(commit 58a0777f69869461272cec00028dc0d51e27f57b). Authenticated read-only
+requests retrieved its HTML, CSS and scripts. The published index.html and
+features.css SHA-256 hashes exactly match the preserved portal/dist copies.
+No hosted source, access settings or deployment was changed.
+
+The prior compact recreation is superseded: desktop buttons now use the original
+plain symbol + nonbreaking space + label markup, original inherited colour and
+font metrics, 10px/12px padding and 4px vertical margins. The added flex icon boxes
+and minimum heights are removed. Agency navigation begins Overview, Repair jobs,
+Properties, Tenants, Agency profile, Report a repair, Maintenance calendar, Updates
+& reminders. Working Quotes/Accounts and role-specific authorised links remain.
+Mobile restores the published dark drawer and white bottom-navigation colours.
+The visual harness compares computed font, line height, padding, margins, radius
+and button height against the actual matching source for all four role fixtures.
+
+Windows update requires maintenance.js, calendar.css and workflow.css from this
+change in the existing production/static directory; no migration or database reset.
+The user's screenshot demonstrated the old workflow.css remained installed.

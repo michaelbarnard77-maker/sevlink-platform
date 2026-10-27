@@ -8,27 +8,20 @@ aside #nav{min-height:0;overflow-y:auto;flex:1}aside footer{font-size:11px;paddi
 
 .ops-overview{margin-top:0}
 
-/* All roles share the preserved demo navigation palette and selected state. */
-body>aside{background:#062f61;color:#d0e2f2}
-#nav button.active,#phoneNav button.active{background:#124c7e;color:#fff;border-left:0;border-radius:8px}
+/* Published demo navigation: retain its original button markup and styles. */
 #nav button:focus-visible,#phoneNav button:focus-visible{outline:2px solid #21b8b5;outline-offset:2px}
-@media(max-width:760px){
- body>aside{background:#062f61}
- #phoneNav{background:#062f61;border-top-color:#244c77}
- #phoneNav button{color:#d0e2f2}
- #phoneNav button>span{color:#21b8b5}
-}
 
 .job-tab-count{display:inline-block;min-width:22px;padding:1px 5px;border-radius:10px;background:#fff;color:#006bb0;font-size:12px;font-weight:700}.workflow-tabs button.selected .job-tab-count{background:#e1f7fa;color:#075b79}.job-attention-reasons ul{padding-left:20px;margin:10px 0}.job-attention-reasons li{margin:8px 0}
 
-/* Owner's latest compact agency-demo navigation reference, shared by every role. */
-body>aside #nav{overflow-x:hidden;color:#fff}
-#nav button{gap:10px;min-height:38px;padding:10px 12px;margin:4px 0;border-radius:8px;font-size:12px;line-height:18px;color:#fff}
-#nav .nav-icon{width:10px;flex:0 0 10px;font-size:12px;line-height:18px;color:inherit}
-#nav button>span:last-child{min-width:0;overflow-wrap:anywhere}
-#nav button.active{background:#124c7e;color:#fff}
-#phoneNav button,#phoneNav button>span{color:#fff}
+/* Exact published desktop navigation metrics, shared by authenticated roles. */
+body>aside #nav{overflow-x:hidden;color:#d0e2f2}
+#nav button{display:block;width:100%;text-align:left;padding:10px 12px;margin:4px 0;background:transparent;color:inherit;border-radius:8px;font:inherit;font-size:12px;line-height:normal;min-height:0}
+#nav button.active{background:#124c7e;color:white;border-left:0}
 @media(max-width:760px){
- #nav button{min-height:44px}
- #phoneNav button>span{font-size:12px}
+ body>aside{background:#101c31}
+ body>aside nav button{min-height:46px;white-space:normal}
+ #phoneNav{background:white;border-top-color:#dce2ea}
+ #phoneNav button{color:#64748b}
+ #phoneNav button>span{color:inherit;font-size:23px;line-height:25px}
+ #phoneNav button.active{background:#fff0e9;color:#b94717;border-radius:10px;font-weight:800}
 }
