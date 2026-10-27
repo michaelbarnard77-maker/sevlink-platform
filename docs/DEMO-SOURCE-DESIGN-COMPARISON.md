@@ -71,3 +71,13 @@ These example records are never inserted into the development SQLite database.
 
 No database migration is required. Real customer SQLite, uploaded files, accounts,
 quotations, payments and historical decisions are not modified by this work.
+
+## Latest owner navigation reference (27 October 2026)
+
+The owner supplied an agency-demo sidebar screenshot with compact rows and small
+white symbols. This supersedes the earlier large turquoise-icon reference. All
+authenticated roles now share 12px navigation labels, white semantic symbols,
+38px desktop rows and the existing navy/blue selected palette. Mobile drawer
+rows retain a 44px touch target. Authorised links and their routing are preserved;
+the simulated profile picker and demo account label are not added to real sign-in.
+Only workflow-ui.js and workflow.css change at runtime.

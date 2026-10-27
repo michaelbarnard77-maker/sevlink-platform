@@ -27,8 +27,10 @@ window.SevlinkWorkflowUI = (() => {
   const select=(name,label,options)=>`<label>${esc(label)}</label><select name="${name}">${options.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>`;
   function decorate(){
     document.querySelectorAll('.categorygrid .category').forEach((b,i)=>{b.querySelector('span').innerHTML=icon(i);});
-    document.querySelectorAll('#nav .nav-icon').forEach((n,i)=>n.innerHTML=icon(i));
-    document.querySelectorAll('#phoneNav button>span').forEach((n,i)=>n.innerHTML=icon(i));
+    const navigationSymbols={overview:'◫',requests:'☷',properties:'⌂',tenants:'♙',profile:'⚙',report:'＋',publicCalendar:'▦',updates:'✉',quotes:'▤',accounts:'R',issues:'⚑',agencies:'⌖',websiteIssues:'⚑',calendar:'▦',monday:'R',regions:'♙'};
+    document.querySelectorAll('#nav .nav-icon,#phoneNav button>span').forEach(n=>{
+      n.textContent=(navigationSymbols[n.closest('[data-view]')?.dataset.view] || '·')+'\uFE0E';
+    });
   }
   async function stages({api,app,showDetail,toast,context}){
     try{
