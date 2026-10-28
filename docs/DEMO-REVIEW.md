@@ -93,3 +93,30 @@ The harness checks horizontal overflow and forbidden private content.
 
 No merge, deployment, live email or owner's local installation update is performed
 by this review. The development-branch changes and screenshots are for approval.
+
+## Attendance card follow-up
+
+Owner-requested refinements use larger long-form dates and a prominent arrival
+window, with readable pending/confirmed/cancelled statuses. Accept retains the
+PM's date and opens subcontractor/team assignment. Decline opens a blank manual
+alternative date; the original request is unchanged until a client-agreed
+alternative is confirmed. Confirmed appointments expose Reschedule.
+
+The existing confirmation endpoint still enforces deposit, role, client agreement,
+arrival-window, calendar conflict and audit rules. Teams are filtered by the
+selected subcontractor; private start/end defaults match the arrival window.
+Switching between actions shows loading state and ignores obsolete responses.
+
+Sevlink uploads Before-work photographs before starting and After-work photographs
+after completion in Before & After Report. The purpose classifies the uploaded
+files into the report columns. The staff member then saves the work summary as
+completion documentation; no automatically generated report PDF is implied.
+
+![Requested attendance with a readable date and separate actions](visual-proof/source-design-2026-10-28/operations-attendance-request.png)
+
+[Accept and assign](visual-proof/source-design-2026-10-28/operations-attendance-accept.png) ·
+[Decline and enter a date](visual-proof/source-design-2026-10-28/operations-attendance-decline.png) ·
+[Confirmed appointment](visual-proof/source-design-2026-10-28/operations-attendance-confirmed.png) ·
+[Manual alternative booking](visual-proof/source-design-2026-10-28/operations-attendance-alternative.png).
+The updated walkthrough captured 77 authenticated/source screens and verified
+both actions through saved appointments and rescheduling.
