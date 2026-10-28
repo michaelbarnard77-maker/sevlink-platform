@@ -1,124 +1,91 @@
-# Demo source comparison and authenticated design reuse
+# Published Sevlink demo compared with authenticated Django
 
-The hosted demo URL returned HTTP 401 (sign-in required). An attempted Chromium
-navigation also encountered the execution environment's certificate trust error.
-The hosted dashboard and job tabs were **not inspected**. The preserved repository
-source is the primary visual reference for this update.
+Verified 28 October 2026. The Sites connection identifies the owner's URL
+`https://sevlink-maintenance-demo.ableisle4.chatgpt.site/` as published version 42,
+source commit `58a0777f69869461272cec00028dc0d51e27f57b`.
+Read-only authenticated HTTP retrieval compared all **30** served HTML, JavaScript,
+CSS and logo files against `portal/dist/`: every file matches byte for byte.
+[File-by-file SHA-256 evidence](DEMO-SOURCE-HASHES.json) records this comparison.
+There are no missing or outdated served demo files in the repository. The hosted
+source, audience and deployment were not changed.
 
-## Exact sources
+The earlier sign-in/401 limitation was resolved through authorised Sites access.
+The source rather than an inferred recreation is now verified against the hosted
+publication. The owner's invoice screenshots agree with `agency-finance.js`,
+`deposit-workflow.js`, `single-invoice.js` and `professional-polish.js` in that set.
 
-- `portal/dist/index.html`: actual navy sidebar/logo, page shell, typography,
-  colours, modal, base `.tabs`, buttons, cards and forms.
-- `portal/dist/features.css`: `.ops-pods`, `.ops-pod`, job cards, `.photo-pair`,
-  modal dimensions and supporting components.
-- `portal/dist/mobile.css`: responsive sidebar, dialog, forms and navigation.
-- `portal/dist/operations-calendar.css`: proportional Operations calendar.
-- `portal/dist/professional-polish.css`: job address/title, next-step banner,
-  document header/property/totals and report presentation.
-- `portal/dist/operations.js`: dashboard/card markup and job routing presentation.
-- `portal/dist/repair-register.js`: Repair Job Register table/filter layout.
-- `portal/dist/app.js`: job header, comments, attendance, quotes, invoices and tabs.
-- `portal/dist/features.js`: Before & After report and timeline components.
-- `portal/dist/professional-polish.js`: final job next-step and document layout.
-- `portal/dist/dialog-navigation.js`: modal back-navigation presentation.
+## Implementation and reference map
 
-Django's existing `maintenance.workspace` reads the actual demo HTML, retains its
-CSS links and removes every demo script, sample identity and browser-state entry
-point. Its authenticated adapters remain `static/maintenance.js` and
-`static/workflow-ui.js`; no demo actions are used to save real records.
+| Area | Exact source reused | Connection to real records |
+| --- | --- | --- |
+| Navy sidebar, logo, typography, buttons, modal | `index.html`, `features.css`, `mobile.css`, `professional-polish.css` | Original HTML/CSS shell; permitted role links, real identity and sign-out replace demo account switching |
+| Operations dashboard | `operations.js` `.stats`, `.ops-pods`, `.ops-pod`, `.job-card` structures | Existing scoped workflow summary/stage API; saved jobs and authorised actions |
+| PM overview | `team.js` attention semantics and original panel/card styles | Existing approved eight-card dashboard and portfolio attention projection retained |
+| Repair Job Register | `repair-register.js` filter grid, bucket buttons and property-first table | Existing permission-scoped server search, filtering, pagination and REQ/SV references |
+| Job header and panels | `professional-polish.js`, original `.job-property-address`, `.job-repair-title`, `.professional-next-step`, `.notice` | Saved property, agency, PM, report and current workflow; original report is a disclosure |
+| Six core job tabs | `app.js` and `features.js` original `.tabs`, panels and report classes | Comments, Attendance, Quotes, Invoices, Timeline, Before & After Report use existing APIs |
+| Invoice cards | `agency-finance.js` `renderInvoices` toolbar, amount, received/outstanding rows and actions | Saved original PDF, document status, verified manual receipts, refunds and true balance |
+| Deposit/balance information | `deposit-workflow.js`, `single-invoice.js` notice structure | Authoritative `deposit_state` returned only to permitted non-tenant users |
+| Email preview | `professional-polish.js` document header/property/totals structure | Authorised saved invoice/job values; clearly preview-only; no sending or queue changes |
+| Completion report | `features.js`, `professional-polish.js` `.sevlink-document`, `.document-property`, `.photo-pair` | Private authorised downloads and accepted saved completion evidence |
 
-## Reuse and differences
+The Django workspace reads the real `portal/dist/index.html` with UTF-8 and retains
+its original CSS links. It strips all demo scripts and sample identities, then
+loads `maintenance.js` and `workflow-ui.js`. No demo `localStorage`, IndexedDB,
+mutable sample data or simulated operational actions are used in the real portal.
+Original demo files remain unchanged.
 
-Operations now uses the actual `.ops-pods` / `.ops-pod` structure and selected
-state from the demo stylesheet, plus real scoped summary counts. PMs retain the
-owner-approved eight cards rather than copying the demo's twelve Operations
-stages. Operations retains the ten agreed backend stages; assessment/cancelled
-stages from the older demo are not invented as new backend workflows.
+Invoice upload now has a prominent primary **Upload invoice** submit action on its
+own row. A successful API save collapses the form and renders the saved compact
+card, with status, original PDF, full recorded amount and balance. Payment/history
+and accounting controls remain functional behind the card's actions. Their
+handlers, endpoints, version checks and audit history are retained. Previewing an
+email does not send it. Existing invoices are not renumbered, merged or replaced.
 
-The live modal uses the demo's original `.tabs` buttons, 760px desktop dialog,
-address/title hierarchy, job summary, back button and `.professional-next-step`.
-Comments, Attendance, Quotes, Invoices, Timeline and Before & After Report are
-separate panels. Overview and staff-only Private Costs remain additional working
-panels. Commercial information and internal schedules remain excluded by the
-existing backend permissions; cosmetic similarity does not copy demo permissions.
+## Exact remaining differences and unsupported prototype actions
 
-Before & After Report reuses `.sevlink-document`, `.document-header`,
-`.document-property` and `.photo-pair`. Photos come only from the authorised
-attachment response and authenticated download endpoints. The sole new document
-metadata field is its existing purpose, allowing before/after grouping. No storage
-keys, uploader IDs or supplier documents are added. No quote/invoice PDFs are
-created, and no payment, approval or completion rule is changed.
+- The demo's profile/account picker, prototype banner and fake team portrait are
+  not real sign-in or staff records. They are intentionally excluded.
+- Operations uses the existing ten saved workflow stages. Extra prototype stages
+  are not added as invented backend states. PM retains the previously approved
+  eight cards rather than reverting to the demo's earlier dashboard counters.
+- Overview and Super Admin-only Private Costs remain alongside the six core job
+  tabs to preserve existing review/authorisation and private finance workflows.
+  Tenants do not receive Quotes, Invoices, Private Costs or deposit metadata.
+- The prototype supports pending POPs and invoice issue-date edits. Django has no
+  matching POP-verification model or saved original issue-date field in this
+  change. **Payments** displays the actual verified receipt ledger; it is not
+  misleadingly called a functioning POP upload. **Uploaded** date is labelled
+  truthfully instead of being presented as the original invoice's issue date.
+- A saved-value email preview is available; sending remains separately disabled.
+- Existing multi-invoice jobs stay intact. Full job invoices can have deposit and
+  balance receipts against the same number; historical split invoices are not
+  silently merged, reclassified or discarded. Their display says so.
+- No automatic tenant access-confirmation workflow or invented appointment
+  reminders are copied from the prototype. Existing shared-attendance rules stay.
+- Backend role/privacy controls override prototype visibility. No styling change
+  exposes supplier identities, rates, private documents, notes or finances.
 
-The Repair Job Register ports the actual source title, search/filter grid,
-bucket buttons, table columns and paging layout. Property, agency (Super Admin),
-status, category, priority, open/closed/cancelled buckets and sorting controls
-query the existing authorised Django queryset. Search covers every result page,
-including REQ/SV references. Facets and counts remain portfolio-scoped; changing a
-filter cannot expand agency or tenant permissions. No source browser state is used.
+These are explicit functional/data differences, not missing demo source. A claim
+of pixel identity across different records and permissions would be inaccurate.
+The original styles and available component markup are reused as closely as the
+existing saved workflows allow.
 
-## Screenshot evidence and limits
+## Evidence and review
 
-The screenshots approved in this chat were generated from the authenticated
-Django portal, not the inaccessible hosted demo. No separate owner-provided
-original-demo screenshot set was attached to this task. Therefore matching an
-unseen hosted revision or claiming pixel-perfect owner-screenshot parity is not
-possible. Existing approved PM navigation, eight cards and repair icons are kept.
+[Authenticated screenshots and before/after review](DEMO-REVIEW.md) include Super
+Admin, Agency Admin, PM, tenant, desktop/mobile navigation, the register, job tabs,
+and existing REQ requests. The walkthrough uploads an actual synthetic PDF,
+checks the PM's actual attention response, records half the original invoice,
+verifies the deposit and confirms attendance eligibility unlocks without changing
+the original invoice number or total.
 
-Optional browser captures interact with the local source demo in a separate
-browser context, using only its synthetic example records. They visit its register
-and six job tabs at 1440px. Live Django captures at matching sizes allow comparison.
-These example records are never inserted into the development SQLite database.
+These are actual authenticated Django screens using records saved through the
+real endpoints in an isolated temporary SQLite test database. They are not mockups
+or renders using browser-local demo state. Records, people and documents are
+labelled synthetic; the owner's Windows database/uploads are never opened,
+modified, reset or reseeded. Screenshots of the owner's own machine require their
+local update and cannot be asserted from this environment.
 
-No database migration is required. Real customer SQLite, uploaded files, accounts,
-quotations, payments and historical decisions are not modified by this work.
-
-## Latest owner navigation reference (27 October 2026)
-
-The owner supplied an agency-demo sidebar screenshot with compact rows and small
-white symbols. This supersedes the earlier large turquoise-icon reference. All
-authenticated roles now share 12px navigation labels, white semantic symbols,
-38px desktop rows and the existing navy/blue selected palette. Mobile drawer
-rows retain a 44px touch target. Authorised links and their routing are preserved;
-the simulated profile picker and demo account label are not added to real sign-in.
-Only workflow-ui.js and workflow.css change at runtime.
-
-## Published reference verified and navigation corrected
-
-The Sites connector resolved the owner-supplied maintenance-demo URL to version 42
-(commit 58a0777f69869461272cec00028dc0d51e27f57b). Authenticated read-only
-requests retrieved its HTML, CSS and scripts. The published index.html and
-features.css SHA-256 hashes exactly match the preserved portal/dist copies.
-No hosted source, access settings or deployment was changed.
-
-The prior compact recreation is superseded: desktop buttons now use the original
-plain symbol + nonbreaking space + label markup, original inherited colour and
-font metrics, 10px/12px padding and 4px vertical margins. The added flex icon boxes
-and minimum heights are removed. Agency navigation begins Overview, Repair jobs,
-Properties, Tenants, Agency profile, Report a repair, Maintenance calendar, Updates
-& reminders. Working Quotes/Accounts and role-specific authorised links remain.
-Mobile restores the published dark drawer and white bottom-navigation colours.
-The visual harness compares computed font, line height, padding, margins, radius
-and button height against the actual matching source for all four role fixtures.
-
-Windows update requires maintenance.js, calendar.css and workflow.css from this
-change in the existing production/static directory; no migration or database reset.
-The user's screenshot demonstrated the old workflow.css remained installed.
-
-## Owner's invoice and urgency follow-up
-
-Removed the legacy standalone urgency/deposit footer from all job tabs. Existing
-unresolved legacy actions remain in Overview. Official urgency remains only in
-the awaiting-review PM form, now labelled Send to Sevlink; it is no longer shown
-for requests already routed. Existing backend rules and deposit gates remain.
-
-Invoices now shows the demo's Invoices & payment status heading, same-invoice
-payment explanation, Upload invoice reveal button and no-invoices empty state.
-The PDF form is collapsed until requested and has exactly one purpose selector,
-including Deposit invoice before completion and Final invoice after completion.
-Purpose is posted with the PDF; private supplier invoices remain private. The
-workflow adapter no longer inserts a second purpose field. Existing payment and
-final-invoice evidence checks are preserved. Uploads are not payments.
-
-Local replacement files: static/maintenance.js and static/workflow-ui.js. No
-migrations or dependencies change. The empty-state screenshot's unrelated
-prototype quoting/assignment actions are not copied into customer invoice tabs.
+No schema migration, new dependencies, live email, merge or deployment is included.
+The Windows repair script is prepared for review, not run on the owner's computer.

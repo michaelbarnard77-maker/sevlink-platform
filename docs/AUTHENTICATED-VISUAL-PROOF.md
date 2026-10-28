@@ -1,3 +1,6 @@
+> Latest source-verified review (28 October 2026): [DEMO-REVIEW.md](DEMO-REVIEW.md).
+> That review supersedes the earlier navigation and invoice screenshots below; all 30 published reference files now have byte-for-byte verification.
+
 # Authenticated portal visual review
 
 The review uses the preserved original demo source in `portal/dist`, not an

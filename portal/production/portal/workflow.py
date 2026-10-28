@@ -116,7 +116,8 @@ def data(job,user):
     arrivals=[dict(id=a.pk,preference=a.preference,requested_date=a.requested_date,requested_window=a.requested_window,
         status='cancelled' if a.appointment_id and a.appointment.cancelled_at else a.status,appointment_id=a.appointment_id if staff else None,agreed_date=a.agreed_date,agreed_window=a.agreed_window,confirmed_at=a.confirmed_at)
         for a in job.attendance_requests.order_by('-created_at','-pk')]
-    return dict(compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
+    from .customer_portal import deposit_state
+    return dict(**({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
         access_responsibility=job.access_responsibility,access_information=job.access_information,
         spending_limit=None if tenant else str(job.spending_limit) if job.spending_limit is not None else None,
         authorised_at=job.authorised_at,closed_at=job.closed_at,parent_request=str(job.parent_request_id) if job.parent_request_id else None,

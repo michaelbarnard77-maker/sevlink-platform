@@ -208,12 +208,13 @@ process.stdin.on('end', async () => {
     await page.locator('#invoiceForm [name=attachments]').setInputFiles({name:'invoice.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
     // Invalid local selection must explain the failure rather than silently doing nothing.
     await page.locator('#invoiceForm [name=attachments]').setInputFiles([]);
-    await page.getByRole('button', {name:'Upload invoice PDF',exact:true}).click();
+    await page.getByRole('button', {name:'Upload invoice',exact:true}).click();
     await page.locator('#invoiceForm .collaborationError').filter({hasText:'Externally prepared invoice PDF'}).waitFor();
     await page.locator('#invoiceForm [name=attachments]').setInputFiles({name:'invoice.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
-    await page.getByRole('button', {name:'Upload invoice PDF',exact:true}).click();
+    await page.getByRole('button', {name:'Upload invoice',exact:true}).click();
     await page.locator('#invoiceUploadResult').filter({hasText:'uploaded successfully'}).waitFor();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
+    await page.getByRole('button',{name:'Record deposit / balance',exact:true}).click();
     await page.locator('.invoicePayment').waitFor();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.locator('.invoicePayment [name=amount]').fill('250.00');
@@ -222,7 +223,7 @@ process.stdin.on('end', async () => {
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.locator('.invoicePayment [name=reference]').fill('PRIVATE BANK RECEIPT');
     await page.getByRole('button', {name:'Record manual payment',exact:true}).click();
-    await page.locator('.card .badge').filter({hasText:'partially_paid'}).waitFor();
+    await page.locator('.card .badge').filter({hasText:'Part-paid'}).waitFor();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     const refund=page.locator('.invoiceRefund');
     await refund.locator('[name=amount]').fill('100.00');
@@ -255,7 +256,7 @@ process.stdin.on('end', async () => {
     await correction.locator('[name=reason]').fill('PRIVATE FINANCIAL corrected external invoice');
     await correction.locator('[name=attachments]').setInputFiles({name:'corrected.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
     await correction.getByRole('button',{name:'Upload corrected invoice',exact:true}).click();
-    await page.locator('.card h2').filter({hasText:'INV-BROWSER-002'}).waitFor();
+    await page.locator('.invoice-card .toolbar b').filter({hasText:'INV-BROWSER-002'}).waitFor();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     assert.equal(await page.locator('.invoicePayment').count(),0,'Replacement on reconciliation hold');
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();

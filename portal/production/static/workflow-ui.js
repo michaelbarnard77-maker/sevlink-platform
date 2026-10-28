@@ -161,6 +161,11 @@ window.SevlinkWorkflowUI = (() => {
       const upload=panels.reports.querySelector('#completionUpload');upload.onsubmit=async e=>{e.preventDefault();try{await api(`requests/${job.id}/workflow/documents/`,{method:'POST',body:new FormData(upload)});showDetail(await api(`requests/${job.id}/`));}catch(e){toast(e.message);}};
       submit(panels.reports.querySelector('#completionAccept'),'completion',v=>({...v,before_unavailable:panels.reports.querySelector('[name=before_unavailable]').checked}));
     }
+    if(!tenant && w.deposit && job.quotations.some(q=>q.status==='approved')){
+      const d=w.deposit,format=value=>'R '+Number(value).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const state=Number(d.outstanding)>0?'Deposit still required: '+format(d.outstanding):d.ready?(w.attendance_ready?'Deposit received · ready to schedule':'Deposit verified'):'Deposit received · awaiting Sevlink verification';
+      panels.invoices.insertAdjacentHTML('afterbegin',`<div class="notice" style="margin:18px 0"><b>Quoted work · 50% deposit</b><p>Approved quote total: ${esc(format(d.basis))}<br>Deposit required: ${esc(format(d.required))}<br>Verified payments received: ${esc(format(d.received))}<br><b>${esc(state)}</b></p><p>Only bank-verified payments count toward the deposit. Scheduling requires Sevlink verification.</p></div><div class="notice"><b>Full job balance</b><p>Full job: ${esc(format(d.basis))}<br>Verified received: ${esc(format(d.received))}<br><b>Still to pay: ${esc(format(Math.max(0,Number(d.basis)-Number(d.received))))}</b></p><p>${job.invoices.filter(i=>i.visibility!=='internal'&&i.document_status==='active').length>1?'Payments stay against their original saved invoices. Existing invoice history is preserved.':'Deposit and final payments stay on the original invoice number.'}</p></div>`);
+    }
     const privateForm=panels.invoices?.querySelector('#invoiceForm');if(privateForm){
       const visibility=privateForm.elements.visibility;visibility.value='shared';visibility.innerHTML='<option value="shared">Agency-visible Sevlink invoice</option>';
     }

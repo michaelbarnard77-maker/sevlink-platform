@@ -32,10 +32,15 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   ({c,p}=await signed('finance'));await p.locator('#nav [data-view=monday]').click();await p.locator('#mondayFilters').waitFor();
   // Supplier uploads are due the following Monday, including when uploaded on a
   // Monday. Review Upcoming rather than assuming the default cutoff includes it.
-  await p.locator('#mondayFilters [name=period]').selectOption('upcoming');await p.getByRole('button',{name:'Review payments',exact:true}).click();
+  await p.locator('#mondayFilters [name=period]').selectOption('upcoming');
+  const priorFilters=await p.locator('#mondayFilters').elementHandle();
+  await p.getByRole('button',{name:'Review payments',exact:true}).click();
+  // The existing form is replaced by the filtered response. Wait for that
+  // replacement before entering money, otherwise a reload discards the input.
+  await p.waitForFunction(previous=>!previous.isConnected,priorFilters);
   await p.locator('#mondayInvoices .supplierPayment').waitFor();assert((await p.locator('.stats').textContent()).includes('500.00'));
   const pdf=await p.locator('#mondayInvoices a').first().getAttribute('href');assert.equal((await p.request.get(url+pdf)).status(),200);
-  for(const amount of ['200.00','300.00']){await p.locator('#mondayInvoices .supplierPayment [name=amount]').fill(amount);await p.locator('#mondayInvoices .supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));await p.locator('#mondayInvoices .supplierPayment [name=reference]').fill('EXTERNAL-MONDAY-'+amount);await p.getByRole('button',{name:'Record payment / Mark as Paid',exact:true}).click();if(amount==='200.00')await p.getByText('Outstanding 300.00',{exact:false}).waitFor();else await p.getByText('No outstanding invoices in this filter.',{exact:true}).waitFor();}
+  for(const amount of ['200.00','300.00']){await p.locator('#mondayInvoices .supplierPayment [name=amount]').fill(amount);await p.locator('#mondayInvoices .supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));await p.locator('#mondayInvoices .supplierPayment [name=reference]').fill('EXTERNAL-MONDAY-'+amount);await p.getByRole('button',{name:'Record payment / Mark as Paid',exact:true}).click();if(amount==='200.00')await p.getByText('Outstanding 300.00',{exact:false}).waitFor().catch(async error=>{throw Error(error.message+'\nPayment screen: '+await p.locator('#app').innerText()+'\nMessage: '+await p.locator('#toast').innerText());});else await p.getByText('No outstanding invoices in this filter.',{exact:true}).waitFor();}
   assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),200);await c.close();
   ({c,p}=await signed('tenant'));assert.equal(await p.locator('[data-view=calendar]').count(),0);assert.equal(await p.locator('[data-view=monday]').count(),0);const pub=await (await p.request.get(url+`/api/maintenance/requests/${ids.jobs[0]}/`)).json();assert.equal(pub.status,'completed');const text=JSON.stringify(pub);for(const secret of ['PRIVATE multi-region partner','Team A','appointment_changed','EXTERNAL-MONDAY'])assert(!text.includes(secret));assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),403);await c.close();
   assert.deepEqual(errors,[]);console.log('PASS: weekly navigation/proportional multi-job timelines, conflicts, team separation, atomic reschedule/cancel, audited Super Admin exception, public progress, mobile day layout, Monday partial/full manual payments and staff/tenant isolation.');
