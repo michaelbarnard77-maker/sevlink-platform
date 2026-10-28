@@ -26,6 +26,8 @@ def deliver(limit=50, preview=False):
             rows=MailQueue.objects.filter(sent_at=None,retired_at=None).filter(
                 Q(attempts__lt=5,next_attempt_at__lte=now)|Q(expires_at__lte=now)).filter(
                 Q(lease_token=None)|Q(lease_expires_at__lt=now)).order_by('pk')
+            if not preview and not settings.OPERATIONS_LIVE_DELIVERY_ENABLED:
+                rows=rows.filter(completion_package__isnull=True)
             rows=rows.select_for_update(skip_locked=True) if connection.features.has_select_for_update_skip_locked else rows.select_for_update()
             item=rows.first()
             if not item:
@@ -46,11 +48,14 @@ def deliver(limit=50, preview=False):
             provider=get_connection(backend)
             message=EmailMessage(item.subject,item.body,to=[item.recipient],connection=provider,
                                  headers={'Message-ID':f'<sevlink-account-{item.pk}@sevlink.co.za>'})
+            from .completion_delivery import attach_documents
+            attach_documents(item,message)
             if message.send(fail_silently=False)!=1:
                 raise OSError('Provider did not accept message.')
             outcome='preview' if preview else 'accepted'
-        except Exception:
-            outcome='error'
+        except Exception as error:
+            from .completion_delivery import DeliveryBlocked
+            outcome='blocked' if isinstance(error,DeliveryBlocked) else 'error'
         with transaction.atomic():
             saved=MailQueue.objects.select_for_update().get(pk=item.pk)
             if saved.lease_token!=token:
@@ -60,6 +65,8 @@ def deliver(limit=50, preview=False):
             if outcome=='accepted':
                 saved.sent_at=timezone.now();saved.body='[Delivered; account link removed]';saved.error_code=''
                 delivered+=1
+            elif outcome=='blocked':
+                saved.retired_at=timezone.now();saved.error_code='document_access_changed'
             elif outcome=='preview':
                 saved.attempts-=1
                 saved.next_attempt_at=timezone.now()+timedelta(minutes=5)

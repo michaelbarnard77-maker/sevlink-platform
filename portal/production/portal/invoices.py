@@ -114,6 +114,8 @@ def create(request, job_id):
             # Reload typed Decimal/Date values before serializing, including on SQLite.
             invoice.refresh_from_db()
             audit(invoice,request.user,'invoice_uploaded',key,invoice.amount)
+            from .completion_delivery import maybe_queue
+            maybe_queue(job,request.user)
     except ValueError as error:
         attachments.cleanup(keys)
         return JsonResponse({'error':str(error)},status=400)

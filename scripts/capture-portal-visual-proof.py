@@ -92,8 +92,13 @@ class VisualProof(StaticLiveServerTestCase):
         sessions={}
         for role,user in [('operations',self.ops),('pm',self.pm),('admin',self.admin),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
-        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
+        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        from portal.account_mail import deliver
+        from portal.models import CompletionPackage
+        for _ in range(CompletionPackage.objects.count()):deliver(preview=True)
+        import shutil
+        for index,mail in enumerate((Path(TEMP.name)/'email').glob('*')):shutil.copy2(mail,OUTPUT/('completion-email-preview-'+str(index)+'.eml'))
         print(r.stdout)
 
 if __name__=='__main__':

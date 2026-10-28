@@ -46,12 +46,13 @@ class BoundedUploadHandler(FileUploadHandler):
     def __init__(self, request=None):
         super().__init__(request)
         self.total = self.count = self.current = 0
+        self.batch_limit = 10 if request and request.path.endswith('/completed-report/') else MAX_BATCH
 
     def new_file(self, *args, **kwargs):
         super().new_file(*args, **kwargs)
         self.count += 1
         self.current = 0
-        if self.count > MAX_BATCH:
+        if self.count > self.batch_limit:
             self.reject()
 
     def reject(self):
@@ -61,7 +62,7 @@ class BoundedUploadHandler(FileUploadHandler):
     def receive_data_chunk(self, raw_data, start):
         self.current += len(raw_data)
         self.total += len(raw_data)
-        if self.current > MAX_BYTES or self.total > MAX_BATCH * MAX_BYTES:
+        if self.current > MAX_BYTES or self.total > self.batch_limit * MAX_BYTES:
             self.reject()
         return raw_data
 

@@ -107,10 +107,10 @@ arrival-window, calendar conflict and audit rules. Teams are filtered by the
 selected subcontractor; private start/end defaults match the arrival window.
 Switching between actions shows loading state and ignores obsolete responses.
 
-Sevlink uploads Before-work photographs before starting and After-work photographs
-after completion in Before & After Report. The purpose classifies the uploaded
-files into the report columns. The staff member then saves the work summary as
-completion documentation; no automatically generated report PDF is implied.
+The owner subsequently requested both photo sets be uploaded after work. See
+[the completed-report and combined-email flow](COMPLETED-REPORT-AND-INVOICE-EMAIL.md):
+the photo type describes when it was taken, not when uploaded. A generated report
+PDF is now paired with the original final invoice in one queued PM message.
 
 ![Requested attendance with a readable date and separate actions](visual-proof/source-design-2026-10-28/operations-attendance-request.png)
 

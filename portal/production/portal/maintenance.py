@@ -343,6 +343,10 @@ def update_status(user,job,data,operations=False):
         record(job, user, kind, f'status:{job.pk}:{job.version + 1}', {'status': data['status']})
         Audit.objects.create(agency=job.property.agency, actor=user,
                              action='Maintenance status: ' + data['status'], object_id=str(job.pk))
+        if data['status']=='completed':
+            job.refresh_from_db()
+            from .completion_delivery import maybe_queue
+            maybe_queue(job,user)
     return JsonResponse({'status':data['status'],'version':data['version']+1}) if operations else JsonResponse(serialize(requests_for(user).get(pk=job.pk),user))
 
 

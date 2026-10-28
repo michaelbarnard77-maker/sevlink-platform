@@ -454,7 +454,7 @@ class FinancialConcurrencyTests(TransactionTestCase):
 class Financial75MigrationTests(TransactionTestCase):
     def test_preserves_paid_invoice_approved_quote_and_reserves_historical_ranges(self):
         old=[('portal','0010_jobquotation_document_jobquotation_reference_and_more')]
-        new=[('portal','0032_workflow_database_guards')]
+        new=MigrationExecutor(connection).loader.graph.leaf_nodes('portal')
         try:
             executor=MigrationExecutor(connection);executor.migrate(old)
             apps=executor.loader.project_state(old).apps
@@ -488,7 +488,7 @@ class Financial75MigrationTests(TransactionTestCase):
 
     def test_reference_correction_reserves_old_numbers_and_preserves_historical_aliases(self):
         old=[('portal','0026_jobactionrequest_job_active_action_unique')]
-        new=[('portal','0032_workflow_database_guards')]
+        new=MigrationExecutor(connection).loader.graph.leaf_nodes('portal')
         try:
             executor=MigrationExecutor(connection);executor.migrate(old)
             apps=executor.loader.project_state(old).apps

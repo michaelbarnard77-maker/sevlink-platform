@@ -962,3 +962,13 @@ class CompletionRecord(AppendOnlyModel):
     recorded_by = models.ForeignKey(User, on_delete=models.PROTECT)
     documents = models.ManyToManyField(MaintenanceAttachment)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class CompletionPackage(AppendOnlyModel):
+    """Immutable PM delivery snapshot: one report and original invoice per invoice."""
+    invoice = models.OneToOneField(JobInvoice, on_delete=models.PROTECT, related_name='completion_package')
+    completion = models.ForeignKey(CompletionRecord, on_delete=models.PROTECT)
+    report_document = models.ForeignKey(MaintenanceAttachment, on_delete=models.PROTECT)
+    recipient = models.ForeignKey(User, on_delete=models.PROTECT)
+    message = models.OneToOneField(MailQueue, on_delete=models.PROTECT, related_name='completion_package')
+    created_at = models.DateTimeField(auto_now_add=True)
