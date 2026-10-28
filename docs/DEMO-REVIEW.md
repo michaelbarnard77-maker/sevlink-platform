@@ -120,3 +120,15 @@ PDF is now paired with the original final invoice in one queued PM message.
 [Manual alternative booking](visual-proof/source-design-2026-10-28/operations-attendance-alternative.png).
 The updated walkthrough captured 77 authenticated/source screens and verified
 both actions through saved appointments and rescheduling.
+
+## Email preview access
+
+The owner restricted invoice Email preview to Sevlink Super Admin. PM and Agency
+Admin cards omit both the button and preview container; tenants still have no
+invoice tab. Original invoice download and permitted payment history remain.
+The authenticated browser walkthrough asserts this for every captured role.
+
+[PM invoice without email preview](visual-proof/source-design-2026-10-28/pm-job-invoices.png) ·
+[Agency Admin invoice without email preview](visual-proof/source-design-2026-10-28/admin-job-invoices.png).
+The dedicated update-windows-email-preview-access.ps1 replaces one JavaScript file
+and backs it up. It does not touch the database or require a server restart.

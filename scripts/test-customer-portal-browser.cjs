@@ -30,6 +30,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'(1)');
   assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)');
   await p.getByRole('tab',{name:'Invoices',exact:true}).click();
+  assert.equal(await p.getByRole('button',{name:'Email preview',exact:true}).count(),0,'PM has no email preview control');
   assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)','Opening an unpaid invoice does not resolve it');
   await p.getByRole('tab',{name:'Timeline',exact:true}).click();await p.locator('#statusForm [name=status]').selectOption('reviewed');await p.locator('#statusForm button').click();await p.locator('#jobcontent').getByText('Reviewed',{exact:false}).waitFor();await p.getByRole('button',{name:'Close',exact:true}).click();
   await p.locator('#attention .attention-card').filter({hasText:'GP repair'}).filter({hasText:'Review new maintenance request'}).waitFor({state:'detached'});
