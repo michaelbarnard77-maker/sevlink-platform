@@ -34,7 +34,7 @@ def feed(request):
     page = list(qs.order_by('-created_at', '-pk')[:51])
     return JsonResponse({'unread_count': unread, 'next': page[49].pk if len(page) > 50 else None,
         'items': [{'id': item.pk, 'read': item.read, 'type': item.event.kind,
-            'event': item.event.get_kind_display(), 'agency': item.event.agency_name,
+            'event': item.event.details.get('action', item.event.get_kind_display()) if item.event.kind == 'workflow_event' else item.event.get_kind_display(), 'agency': item.event.agency_name,
             'property': item.event.property_name, 'job_number': item.event.request.reference,
             'job_id': str(item.event.request_id), 'at': item.event.created_at.isoformat(),
             'url': reverse('maintenance_workspace') + '?job=' + str(item.event.request_id)} for item in page[:50]]})

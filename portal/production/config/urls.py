@@ -41,6 +41,7 @@ urlpatterns = [
     path('api/maintenance/operations/requests/<uuid:job_id>/assignments/', regions.assignments, name='operations_assignments'),
     path('api/maintenance/requests/<uuid:job_id>/invoices/<uuid:invoice_id>/credit-notes/<int:note_id>/pdf/', financial.credit_pdf, name='maintenance_credit_pdf'),
     path('api/maintenance/requests/<uuid:job_id>/invoices/', invoices.create, name='maintenance_invoice'),
+    path('api/maintenance/requests/<uuid:job_id>/invoices/<uuid:invoice_id>/report-paid/', invoices.report_paid, name='maintenance_invoice_report_paid'),
     path('api/maintenance/requests/<uuid:job_id>/invoices/<uuid:invoice_id>/payments/', invoices.pay, name='maintenance_invoice_payment'),
     path('api/maintenance/requests/<uuid:job_id>/invoices/<uuid:invoice_id>/pdf/', invoices.pdf, name='maintenance_invoice_pdf'),
     path('api/maintenance/requests/<uuid:job_id>/invoices/<uuid:invoice_id>/<str:operation>/', financial.adjust, name='maintenance_invoice_adjustment'),

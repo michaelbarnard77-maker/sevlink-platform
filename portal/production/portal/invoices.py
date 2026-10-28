@@ -12,7 +12,7 @@ from .collaboration import lock_job, request_key
 from .events import record
 from .maintenance import api_access, requests_for, payload, access
 from .staff_access import can_pay
-from .models import MaintenanceRequest, JobInvoice, InvoicePayment, Membership, Subcontractor, JobAssignment
+from .models import MaintenanceRequest, JobInvoice, InvoicePayment, Membership, Subcontractor, JobAssignment, InvoiceAction
 from .quotations import digest
 from .financial import net_paid, set_payment_state
 from .commercial import MAX_MONEY
@@ -38,6 +38,9 @@ def invoice_data(invoice, user):
         'paid_amount': str(invoice.paid_amount), 'outstanding': str(invoice.amount-net_paid(invoice) if invoice.document_status == 'active' else invoice.amount*0),
         'payment_status': invoice.payment_status, 'version': invoice.version, 'payments': payments,
         'document': document_data(invoice.document, reverse('maintenance_invoice_pdf',args=[invoice.request_id,invoice.pk]))}
+    reported = pending_payment_report(invoice)
+    result['payment_reported'] = bool(reported)
+    result['payment_reported_at'] = reported.created_at.isoformat() if reported else None
     result['collectible'] = result['outstanding'] if not invoice.reconciliation_required else '0.00'
     result['credit_notes']=[{'id':n.pk,'reference':n.reference,'amount':str(n.amount),'issued_on':n.issued_on.isoformat(),
         'document':document_data(n.document,reverse('maintenance_credit_pdf',args=[invoice.request_id,invoice.pk,n.pk]))} for n in invoice.credit_notes.select_related('document')]
@@ -193,3 +196,51 @@ def pdf(request,job_id,invoice_id):
         qs=qs.filter(visibility='internal',subcontractor__isnull=False) if can_pay(request.user) else qs.filter(visibility='shared',subcontractor=None)
     invoice=get_object_or_404(qs,pk=invoice_id)
     return attachments.file_response(invoice.document)
+
+
+def pending_payment_report(invoice):
+    report = invoice.actions.filter(kind='payment_reported').order_by('-created_at', '-pk').first()
+    if not report or invoice.document_status != 'active' or net_paid(invoice) >= invoice.amount:
+        return None
+    # A staff receipt resolves the claim; any remaining balance can be reported again.
+    if invoice.payments.filter(created_at__gt=report.created_at).exists():
+        return None
+    return report
+
+
+@api_access
+@require_POST
+def report_paid(request, job_id, invoice_id):
+    get_object_or_404(requests_for(request.user), pk=job_id)
+    if request.user.is_superuser or access(request.user)[0] not in (Membership.PM, Membership.ADMIN):
+        return JsonResponse({'error':'Only an authorised property manager or agency administrator can report payment.'}, status=403)
+    try:
+        key = request_key(request)
+        data = payload(request, ('version',))
+        if type(data.get('version')) is not int:
+            raise ValueError('An integer invoice version is required.')
+    except ValueError as error:
+        return JsonResponse({'error':str(error)}, status=400)
+    with transaction.atomic():
+        job = lock_job(request.user, job_id)
+        invoice = get_object_or_404(JobInvoice.objects.select_for_update(), pk=invoice_id,
+                                   request=job, visibility='shared', subcontractor=None)
+        fingerprint = digest(dict(data, invoice_id=str(invoice_id)))
+        prior = InvoiceAction.objects.filter(key=key).first()
+        if prior:
+            if prior.invoice_id != invoice.pk or prior.actor_id != request.user.pk or prior.kind != 'payment_reported' or prior.fingerprint != fingerprint:
+                return JsonResponse({'error':'Idempotency key conflict.'}, status=409)
+            return JsonResponse(invoice_data(invoice, request.user))
+        if invoice.version != data['version']:
+            return JsonResponse({'error':'Invoice changed. Refresh before reporting payment.'}, status=409)
+        if invoice.document_status != 'active' or invoice.reconciliation_required or net_paid(invoice) >= invoice.amount:
+            return JsonResponse({'error':'Only an active, outstanding invoice without a reconciliation hold can be reported paid.'}, status=409)
+        if pending_payment_report(invoice):
+            return JsonResponse(invoice_data(invoice, request.user))
+        claim = InvoiceAction.objects.create(invoice=invoice, actor=request.user, kind='payment_reported',
+            key=key, fingerprint=fingerprint, snapshot={'outstanding':str(invoice.amount-net_paid(invoice))})
+        event = record(job, request.user, 'workflow_event', 'payment-reported:'+str(key),
+            {'action':f'Payment reported for {invoice.number} — verify bank receipt', 'decision_id':str(claim.pk)}, private=True)
+        from .workflow import notify, operators
+        notify(event, operators())
+    return JsonResponse(invoice_data(invoice, request.user), status=201)
