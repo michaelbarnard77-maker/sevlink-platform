@@ -94,6 +94,9 @@ class OperationalWorkflowTests(TestCase):
         self.assertEqual(self.act('verify-deposit',confirmation='VERIFY').status_code,403)
         self.assertEqual(self.act('verify-deposit',user=self.ops,confirmation='VERIFY').status_code,200)
         self.assertEqual(DepositVerification.objects.count(),1)
+        self.job.refresh_from_db()
+        from .customer_portal import deposit_state
+        state=deposit_state(self.job);self.assertTrue(state['verification_recorded']);self.assertEqual(state['blockers'],[])
         self.assertEqual(self.act('attendance-request',preference='call').status_code,200)
     def test_attendance_two_windows_and_idempotency(self):
         self.review();key=uuid.uuid4();self.job.refresh_from_db()

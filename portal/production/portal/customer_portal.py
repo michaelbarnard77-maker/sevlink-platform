@@ -62,9 +62,17 @@ def deposit_state(job):
         # gate too; historical payments and existing invoice purposes are untouched.
         ready=bool(approved is not None and job.job_number and not held and (arranged or (verified and verified.amount>=required and net>=required and required>ZERO)))
     else:ready=arranged or (basis>ZERO and net>=required and not held)
+    blockers=[]
+    verification_required=bool(job.workflow_version or invoices.filter(purpose='deposit').exists()) and job.job_type!='callout'
+    if verification_required:
+        if approved is None:blockers.append('The quotation must be approved.')
+        if net<required or required<=ZERO:blockers.append('The required deposit has not been received.')
+        if held:blockers.append('The invoice has a reconciliation hold.')
+        if not arranged and (not verified or verified.amount<required):blockers.append('The recorded payment still needs explicit Sevlink deposit verification.')
+        if not job.job_number:blockers.append('The approved request needs its official job number allocated.')
     return dict(basis=str(basis),required=str(required),received=str(net),
                 outstanding=str(max(ZERO,required-net)),arrangement=arranged,
-                ready=ready)
+                ready=ready,verification_recorded=bool(verified and verified.amount>=required and required>ZERO),blockers=blockers)
 
 
 def public_appointments(user):

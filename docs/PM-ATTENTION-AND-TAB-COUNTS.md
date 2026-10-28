@@ -116,3 +116,19 @@ it, preserve its generated backup, then restart using the existing configured
 command window. Source payload hashes are checked before and after writing;
 write failures restore the backed-up files. No SQLite/private uploads/settings
 are included in the updater.
+
+## Consistent receipt/verification status and historical numbering
+
+A Paid invoice represents a recorded bank receipt, while deposit verification is
+a separate existing authorisation action. The previous Verified received label
+made the two steps appear contradictory. Receipt totals now say Recorded received;
+the deposit projection explicitly reports verification_recorded and exact blockers,
+and Attendance offers a Review deposit action with the actual lock reasons.
+The verification form appears above invoice cards instead of below their expanded
+payment/refund history. Tenant responses still exclude this financial projection.
+
+The owner's next screenshot confirmed that the existing verification gate had
+unlocked attendance. No numbering or payment rules are changed by this status fix.
+Super Admin now sees Awaiting PM attendance request when the gate is open and no
+request exists; the PM sends the preferred date/window or call request and staff
+then confirms attendance. Existing role checks remain unchanged.
