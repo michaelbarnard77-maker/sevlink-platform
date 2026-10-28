@@ -39,6 +39,18 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
     assert.equal(await p.locator('#workflowStages .stage-card').count(),['pm','admin'].includes(role)?8:10);
     await shot(p,role+'-overview',role,role==='pm'?'PM overview/dashboard':role==='admin'?'Agency Admin overview/dashboard':'Operations overview/dashboard',['pm','admin'].includes(role)?differences.pmDashboard:differences.dashboard,null,true);
    }
+   if(role==='operations'){
+    await openJob(p,job);await panel(p,'Invoices');
+    const outstanding=await p.locator('[data-verify-invoice]').count();assert(outstanding>0);
+    await shot(p,'operations-verify-button',role,'Single Verify action on the final outstanding invoice',[]);
+    while(await p.locator('[data-verify-invoice]').count()){
+      await p.locator('[data-verify-invoice]').first().click();
+      await p.waitForFunction(()=>!Array.from(document.querySelectorAll('[data-verify-invoice]')).some(b=>b.disabled));
+    }
+    const closed=await(await p.request.get(url+'/api/maintenance/requests/'+job+'/')).json();assert.equal(closed.status,'closed');assert(closed.invoices.every(i=>Number(i.outstanding)===0));
+    assert.equal(await p.locator('.invoicePayment').count(),0);
+    await shot(p,'operations-paid-closed',role,'Saved invoices retained with zero outstanding and job Closed',[]);await p.locator('#modal [data-close]').click();
+   }
    if(role==='pm'){await p.locator('#workflowStages').scrollIntoViewIfNeeded();await shot(p,'pm-overview-cards',role,'PM eight-card dashboard detail',differences.pmDashboard);await p.locator('[data-stage=attention]').click();await p.locator('#stageJobs .job-attention-reasons').first().waitFor();await shot(p,'pm-needs-attention-reasons',role,'Why each job needs attention',['Each unique job lists its actual unresolved backend actions, amounts and dates.'],'#stageJobs');await p.evaluate(()=>window.scrollTo(0,0));}
    await p.locator('#nav button.active').waitFor();
    const navStyle=await p.locator('#nav button.active').evaluate(b=>({background:getComputedStyle(b).backgroundColor,color:getComputedStyle(b).color,border:getComputedStyle(b).borderLeftWidth,aside:getComputedStyle(document.querySelector('aside')).backgroundColor}));
@@ -78,7 +90,10 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
     await shot(p,'operations-payment-reported','operations','Sevlink receives payment claim for verification',[],'.invoice-card');
     const claimInbox=await(await p.request.get(url+'/api/maintenance/notifications/')).json();assert(claimInbox.items.some(n=>n.event.includes('Payment reported for INV-VISUAL-FULL-JOB')));
     await pmContext.close();
-    await p.getByRole('button',{name:'Verify payment',exact:true}).click();await p.locator('.invoicePayment [name=amount]').fill('2000.00');await p.locator('.invoicePayment [name=paid_on]').fill(today);await p.locator('.invoicePayment [name=reference]').fill('VISUAL TEST RECEIPT ONLY');await p.getByRole('button',{name:'Record manual payment',exact:true}).click();await p.locator('.invoice-card .badge').filter({hasText:'Part-paid'}).waitFor();
+    // Preserve the separate partial-receipt compatibility scenario using the real staff API.
+    const partialInvoice=claimState.invoices[0];
+    const partialResult=await p.request.post(url+`/api/maintenance/requests/${deposit_job}/invoices/${partialInvoice.id}/payments/`,{headers:{'X-CSRFToken':(await p.context().cookies()).find(c=>c.name==='csrftoken').value,'Idempotency-Key':crypto.randomUUID()},data:{version:partialInvoice.version,amount:'2000.00',paid_on:today,reference:'VISUAL TEST PARTIAL RECEIPT'}});assert.equal(partialResult.status(),201);
+    await openJob(p,deposit_job);await panel(p,'Invoices');assert.equal(await p.locator('.invoicePayment').count(),0);
     const beforeVerify=await(await p.request.get(url+'/api/maintenance/requests/'+deposit_job+'/')).json();assert.equal(beforeVerify.workflow.attendance_ready,false);
     await p.locator('#verifyDeposit [name=confirmation]').fill('VERIFY');await p.locator('#verifyDeposit button').click();await p.waitForFunction(()=>!document.querySelector('#verifyDeposit'));
     const afterVerify=await(await p.request.get(url+'/api/maintenance/requests/'+deposit_job+'/')).json();assert.equal(afterVerify.workflow.attendance_ready,true);

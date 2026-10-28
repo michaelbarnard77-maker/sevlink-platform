@@ -74,7 +74,7 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(OperationsNotification.objects.count(), 6)
         self.assertEqual(JobInvoice.objects.get(previous__isnull=True).document_status,'void')
         self.assertTrue(JobInvoice.objects.get(previous__isnull=False).reconciliation_required)
-        self.assertEqual(InvoicePayment.objects.get().amount,250)
+        self.assertEqual(InvoicePayment.objects.get().amount,1000)
         self.assertEqual(InvoiceRefund.objects.get().amount,100)
 
     def test_operations_multi_region_assignments(self):

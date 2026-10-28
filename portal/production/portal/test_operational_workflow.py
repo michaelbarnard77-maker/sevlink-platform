@@ -106,6 +106,28 @@ class OperationalWorkflowTests(TestCase):
         v['window']='09:00–13:00';self.assertEqual(self.post(url,v,key).status_code,200)
         self.assertEqual(self.post(url,v,key).status_code,200);self.assertEqual(self.job.attendance_requests.count(),1)
         self.assertEqual(self.job.attendance_requests.get().status,'pending')
+    def test_verify_two_invoices_keeps_both_and_closes_only_after_final_balance(self):
+        self.review()
+        self.doc('completion_after')
+        result=self.act('completion',user=self.ops,report='Completed',before_unavailable=True,exception_reason='Before photos unavailable')
+        self.assertEqual(result.status_code,200,result.content)
+        from .maintenance import update_status
+        self.job.refresh_from_db();self.job.status='attended';self.job.save(update_fields=['status'])
+        self.assertEqual(update_status(self.ops,self.job,dict(status='completed',version=self.job.version)).status_code,200)
+        # This call-out fixture uses two final documents within its authorised ceiling.
+        self.client.force_login(self.ops)
+        first=self.invoice(number='INV-FIRST',amount='500').json()
+        second=self.invoice(number='INV-FINAL',amount='500').json()
+        for invoice in (first,second):
+            response=self.post(reverse('maintenance_invoice_verify',args=[self.job.pk,invoice['id']]),{'version':invoice['version']})
+            self.assertEqual(response.status_code,201,response.content)
+            self.assertEqual(response.json()['outstanding'],'0.00')
+            self.job.refresh_from_db()
+            self.assertEqual(self.job.status,'completed' if invoice is first else 'closed')
+        self.assertIsNotNone(self.job.closed_at)
+        self.assertEqual(self.job.invoices.count(),2)
+        self.assertEqual(set(self.job.invoices.values_list('number',flat=True)),{'INV-FIRST','INV-FINAL'})
+
     def test_completion_and_final_payment_closure(self):
         self.review();self.client.force_login(self.ops);self.assertEqual(self.invoice().status_code,400)
         self.assertEqual(self.act('completion',user=self.ops,report='Completed',before_unavailable=True,exception_reason='Unavailable').status_code,400)

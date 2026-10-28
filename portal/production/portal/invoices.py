@@ -142,24 +142,42 @@ def payment_job(user,job_id,invoice_id,lock=False):
 @api_access
 @require_POST
 def pay(request,job_id,invoice_id):
+    return _pay(request,job_id,invoice_id)
+
+
+@api_access
+@require_POST
+def verify_payment(request,job_id,invoice_id):
+    if not request.user.is_superuser:
+        return JsonResponse({'error':'Only Sevlink Operations can verify received invoice payments.'},status=403)
+    return _pay(request,job_id,invoice_id,verify=True)
+
+
+def _pay(request,job_id,invoice_id,verify=False):
     payment_job(request.user,job_id,invoice_id)
     if not can_pay(request.user):
         return JsonResponse({'error':'Only Sevlink Operations can record manual payments.'},status=403)
     try:
         key=request_key(request)
-        data=payload(request,('version','amount','paid_on','reference','note'))
+        data=payload(request,('version',) if verify else ('version','amount','paid_on','reference','note'))
         if type(data.get('version')) is not int or data['version'] < 1:
             raise ValueError('An integer invoice version is required.')
-        values=dict(amount=money(data.get('amount')),paid_on=day(data.get('paid_on')),
-                    reference=text(data.get('reference',''),180,False),note=text(data.get('note',''),1000,False))
-        if values['paid_on'] > timezone.localdate():
-            raise ValueError('A received payment cannot have a future date.')
-        fingerprint=digest(dict(data,invoice_id=str(invoice_id)))
+        if not verify:
+            values=dict(amount=money(data.get('amount')),paid_on=day(data.get('paid_on')),
+                        reference=text(data.get('reference',''),180,False),note=text(data.get('note',''),1000,False))
+            if values['paid_on'] > timezone.localdate():
+                raise ValueError('A received payment cannot have a future date.')
+        fingerprint=digest(dict(data,invoice_id=str(invoice_id),**({'action':'verify'} if verify else {})))
     except ValueError as error:
         return JsonResponse({'error':str(error)},status=400)
     with transaction.atomic():
         job=payment_job(request.user,job_id,invoice_id,lock=True)
         invoice=get_object_or_404(JobInvoice.objects.select_for_update(),pk=invoice_id,request=job)
+        if verify:
+            if invoice.visibility != 'shared' or invoice.subcontractor_id:
+                return JsonResponse({'error':'Only agency-visible Sevlink invoices can be verified here.'},status=403)
+            values=dict(amount=invoice.amount-net_paid(invoice),paid_on=timezone.localdate(),
+                        reference=invoice.number,note='Sevlink verified the full outstanding amount against the bank receipt.')
         if invoice.subcontractor_id and not values['reference']:
             return JsonResponse({'error':'Record the external payment reference.'},status=400)
         prior=InvoicePayment.objects.filter(key=key).first()
@@ -171,6 +189,8 @@ def pay(request,job_id,invoice_id):
             return JsonResponse({'error':'Invoice changed. Refresh before recording payment.'},status=409)
         if invoice.document_status != 'active' or invoice.reconciliation_required:
             return JsonResponse({'error':'Invoice is void or on reconciliation hold; no payments may be collected.'},status=409)
+        if values['amount'] <= 0:
+            return JsonResponse({'error':'This invoice has no outstanding balance to verify.'},status=409)
         total=invoice.paid_amount+values['amount']
         if total-invoice.refunded_amount > invoice.amount or total > MAX_MONEY:
             return JsonResponse({'error':'Payment exceeds the recorded outstanding amount.'},status=400)
