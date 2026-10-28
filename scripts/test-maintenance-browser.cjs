@@ -206,7 +206,13 @@ process.stdin.on('end', async () => {
     await page.locator('#invoiceForm [name=due_date]').fill('2026-11-15');
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.locator('#invoiceForm [name=attachments]').setInputFiles({name:'invoice.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
+    // Invalid local selection must explain the failure rather than silently doing nothing.
+    await page.locator('#invoiceForm [name=attachments]').setInputFiles([]);
     await page.getByRole('button', {name:'Upload invoice PDF',exact:true}).click();
+    await page.locator('#invoiceForm .collaborationError').filter({hasText:'Externally prepared invoice PDF'}).waitFor();
+    await page.locator('#invoiceForm [name=attachments]').setInputFiles({name:'invoice.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
+    await page.getByRole('button', {name:'Upload invoice PDF',exact:true}).click();
+    await page.locator('#invoiceUploadResult').filter({hasText:'uploaded successfully'}).waitFor();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.locator('.invoicePayment').waitFor();
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();

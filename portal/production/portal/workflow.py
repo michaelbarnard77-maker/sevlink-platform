@@ -299,7 +299,7 @@ def action(request,job_id,operation):
                 if values.get('confirmation')!='VERIFY':raise ValueError('Confirm the received and allocated deposit explicitly.')
                 from .customer_portal import deposit_state
                 state=deposit_state(job)
-                if job.job_type!='quoted' or not effective_quotes(job).exists() or Decimal(state['received'])<Decimal(state['required']) or Decimal(state['required'])<=0:raise ValueError('Approved quotation and sufficient staff-recorded, confirmed receipts are required.')
+                if (job.job_type!='quoted' and job.workflow_version) or not effective_quotes(job).exists() or Decimal(state['received'])<Decimal(state['required']) or Decimal(state['required'])<=0:raise ValueError('Approved quotation and sufficient staff-recorded, confirmed receipts are required.')
                 if job.invoices.filter(visibility='shared',reconciliation_required=True,document_status='active').exists():raise ValueError('Resolve the financial reconciliation hold first.')
                 DepositVerification.objects.create(request=job,verified_by=request.user,amount=Decimal(state['received']))
             elif operation=='attendance-request':

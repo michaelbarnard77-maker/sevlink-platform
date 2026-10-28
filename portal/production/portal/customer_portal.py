@@ -53,10 +53,14 @@ def deposit_state(job):
     net=paid-refunded
     arranged=job.scheduling_arrangements.exists()
     held=invoices.filter(reconciliation_required=True).exists()
-    verified=job.deposit_verifications.order_by('-created_at').first() if job.workflow_version else None
+    verified=job.deposit_verifications.order_by('-created_at').first()
     if job.workflow_version:
         if job.job_type=='callout':ready=bool(job.authorised_at and job.spending_limit)
         else:ready=bool(approved is not None and job.job_number and not held and (arranged or (verified and verified.amount>=required and net>=required and required>ZERO)))
+    elif invoices.filter(purpose='deposit').exists():
+        # New deposit invoices on historical jobs follow the explicit verification
+        # gate too; historical payments and existing invoice purposes are untouched.
+        ready=bool(approved is not None and job.job_number and not held and (arranged or (verified and verified.amount>=required and net>=required and required>ZERO)))
     else:ready=arranged or (basis>ZERO and net>=required and not held)
     return dict(basis=str(basis),required=str(required),received=str(net),
                 outstanding=str(max(ZERO,required-net)),arrangement=arranged,

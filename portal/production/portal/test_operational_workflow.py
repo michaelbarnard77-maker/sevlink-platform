@@ -57,6 +57,12 @@ class OperationalWorkflowTests(TestCase):
         self.job.refresh_from_db();self.assertEqual(self.job.job_number,number);self.assertEqual(self.job.spending_limit,1000)
         self.assertEqual(self.act('additional-decision',additional=extra.pk,decision='approved').status_code,409)
     def test_quotes_manual_and_scheduling_requires_explicit_superadmin_deposit_verification(self):
+        self._exercise_deposit_verification()
+
+    def test_new_deposit_on_historical_job_requires_explicit_verification(self):
+        self._exercise_deposit_verification(historical=True)
+
+    def _exercise_deposit_verification(self,historical=False):
         self.client.force_login(self.ops);self.assertEqual(self.quote().status_code,400)
         self.review('quoted');self.client.force_login(self.ops);q=self.quote(reference='SQ-MANUAL').json()
         sent=self.post(reverse('maintenance_quote_action',args=[self.job.pk,q['id'],'send']),{'version':q['version']}).json()
@@ -70,7 +76,21 @@ class OperationalWorkflowTests(TestCase):
         attention=self.client.get(reverse('workflow_stages'),{'stage':'attention'}).json()['results'][0]
         self.assertEqual([a['action'] for a in attention['attention_actions']],['Awaiting invoice / deposit arrangements before scheduling'])
         self.assertEqual(self.act('attendance-request',preference='call').status_code,409)
-        self.client.force_login(self.ops);invoice=self.invoice(purpose='deposit').json();r=self.payment(invoice,amount='500');self.assertEqual(r.status_code,201,r.content)
+        if historical:
+            self.job.workflow_version=0;self.job.job_type='unclassified'
+            self.job.save(update_fields=['workflow_version','job_type'])
+        self.client.force_login(self.ops)
+        uploaded=self.invoice(purpose='deposit');self.assertEqual(uploaded.status_code,201,uploaded.content)
+        invoice=uploaded.json();self.assertEqual(invoice['purpose'],'deposit')
+        self.client.force_login(self.pm)
+        attention=self.client.get(reverse('workflow_stages'),{'stage':'attention'}).json()['results'][0]
+        self.assertIn('Deposit required before scheduling',[a['action'] for a in attention['attention_actions']])
+        self.assertEqual(self.payment(invoice,amount='500').status_code,403)
+        self.assertEqual(self.act('verify-deposit',user=self.ops,confirmation='VERIFY').status_code,400)
+        self.client.force_login(self.ops);r=self.payment(invoice,amount='500');self.assertEqual(r.status_code,201,r.content)
+        from .workflow import eligible
+        self.job.refresh_from_db();self.assertFalse(eligible(self.job),'Recorded funds alone must not unlock scheduling')
+        self.assertEqual(self.act('attendance-request',preference='call').status_code,409)
         self.assertEqual(self.act('verify-deposit',confirmation='VERIFY').status_code,403)
         self.assertEqual(self.act('verify-deposit',user=self.ops,confirmation='VERIFY').status_code,200)
         self.assertEqual(DepositVerification.objects.count(),1)

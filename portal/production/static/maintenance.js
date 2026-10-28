@@ -185,8 +185,12 @@
     for (const [form, path] of forms) {
       if (!form) continue;
       let key = crypto.randomUUID(), priorBody;
+      const showError=message=>{let target=form.querySelector('.collaborationError');if(!target){target=document.createElement('p');target.className='collaborationError';target.setAttribute('role','alert');form.prepend(target);}target.hidden=false;target.textContent=message;target.scrollIntoView({block:'center'});};
+      if(form.id==='invoiceForm')form.addEventListener('invalid',event=>{const input=event.target;const label=input.previousElementSibling?.tagName==='LABEL'?input.previousElementSibling.textContent:input.name;showError(label+': '+input.validationMessage);},true);
       form.onsubmit = async event => {
         event.preventDefault(); const button = form.querySelector('[type=submit]'); button.disabled = true;
+        const originalLabel=button.textContent;
+        if(form.id==='invoiceForm'){button.textContent='Uploading invoice…';const error=form.querySelector('.collaborationError');if(error)error.hidden=true;}
         try {
           let body;
           if (form.id === 'commentForm' || form.id === 'quoteForm' || form.id === 'invoiceForm' || ['quoteRevision','quoteAmendment','invoiceCorrection','invoiceCredit'].some(cls => form.classList.contains(cls))) {
@@ -204,11 +208,18 @@
           const signature = body instanceof FormData ? JSON.stringify(Array.from(body.entries()).map(([k,v]) => [k, typeof v === 'string' ? v : [v.name,v.size,v.lastModified]])) : body;
           if (priorBody && priorBody !== signature) key = crypto.randomUUID();
           priorBody = signature;
-          await api(path, {method:'POST', body, headers:{'Idempotency-Key':key}});
-          showDetail(await api(`requests/${job.id}/`)); toast('Saved.');
+          const saved=await api(path, {method:'POST', body, headers:{'Idempotency-Key':key}});
+          showDetail(await api(`requests/${job.id}/`));
+          if(form.id==='invoiceForm'){
+            const panel=modal.querySelector('[data-tab-panel="invoices"]') || modal;
+            const notice=document.createElement('div');notice.className='notice';notice.setAttribute('role','status');notice.id='invoiceUploadResult';
+            notice.textContent='Invoice '+saved.number+' uploaded successfully.'+(saved.visibility==='shared'?' It is now available to the authorised property manager under Invoices and Needs Your Attention.':' It remains private to Sevlink Operations.');
+            panel.prepend(notice);notice.scrollIntoView({block:'center'});
+          }
+          toast('Saved.');
         } catch (error) {
-          const target = form.querySelector('.collaborationError'); target.hidden = false; target.textContent = error.message;
-        } finally { if (button.isConnected) button.disabled = false; }
+          showError(error.message);
+        } finally { if (button.isConnected){button.disabled = false;button.textContent=originalLabel;} }
       };
     }
   }

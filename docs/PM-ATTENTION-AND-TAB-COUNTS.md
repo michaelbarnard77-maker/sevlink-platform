@@ -91,3 +91,28 @@ user only. Check the same scenarios with a tenant and a second agency.
 The AWS installation is not updated by pushing this branch. Its changes,
 protected HTTPS access and backups remain separate staging setup work. Do not
 merge or deploy this update without the owner's review.
+
+## Deposit-upload completion and explicit verification (28 October 2026)
+
+The invoice form now reports required-field failures in its own visible alert,
+changes its submit button to Uploading invoice while the request is running,
+scrolls server/storage errors into view and confirms a successful save inside the
+job dialog. The confirmation follows a successful API response and record reload;
+it is not simulated success. Browser tests cover a missing PDF and a successful
+deposit upload. Actual owner PDF/server errors still require the displayed error
+to diagnose; no claim is made that the owner's upload was remotely observed.
+
+Integration tests cover approved quote -> deposit invoice -> PM Needs Your
+Attention -> recorded receipt -> blocked attendance -> explicit staff verification
+-> unlocked attendance. PMs cannot record their own receipt or verify it. This
+sequence now also covers newly uploaded deposit invoices on historical jobs.
+Existing historical invoices/payments are not relabelled or migrated; old
+non-deposit compatibility rules and authorised scheduling arrangements remain.
+No schema change, email activation or AWS deployment is included.
+
+The four-file Windows repair script includes the two frontend scripts plus
+portal/customer_portal.py and portal/workflow.py. Stop local Django before applying
+it, preserve its generated backup, then restart using the existing configured
+command window. Source payload hashes are checked before and after writing;
+write failures restore the backed-up files. No SQLite/private uploads/settings
+are included in the updater.
