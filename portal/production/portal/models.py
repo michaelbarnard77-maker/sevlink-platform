@@ -972,3 +972,13 @@ class CompletionPackage(AppendOnlyModel):
     recipient = models.ForeignKey(User, on_delete=models.PROTECT)
     message = models.OneToOneField(MailQueue, on_delete=models.PROTECT, related_name='completion_package')
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class RemovalReceipt(models.Model):
+    """Administrative removal audit without retaining the removed customer's identity."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT)
+    kind = models.CharField(max_length=16)
+    counts = models.JSONField(default=dict)
+    pending_files = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)

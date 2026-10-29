@@ -44,3 +44,6 @@ body>aside #nav{overflow-x:hidden;color:#d0e2f2}
 .repair-job-row{cursor:pointer}.repair-job-row:hover{background:#edf6fc}.repair-job-row:focus-visible{outline:2px solid #006bb0;outline-offset:-2px;background:#edf6fc}
 
 .job-card[data-stage-job],.workflow-job-row[data-upcoming]{cursor:pointer}.job-card[data-stage-job]:hover,.workflow-job-row[data-upcoming]:hover{background:#edf6fc}.job-card[data-stage-job]:focus-visible,.workflow-job-row[data-upcoming]:focus-visible{outline:2px solid #006bb0;outline-offset:2px}
+
+/* Keep the selected Operations count readable on its navy background. */
+.ops-pod.selected b{color:#fff}

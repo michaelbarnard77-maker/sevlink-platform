@@ -319,6 +319,7 @@
       } finally { if (button.isConnected) button.disabled = false; }
     };
   }
+  document.addEventListener('sevlink-job-moved',()=>refresh());
   document.addEventListener('keydown',event=>{
     const row=event.target.closest('tr[data-job],.job-card[data-stage-job],.workflow-job-row[data-upcoming]');
     if(row && event.target===row && ['Enter',' '].includes(event.key)){event.preventDefault();row.click();}

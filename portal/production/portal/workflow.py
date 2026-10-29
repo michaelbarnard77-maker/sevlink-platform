@@ -76,6 +76,8 @@ def check_ceiling(job,amount,exclude=None):
 
 
 def stage(job):
+    manual=job.workflow_decisions.filter(operation='manual-stage').order_by('-created_at','-pk').first()
+    if manual and manual.snapshot.get('version')==job.version:return manual.snapshot['stage']
     if job.closed_at or job.status=='cancelled':return 'closed'
     if job.status=='completed':
         return 'payment' if job.invoices.filter(purpose='final',visibility='shared',document_status='active').exists() else 'invoice'
@@ -117,14 +119,17 @@ def data(job,user):
         status='cancelled' if a.appointment_id and a.appointment.cancelled_at else a.status,appointment_id=a.appointment_id if staff else None,agreed_date=a.agreed_date,agreed_window=a.agreed_window,confirmed_at=a.confirmed_at)
         for a in job.attendance_requests.order_by('-created_at','-pk')]
     from .customer_portal import deposit_state
-    return dict(**({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
+    manual=job.workflow_decisions.filter(operation='manual-stage').order_by('-created_at','-pk').first()
+    return dict(manual_stage=bool(manual and manual.snapshot.get('version')==job.version),
+        manual_move_options=[dict(value=k,label=v) for k,v in STAGES] if staff else [],
+        **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
         access_responsibility=job.access_responsibility,access_information=job.access_information,
         spending_limit=None if tenant else str(job.spending_limit) if job.spending_limit is not None else None,
         authorised_at=job.authorised_at,closed_at=job.closed_at,parent_request=str(job.parent_request_id) if job.parent_request_id else None,
         stage=stage(job),attendance_ready=eligible(job),arrival_windows=WINDOWS,attendance=arrivals,
         additional=[] if tenant else [dict(id=a.pk,amount=str(a.amount),reason=a.reason,status=a.status,linked_request=str(a.linked_request_id) if a.linked_request_id else None,decided_at=a.decided_at) for a in job.additional_authorisations.all()],
         completion=[dict(report=c.report,before_unavailable=c.before_unavailable,exception_reason=c.exception_reason,created_at=c.created_at) for c in job.completion_records.all()],
-        history=[] if tenant else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot) for d in job.workflow_decisions.select_related('actor').all()])
+        history=[] if tenant else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot) for d in job.workflow_decisions.select_related('actor').all() if staff or d.operation!='manual-stage'])
 
 
 def tab_attention(job,user,visible):
@@ -446,8 +451,8 @@ def refresh_overdue(actor):
 @require_GET
 @checked
 def agencies(request):
-    from .models import Agency,Property,Tenancy
+    from .models import Agency,Property,Tenancy,RemovalReceipt
     if not request.user.is_superuser:return JsonResponse({'error':'Super Admin access required.'},status=403)
     qs=Agency.objects.all()
     if request.GET.get('agency'):qs=qs.filter(pk=uuid.UUID(request.GET['agency']))
-    return JsonResponse({'agencies':[dict(id=str(a.pk),name=a.name,properties=[dict(id=str(p.pk),address=p.address,manager=p.manager.get_full_name() if p.manager_id else None,tenants=[dict(name=t.name,linked=bool(t.user_id)) for t in p.tenancy_set.filter(active=True)],jobs=[dict(id=str(j.pk),reference=j.reference,title=j.title,status=j.get_status_display()) for j in p.maintenance_requests.all()]) for p in Property.objects.filter(agency=a).select_related('manager')]) for a in qs]})
+    return JsonResponse({'pending_cleanups':[dict(id=str(r.pk),kind=r.kind,files=len(r.pending_files)) for r in RemovalReceipt.objects.exclude(pending_files=[])], 'agencies':[dict(id=str(a.pk),name=a.name,properties=[dict(id=str(p.pk),address=p.address,manager=p.manager.get_full_name() if p.manager_id else None,tenants=[dict(id=str(t.pk),name=t.name,linked=bool(t.user_id)) for t in p.tenancy_set.filter(active=True)],jobs=[dict(id=str(j.pk),reference=j.reference,title=j.title,status=j.get_status_display()) for j in p.maintenance_requests.all()]) for p in Property.objects.filter(agency=a).select_related('manager')]) for a in qs]})
