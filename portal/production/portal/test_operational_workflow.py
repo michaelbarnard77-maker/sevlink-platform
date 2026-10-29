@@ -62,6 +62,42 @@ class OperationalWorkflowTests(TestCase):
     def test_new_deposit_on_historical_job_requires_explicit_verification(self):
         self._exercise_deposit_verification(historical=True)
 
+    def test_invoice_verify_records_receipt_and_deposit_allocation_once(self):
+        self.review('quoted');self.client.force_login(self.ops)
+        q=self.quote().json()
+        q=self.post(reverse('maintenance_quote_action',args=[self.job.pk,q['id'],'send']),dict(version=q['version'])).json()
+        self.client.force_login(self.pm)
+        self.assertEqual(self.post(reverse('maintenance_quote_decision',args=[self.job.pk,q['id']]),dict(version=q['version'],status='approved',reason='Approved')).status_code,200)
+        self.client.force_login(self.ops);invoice=self.invoice(purpose='deposit',amount='500').json()
+        url=reverse('maintenance_invoice_verify',args=[self.job.pk,invoice['id']]);key=uuid.uuid4()
+        result=self.post(url,dict(version=invoice['version']),key)
+        self.assertEqual(result.status_code,201,result.content)
+        self.assertEqual(result.json()['outstanding'],'0.00')
+        from .customer_portal import deposit_state
+        self.job.refresh_from_db();self.assertTrue(deposit_state(self.job)['ready'])
+        self.assertEqual(self.post(url,dict(version=invoice['version']),key).status_code,200)
+        self.assertEqual(DepositVerification.objects.filter(request=self.job).count(),1)
+
+    def test_attendance_invitation_follows_access_responsibility(self):
+        self.job.reported_by=self.pm;self.job.save(update_fields=['reported_by'])
+        self.review('quoted')
+        self.job.access_responsibility='sevlink';self.job.save(update_fields=['access_responsibility'])
+        self.client.force_login(self.ops)
+        self.job.refresh_from_db()
+        result=self.post(reverse('workflow_action',args=[self.job.pk,'operations-triage']),dict(version=self.job.version,decision='attendance'))
+        self.assertEqual(result.status_code,200,result.content)
+        notices=UserJobNotification.objects.filter(event__request=self.job,event__details__action='Please confirm attendance date')
+        self.assertTrue(notices.filter(user=self.tenant).exists());self.assertFalse(notices.filter(user=self.pm).exists())
+        self.assertEqual(self.act('attendance-request',user=self.pm,preference='call').status_code,403)
+        self.assertEqual(self.act('attendance-request',user=self.tenant,preference='call').status_code,200)
+        self.client.force_login(self.tenant);self.assertEqual(self.client.get(self.detail_url).status_code,200)
+        self.client.force_login(self.foreign);self.assertEqual(self.client.get(self.detail_url).status_code,404)
+        self.assertTrue(UserJobNotification.objects.filter(user=self.ops,event__request=self.job,event__details__action='Attendance arrangements requested').exists())
+        # PM can still read the job, without receiving the tenant's action.
+        self.client.force_login(self.pm);detail=self.client.get(self.detail_url).json()
+        self.assertEqual(detail['workflow']['attendance'][0]['status'],'pending')
+        self.assertFalse(detail['workflow']['can_arrange_attendance'])
+
     def _exercise_deposit_verification(self,historical=False):
         self.client.force_login(self.ops);self.assertEqual(self.quote().status_code,400)
         self.review('quoted');self.client.force_login(self.ops);q=self.quote(reference='SQ-MANUAL').json()
@@ -183,6 +219,56 @@ class AttendanceAndFinanceTests(TestCase):
         return dict(version=self.job.version,attendance=self.arrival.pk,date=str(self.when),window='09:00–13:00',subcontractor=str(self.partner.pk),team=str(self.crew.pk),starts_at=str(self.when)+'T09:00:00+02:00',ends_at=str(self.when)+'T10:00:00+02:00')
     def confirm(self,v,key=None):
         return self.client.post(reverse('workflow_confirm_attendance',args=[self.job.pk]),__import__('json').dumps(v),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(key or uuid.uuid4()))
+    def test_free_quote_assessment_books_without_authorising_work(self):
+        from .workflow import eligible,stage,assessment_ids
+        from .customer_portal import deposit_state
+        from .models import WorkflowDecision
+        self.client.force_login(self.pm)
+        self.job.refresh_from_db()
+        url=reverse('workflow_action',args=[self.job.pk,'review'])
+        response=self.client.post(url,__import__('json').dumps(dict(version=self.job.version,job_type='quoted',urgency='normal',access_responsibility='pm')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,200,response.content)
+        self.client.force_login(self.ops);self.job.refresh_from_db()
+        url=reverse('workflow_action',args=[self.job.pk,'operations-triage'])
+        response=self.client.post(url,__import__('json').dumps(dict(version=self.job.version,decision='attendance')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,200,response.content)
+        self.job.refresh_from_db();self.assertTrue(eligible(self.job));self.assertFalse(deposit_state(self.job)['ready'])
+        request_url=reverse('workflow_action',args=[self.job.pk,'attendance-request'])
+        response=self.client.post(request_url,__import__('json').dumps(dict(version=self.job.version,preference='call')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,200,response.content);self.job.refresh_from_db()
+        self.arrival=AttendanceRequest.objects.get(request=self.job)
+        self.assertIn(self.arrival.pk,assessment_ids(self.job))
+        self.when=timezone.localdate()+timedelta(days=2)
+        v=dict(version=self.job.version,attendance=self.arrival.pk,date=str(self.when),window='09:00–13:00',client_confirmed=True,contact_category='pm',subcontractor=str(self.partner.pk),team=str(self.crew.pk),starts_at=str(self.when)+'T09:00:00+02:00',ends_at=str(self.when)+'T10:00:00+02:00')
+        result=self.confirm(v);self.assertEqual(result.status_code,201,result.content)
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'reviewed');self.assertEqual(stage(self.job),'booked');self.assertFalse(deposit_state(self.job)['ready'])
+        self.assertEqual(WorkflowDecision.objects.filter(request=self.job,operation='attendance-confirm').get().snapshot['purpose'],'assessment')
+        # Desktop quoting after a booked assessment must not remain in Booked.
+        result=self.client.post(url,__import__('json').dumps(dict(version=self.job.version,decision='desktop')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(result.status_code,200,result.content)
+        self.job.refresh_from_db();self.assertEqual(stage(self.job),'quoting');self.assertFalse(eligible(self.job))
+        # Later authorised repair attendance must create a new booking, retaining the assessment.
+        self.quote_url=reverse('maintenance_quote',args=[self.job.pk])
+        quote=documents.ManualDocumentTests.quote(self).json()
+        sent=self.client.post(reverse('maintenance_quote_action',args=[self.job.pk,quote['id'],'send']),__import__('json').dumps(dict(version=quote['version'])),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())).json()
+        self.client.force_login(self.pm)
+        result=self.client.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote['id']]),__import__('json').dumps(dict(version=sent['version'],status='approved',reason='Approved repair work')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(result.status_code,200,result.content)
+        self.client.force_login(self.ops);self.invoice_url=reverse('maintenance_invoice',args=[self.job.pk])
+        invoice=documents.ManualDocumentTests.invoice(self,purpose='deposit',amount='500').json()
+        result=self.client.post(reverse('maintenance_invoice_verify',args=[self.job.pk,invoice['id']]),__import__('json').dumps(dict(version=invoice['version'])),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(result.status_code,201,result.content)
+        self.job.refresh_from_db();self.assertTrue(eligible(self.job));self.assertEqual(stage(self.job),'ready')
+        self.client.force_login(self.pm)
+        request_url=reverse('workflow_action',args=[self.job.pk,'attendance-request'])
+        result=self.client.post(request_url,__import__('json').dumps(dict(version=self.job.version,preference='call')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(result.status_code,200,result.content)
+        repair=AttendanceRequest.objects.get(request=self.job,status='pending')
+        self.assertNotIn(repair.pk,assessment_ids(self.job))
+        self.job.refresh_from_db();v.update(version=self.job.version,attendance=repair.pk,date=str(self.when+timedelta(days=1)),starts_at=str(self.when+timedelta(days=1))+'T09:00:00+02:00',ends_at=str(self.when+timedelta(days=1))+'T10:00:00+02:00')
+        self.client.force_login(self.ops);result=self.confirm(v);self.assertEqual(result.status_code,201,result.content)
+        self.assertEqual(TeamAppointment.objects.filter(cancelled_at=None).count(),2)
+
     def test_confirm_booking_keeps_private_duration_separate_and_notifies_both(self):
         v=self.prepare();key=uuid.uuid4();r=self.confirm(v,key);self.assertEqual(r.status_code,201,r.content)
         self.assertEqual(self.confirm(v,key).status_code,200);self.assertEqual(TeamAppointment.objects.count(),1)

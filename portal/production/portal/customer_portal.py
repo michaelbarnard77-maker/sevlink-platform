@@ -149,11 +149,11 @@ def attention_rows(user):
             target='action',target_id=item.pk,due_date=str(item.due_date) if item.due_date else None)
     if finance:
         from .models import AdditionalAuthorisation,UserJobNotification
-        from .workflow import eligible
+        from .workflow import eligible,can_arrange
         for extra in AdditionalAuthorisation.objects.filter(request__in=qs,status='pending',request__closed_at__isnull=True).exclude(request__status='cancelled').select_related('request__property'):
             add(extra.request,'additional:'+str(extra.pk),'Additional-work authorisation required',2,target='job')
         for job in qs:
-            if job.workflow_version and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True).exists():
+            if job.workflow_version and can_arrange(job,user) and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True).exists():
                 add(job,'attendance-ready:'+str(job.pk),'Please confirm attendance date',3,target='job')
         conversations={}
         for n in UserJobNotification.objects.filter(user=user,read_at=None,event__kind='comment_added',event__request__in=qs).exclude(event__actor=user).select_related('event__request__property'):

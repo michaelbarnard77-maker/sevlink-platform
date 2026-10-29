@@ -70,7 +70,7 @@ def requests_for(user):
     role, _ = access(user)
     qs = MaintenanceRequest.objects.filter(property__in=properties_for(user))
     if role == Membership.TENANT:
-        qs = qs.filter(reported_by=user)
+        qs = qs.filter(Q(reported_by=user)|Q(activities__recipient_notifications__user=user,activities__details__action='Please confirm attendance date')).distinct()
     return qs.select_related('property__agency', 'property__manager').prefetch_related('status_events', 'attachments', 'activities', 'comments', 'quotations')
 
 

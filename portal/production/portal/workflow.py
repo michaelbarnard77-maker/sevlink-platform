@@ -41,10 +41,28 @@ def operators():
     return User.objects.filter(is_active=True,is_superuser=True)
 
 
+def access_tenants(job):
+    from .models import Tenancy
+    users=User.objects.filter(tenancy__property=job.property,tenancy__active=True,is_active=True,membership__role='tenant').distinct()
+    if getattr(job.reported_by,'membership',None) and job.reported_by.membership.role=='tenant':
+        return list(users.filter(pk=job.reported_by_id))
+    return list(users)
+
+
+def can_arrange(job,user):
+    role,_=access(user)
+    return user in access_tenants(job) if job.access_responsibility=='sevlink' else role in ('pm','admin')
+
+
+def attendance_invitation(job,actor,key):
+    event=record(job,actor,'workflow_event',key,{'action':'Please confirm attendance date','decision_id':key[:180]})
+    notify(event,access_tenants(job) if job.access_responsibility=='sevlink' else managers(job))
+    return event
+
+
 def participants(job,tenant=False):
     result=managers(job)
-    if tenant and getattr(job.reported_by,'membership',None) and job.reported_by.membership.role=='tenant':
-        result.append(job.reported_by)
+    if tenant:result.extend(access_tenants(job))
     return result
 
 
@@ -53,9 +71,18 @@ def effective_quotes(job):
     return job.quotations.filter(status='approved').exclude(pk__in=QuoteApprovalReplacement.objects.values('original_id'))
 
 
+def assessment_ids(job):
+    return [s['assessment_attendance'] for s in job.workflow_decisions.filter(operation__in=('operations-triage','attendance-request')).values_list('snapshot',flat=True) if type(s.get('assessment_attendance')) is int]
+
+
+def free_assessment(job):
+    last=job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').first()
+    return bool(job.job_type=='quoted' and not job.quotations.exists() and last and last.snapshot.get('decision')=='attendance' and not job.closed_at and job.status not in ('completed','closed','cancelled'))
+
+
 def eligible(job):
     from .customer_portal import deposit_state
-    return deposit_state(job)['ready'] and not job.closed_at and job.status not in ('completed','cancelled','closed')
+    return (free_assessment(job) or deposit_state(job)['ready']) and not job.closed_at and job.status not in ('completed','cancelled','closed')
 
 
 def completion_valid(job):
@@ -83,11 +110,11 @@ def stage(job):
     if job.status=='completed':
         return 'payment' if job.invoices.filter(purpose='final',visibility='shared',document_status='active').exists() else 'invoice'
     if job.status in ('on_site','attended','in_progress'):return 'underway'
-    if job.status=='scheduled' or job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exists():return 'booked'
+    if job.status=='scheduled' or job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exclude(pk__in=assessment_ids(job) if not free_assessment(job) else []).exists():return 'booked'
     if job.job_type=='unclassified' and job.workflow_version:return 'new'
     triage=job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').first()
     if not job.quotations.exists() and not triage:return 'new'
-    if not job.quotations.exists() and triage and triage.snapshot.get('decision')=='attendance' and job.job_type!='callout':return 'new'
+    if free_assessment(job):return 'ready'
     if job.job_type=='callout':return 'ready' if job.authorised_at else 'new'
     if job.quotations.filter(status='sent').exists():return 'approval'
     if effective_quotes(job).exists():return 'ready' if eligible(job) else 'deposit'
@@ -122,12 +149,13 @@ def attention_notifications(job,actor,label,key,tenant=False):
 def data(job,user):
     role,_=access(user);staff=user.is_superuser;tenant=role=='tenant'
     arrivals=[dict(id=a.pk,preference=a.preference,requested_date=a.requested_date,requested_window=a.requested_window,
-        status='cancelled' if a.appointment_id and a.appointment.cancelled_at else a.status,appointment_id=a.appointment_id if staff else None,agreed_date=a.agreed_date,agreed_window=a.agreed_window,confirmed_at=a.confirmed_at)
+        purpose='assessment' if a.pk in assessment_ids(job) else 'work',status='cancelled' if a.appointment_id and a.appointment.cancelled_at else a.status,appointment_id=a.appointment_id if staff else None,agreed_date=a.agreed_date,agreed_window=a.agreed_window,confirmed_at=a.confirmed_at)
         for a in job.attendance_requests.order_by('-created_at','-pk')]
     from .customer_portal import deposit_state
     manual=job.workflow_decisions.filter(operation='manual-stage').order_by('-created_at','-pk').first()
     return dict(manual_stage=bool(manual and manual.snapshot.get('version')==job.version),
         manual_move_options=[dict(value=k,label=v) for k,v in STAGES] if staff else [],
+        free_assessment=free_assessment(job),can_arrange_attendance=can_arrange(job,user),
         operations_triage=(job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').values_list('snapshot',flat=True).first() or {}).get('decision'),
         can_triage=staff and job.job_type!='unclassified' and not job.quotations.exists() and not job.closed_at and job.status not in ('completed','cancelled','closed'),
         **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
@@ -156,7 +184,7 @@ def tab_attention(job,user,visible):
     w=visible['workflow'];terminal=job.status in ('completed','closed','cancelled')
     if pm and not terminal:
         counts['overview']=int(job.status=='awaiting_review')+sum(a['status']=='pending' for a in w['additional'])
-        counts['attendance']=int(w['attendance_ready'] and not any(a['status'] in ('pending','confirmed') for a in w['attendance']))
+        counts['attendance']=int(w['can_arrange_attendance'] and w['attendance_ready'] and not any(a['status'] in ('pending','confirmed') for a in w['attendance']))
     elif staff and not terminal:
         counts['attendance']=sum(a['status']=='pending' for a in w['attendance'])
     quotes={q['id']:q for q in visible['quotations']}
@@ -300,7 +328,8 @@ def action(request,job_id,operation):
             if values.get('version')!=job.version or type(values.get('version'))is not int:return JsonResponse({'error':'Job changed. Refresh before deciding.'},status=409)
             if job.closed_at or job.status=='cancelled':return JsonResponse({'error':'The job is closed.'},status=409)
             role,_=access(request.user);pm=role in ('pm','admin');staff=request.user.is_superuser
-            if operation in ('review','additional-decision','attendance-request') and not pm:return JsonResponse({'error':'Authorised property manager or agency administrator required.'},status=403)
+            if operation in ('review','additional-decision') and not pm:return JsonResponse({'error':'Authorised property manager or agency administrator required.'},status=403)
+            if operation=='attendance-request' and not (can_arrange(job,request.user) or (staff and free_assessment(job))):return JsonResponse({'error':'This attendance request belongs to the designated access contact.'},status=403)
             if operation not in ('review','additional-decision','attendance-request') and not staff:return JsonResponse({'error':'Sevlink Super Admin access required.'},status=403)
             if operation in ('additional-decision','attendance-decline') and (type(values.get('additional'))is not int or values['additional']<1):raise ValueError('A valid saved decision reference is required.')
             reason=text(values.get('reason',''),2500,False)
@@ -310,6 +339,12 @@ def action(request,job_id,operation):
             elif operation=='operations-triage':
                 if job.job_type=='unclassified' or job.quotations.exists():raise ValueError('Only a forwarded request without a quotation can be assessed.')
                 if values.get('decision') not in ('desktop','attendance'):raise ValueError('Choose attendance needed or desktop quote.')
+                if values['decision']=='attendance' and job.job_type=='quoted':
+                    pending=job.attendance_requests.filter(status='pending').first()
+                    if pending and pending.pk not in assessment_ids(job):raise ValueError('Resolve the existing work attendance request first.')
+                    if pending:values['assessment_attendance']=pending.pk
+                elif values['decision']=='desktop' and job.attendance_requests.filter(status='pending',pk__in=assessment_ids(job)).exists():
+                    raise ValueError('Arrange or decline the pending assessment visit before switching to desktop quoting.')
             elif operation=='additional-request':
                 if job.job_type!='callout' or not job.authorised_at:raise ValueError('An authorised call-out is required.')
                 limit=money(values.get('limit'))
@@ -344,7 +379,8 @@ def action(request,job_id,operation):
                 when=day(values.get('date')) if pref=='date' else None
                 window=values.get('window','') if pref=='date' else ''
                 if when and (when<timezone.localdate() or window not in WINDOWS):raise ValueError('Choose a future date and one of the two arrival windows.')
-                AttendanceRequest.objects.create(request=job,requested_by=request.user,preference=pref,requested_date=when,requested_window=window)
+                item=AttendanceRequest.objects.create(request=job,requested_by=request.user,preference=pref,requested_date=when,requested_window=window)
+                if free_assessment(job):values['assessment_attendance']=item.pk
             elif operation=='attendance-decline':
                 item=get_object_or_404(AttendanceRequest.objects.select_for_update(),pk=values.get('additional'),request=job)
                 if item.status!='pending':raise ValueError('This attendance request is no longer pending.')
@@ -366,10 +402,11 @@ def action(request,job_id,operation):
             job.version+=1;job.save()
             snapshot={k:v for k,v in values.items() if k!='version'}
             decision=WorkflowDecision.objects.create(request=job,actor=request.user,operation=operation,key=key,fingerprint=fingerprint,snapshot=snapshot)
-            labels={'operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Please confirm attendance date','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
+            labels={'operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Deposit verified','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
             event=record(job,request.user,'workflow_event','workflow:'+str(key),{'action':labels[operation],'decision_id':str(decision.pk)},private=operation in ('additional-request','additional-decision','review','verify-deposit'))
-            notify(event,operators() if pm else participants(job,operation=='completion'))
-            if operation=='review' and job.job_type=='callout':attention_notifications(job,request.user,'Please confirm attendance date','ready:'+str(key))
+            notify(event,operators() if operation=='attendance-request' or pm else participants(job,operation=='completion'))
+            if (operation=='review' and job.job_type=='callout') or operation=='verify-deposit' or (operation=='operations-triage' and values.get('decision')=='attendance'):
+                attendance_invitation(job,request.user,'ready:'+str(key))
         return JsonResponse(data(job,request.user))
     except Exception as error:
         from .attachments import cleanup,UploadStorageError
@@ -431,6 +468,8 @@ def confirm_attendance(request,job_id):
             if not eligible(job):return JsonResponse({'error':'Attendance is locked.'},status=409)
             item=get_object_or_404(AttendanceRequest.objects.select_for_update(),pk=v.get('attendance'),request=job)
             if item.status=='confirmed' and v.get('appointment')!=item.appointment_id:raise ValueError('Reschedule the current confirmed appointment; do not replace a different visit.')
+            assessment=item.pk in assessment_ids(job)
+            if assessment and not free_assessment(job):raise ValueError('This assessment visit is no longer open for booking. Arrange work attendance separately.')
             when=day(v.get('date'));window=v.get('window')
             if when<timezone.localdate() or window not in WINDOWS:raise ValueError('Select a future date and an allowed arrival window.')
             alternative=item.preference=='call' or item.status!='pending' or when!=item.requested_date or window!=item.requested_window or bool(v.get('appointment'))
@@ -444,16 +483,17 @@ def confirm_attendance(request,job_id):
             for k in ('appointment','reason','override_reason'):
                 if k in v:booking[k]=v[k]
             request._attendance_authorised=True
+            request._assessment_authorised=assessment
             response=scheduling.save_values(request,booking)
             if response.status_code>=400:raise scheduling.Rejected(response)
             import json
             appointment_id=json.loads(response.content)['id']
             item.status='confirmed';item.agreed_date=when;item.agreed_window=window;item.contact_category=v.get('contact_category','') if alternative else ''
             item.confirmed_by=request.user;item.confirmed_at=timezone.now();item.appointment_id=appointment_id;item.save()
-            job.refresh_from_db();job.status='scheduled';job.version+=1;job.save(update_fields=['status','version'])
-            MaintenanceStatusEvent.objects.create(request=job,actor=request.user,status='scheduled')
-            WorkflowDecision.objects.create(request=job,actor=request.user,key=key,fingerprint=fingerprint,operation='attendance-confirm',snapshot={k:v[k] for k in ('date','window','contact_category','client_confirmed') if k in v})
-            attention_notifications(job,request.user,'Attendance confirmed' if not alternative else 'Alternative attendance confirmed','attendance:'+str(key),tenant=True)
+            job.refresh_from_db();job.status='reviewed' if assessment else 'scheduled';job.version+=1;job.save(update_fields=['status','version'])
+            MaintenanceStatusEvent.objects.create(request=job,actor=request.user,status=job.status)
+            WorkflowDecision.objects.create(request=job,actor=request.user,key=key,fingerprint=fingerprint,operation='attendance-confirm',snapshot=dict(purpose='assessment' if assessment else 'work',**{k:v[k] for k in ('date','window','contact_category','client_confirmed') if k in v}))
+            attention_notifications(job,request.user,'Free quotation assessment confirmed' if assessment else 'Attendance confirmed' if not alternative else 'Alternative attendance confirmed','attendance:'+str(key),tenant=True)
         return JsonResponse({'confirmed':True},status=201)
     except scheduling.Rejected as e:return e.response
 

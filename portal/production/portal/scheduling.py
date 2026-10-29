@@ -148,14 +148,23 @@ def save_values(request,data):
             list(Subcontractor.objects.select_for_update().filter(pk__in=supplier_ids).order_by('pk'))
             if old: accept(save_appointment(request.user,old.team.subcontractor_id,{'cancel':old.pk,'reason':data['reason']}))
             allocation=job.assignments.first()
-            if not allocation or allocation.subcontractor_id!=supplier_id or allocation.team_id!=team_id:
-                accept(assign_job(request.user,job.pk,{'version':job.version,'subcontractor':str(supplier_id),'team':str(team_id),'submission_key':str(uuid.uuid5(key,'assignment'))}))
+            replace_assessment=False
+            if allocation and not getattr(request,'_assessment_authorised',False):
+                from .workflow import assessment_ids
+                assessment_appointments=job.attendance_requests.filter(pk__in=assessment_ids(job)).values_list('appointment_id',flat=True)
+                replace_assessment=allocation.appointments.filter(cancelled_at=None).exists() and not allocation.appointments.filter(cancelled_at=None).exclude(pk__in=assessment_appointments).exists()
+            if replace_assessment or not allocation or allocation.subcontractor_id!=supplier_id or allocation.team_id!=team_id:
+                accept(assign_job(request.user,job.pk,{'version':job.version,'subcontractor':str(supplier_id),'team':str(team_id),'submission_key':str(uuid.uuid5(key,'assignment'))},assessment_authorised=getattr(request,'_assessment_authorised',False),replace_assessment=replace_assessment))
                 job.refresh_from_db();allocation=job.assignments.first()
-            elif allocation.appointments.filter(cancelled_at__isnull=True).exists():
-                raise Rejected(JsonResponse({'error':'Use reschedule to change the existing appointment.'},status=409))
+            else:
+                active=allocation.appointments.filter(cancelled_at__isnull=True)
+                if not getattr(request,'_assessment_authorised',False):
+                    from .workflow import assessment_ids
+                    active=active.exclude(pk__in=job.attendance_requests.filter(pk__in=assessment_ids(job)).values_list('appointment_id',flat=True))
+                if active.exists():raise Rejected(JsonResponse({'error':'Use reschedule to change the existing appointment.'},status=409))
             booking={'assignment':allocation.pk,'starts_at':data['starts_at'],'ends_at':data['ends_at']}
             if 'override_reason' in data: booking['override_reason']=data['override_reason']
-            response=accept(save_appointment(request.user,supplier_id,booking,attendance_authorised=getattr(request,'_attendance_authorised',False)))
+            response=accept(save_appointment(request.user,supplier_id,booking,attendance_authorised=getattr(request,'_attendance_authorised',False),assessment_authorised=getattr(request,'_assessment_authorised',False)))
             entry=TeamAppointment.objects.get(pk=response['id'])
             entry.submission_key=key;entry.fingerprint=fingerprint;entry.rescheduled_from=old;entry.customer_visible=data.get('customer_visible',old.customer_visible if old else False);entry.save(update_fields=['submission_key','fingerprint','rescheduled_from','customer_visible'])
             record(job,request.user,'appointment_changed','calendar:'+str(key),{'appointment_id':str(entry.pk),'action':'rescheduled' if old else 'created'},private=True)

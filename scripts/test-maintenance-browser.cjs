@@ -131,6 +131,9 @@ process.stdin.on('end', async () => {
     await page.getByRole('tab',{name:'Overview',exact:true}).click();
     if(process.env.SEVLINK_SCREENSHOT_DIR)await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/operations-job-tabs-1440.png',fullPage:false});
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
+    await page.getByRole('tab',{name:'Overview',exact:true}).click();
+    await page.getByRole('button',{name:'Prepare desktop quote',exact:true}).click();
+    await page.getByText('Desktop quote selected',{exact:true}).waitFor();
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();
     await page.locator('#quoteForm [name=title]').fill('Browser quotation');
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();

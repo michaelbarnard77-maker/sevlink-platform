@@ -1,5 +1,6 @@
 """Manually uploaded invoices and an append-only manual payment ledger. No gateway."""
 import uuid
+from decimal import Decimal
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -38,6 +39,10 @@ def invoice_data(invoice, user):
         'paid_amount': str(invoice.paid_amount), 'outstanding': str(invoice.amount-net_paid(invoice) if invoice.document_status == 'active' else invoice.amount*0),
         'payment_status': invoice.payment_status, 'version': invoice.version, 'payments': payments,
         'document': document_data(invoice.document, reverse('maintenance_invoice_pdf',args=[invoice.request_id,invoice.pk]))}
+    if internal:
+        from .customer_portal import deposit_state
+        state=deposit_state(invoice.request)
+        result['needs_deposit_verification']=bool(invoice.purpose=='deposit' and invoice.visibility=='shared' and invoice.document_status=='active' and not invoice.reconciliation_required and not state['ready'] and not state['verification_recorded'] and Decimal(state['required'])>0 and Decimal(state['received'])>=Decimal(state['required']))
     reported = pending_payment_report(invoice)
     result['payment_reported'] = bool(reported)
     result['payment_reported_at'] = reported.created_at.isoformat() if reported else None
@@ -200,6 +205,14 @@ def _pay(request,job_id,invoice_id,verify=False):
         invoice.version+=1
         invoice.save(update_fields=['paid_amount','payment_status','version'])
         audit(invoice,request.user,'invoice_payment',key,values['amount'])
+        if verify and invoice.purpose=='deposit':
+            from .customer_portal import deposit_state
+            from .models import DepositVerification
+            state=deposit_state(job)
+            if job.job_type=='quoted' and Decimal(state['required'])>0 and Decimal(state['received'])>=Decimal(state['required']) and not job.invoices.filter(visibility='shared',document_status='active',reconciliation_required=True).exists():
+                DepositVerification.objects.create(request=job,verified_by=request.user,amount=Decimal(state['received']))
+                from .workflow import attendance_invitation
+                attendance_invitation(job,request.user,'ready-invoice:'+str(key))
         from .workflow import after_payment
         after_payment(job,request.user)
     return JsonResponse(invoice_data(invoice,request.user),status=201)

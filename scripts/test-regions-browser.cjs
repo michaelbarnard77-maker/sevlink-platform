@@ -14,7 +14,7 @@ process.stdin.on('end', async () => {
     page.on('response',r=>{if(r.url().includes('/api/') || r.url().includes('/logout/')) requests.push([new URL(r.url()).pathname,r.status()]);});
     await page.goto(url+'/maintenance/');
     await page.locator('#workflowStages .stage-card').first().waitFor();
-    assert.equal(await page.locator('#workflowStages .stage-card').count(),10);
+    assert.equal(await page.locator('#workflowStages .stage-card').count(),11);
     await page.locator('#nav [data-view=regions]').click();
     await page.getByRole('heading',{name:'Service areas & assignments'}).waitFor();
     await page.locator('#regionFilterProvince').selectOption(String(ids.wc));

@@ -290,7 +290,7 @@ def appointment(request, subcontractor_id):
     return save_appointment(request.user,subcontractor_id,payload(request,('assignment','starts_at','ends_at','cancel','reason','override_reason')))
 
 
-def save_appointment(user,subcontractor_id,data,attendance_authorised=False):
+def save_appointment(user,subcontractor_id,data,attendance_authorised=False,assessment_authorised=False):
     from .staff_access import can_schedule
     if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     with transaction.atomic():
@@ -304,7 +304,8 @@ def save_appointment(user,subcontractor_id,data,attendance_authorised=False):
             if job.workflow_version and not attendance_authorised:
                 return JsonResponse({'error':'Use the confirmed attendance workflow before booking this job.'},status=409)
             from .customer_portal import deposit_state
-            if not deposit_state(job)['ready']:
+            from .workflow import free_assessment
+            if not deposit_state(job)['ready'] and not (assessment_authorised and attendance_authorised and free_assessment(job)):
                 return JsonResponse({'error':'A confirmed 50% customer deposit or an authorised Sevlink scheduling arrangement is required.'},status=409)
         item=get_object_or_404(Subcontractor.objects.select_for_update(),pk=subcontractor_id)
         if data.get('cancel'):
@@ -331,7 +332,11 @@ def save_appointment(user,subcontractor_id,data,attendance_authorised=False):
         if not current_assignments().filter(pk=a.pk).exists() or a.request.status in ('completed','cancelled','closed') or a.reviews.filter(resolution__isnull=True).exists():
             return JsonResponse({'error':'Assignment changed, closed or requires Operations review.'},status=409)
         if not eligible(a.request.property).filter(pk=item.pk).exists(): raise ValueError
-        existing=t.appointments.filter(assignment=a,cancelled_at__isnull=True).first()
+        prior_bookings=t.appointments.filter(assignment=a,cancelled_at__isnull=True)
+        if attendance_authorised and not assessment_authorised:
+            from .workflow import assessment_ids
+            prior_bookings=prior_bookings.exclude(pk__in=job.attendance_requests.filter(pk__in=assessment_ids(job)).values_list('appointment_id',flat=True))
+        existing=prior_bookings.first()
         if existing:
             if existing.starts_at==start and existing.ends_at==end: return JsonResponse(appointment_data(existing))
             return JsonResponse({'error':'Cancel the existing appointment before rescheduling.'},status=409)
