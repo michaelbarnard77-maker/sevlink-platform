@@ -240,6 +240,23 @@ def mark_read(request,notification_id):
     return JsonResponse({'read':bool(n.read_at)})
 
 
+def review_request(job,actor,values):
+    """Shared validation for PM review and direct PM submission, within a transaction."""
+    reason=text(values.get('reason',''),2500,False)
+    kind=values.get('job_type');urgency=values.get('urgency');responsibility=values.get('access_responsibility')
+    if kind not in ('callout','quoted') or urgency not in ('normal','high','urgent') or responsibility not in ('sevlink','pm'):raise ValueError('Select job type, urgency and access responsibility.')
+    if job.authorised_at or effective_quotes(job).exists():raise ValueError('An authorised job requires the additional-authorisation workflow; its original approval cannot be overwritten.')
+    if job.job_type!='unclassified' and not reason:raise ValueError('Record a reason for changing the review.')
+    job.workflow_version=1;job.job_type=kind;job.urgency=urgency;job.access_responsibility=responsibility
+    job.access_information=text(values.get('access_information',''),2500,False)
+    if kind=='callout':
+        job.spending_limit=money(values.get('limit'));job.authorised_by=actor;job.authorised_at=timezone.now()
+        from .numbering import approve_job_number
+        approve_job_number(job)
+    job.status='reviewed'
+    MaintenanceStatusEvent.objects.create(request=job,actor=actor,status='reviewed')
+
+
 @api_access
 @require_POST
 @checked
@@ -265,18 +282,7 @@ def action(request,job_id,operation):
             if operation in ('additional-decision','attendance-decline') and (type(values.get('additional'))is not int or values['additional']<1):raise ValueError('A valid saved decision reference is required.')
             reason=text(values.get('reason',''),2500,False)
             if operation=='review':
-                kind=values.get('job_type');urgency=values.get('urgency');responsibility=values.get('access_responsibility')
-                if kind not in ('callout','quoted') or urgency not in ('normal','high','urgent') or responsibility not in ('sevlink','pm'):raise ValueError('Select job type, urgency and access responsibility.')
-                if job.authorised_at or effective_quotes(job).exists():raise ValueError('An authorised job requires the additional-authorisation workflow; its original approval cannot be overwritten.')
-                if job.job_type!='unclassified' and not reason:raise ValueError('Record a reason for changing the review.')
-                job.workflow_version=1;job.job_type=kind;job.urgency=urgency;job.access_responsibility=responsibility
-                job.access_information=text(values.get('access_information',''),2500,False)
-                if kind=='callout':
-                    job.spending_limit=money(values.get('limit'));job.authorised_by=request.user;job.authorised_at=timezone.now()
-                    from .numbering import approve_job_number
-                    approve_job_number(job)
-                job.status='reviewed'
-                MaintenanceStatusEvent.objects.create(request=job,actor=request.user,status='reviewed')
+                review_request(job,request.user,values)
             elif operation=='additional-request':
                 if job.job_type!='callout' or not job.authorised_at:raise ValueError('An authorised call-out is required.')
                 limit=money(values.get('limit'))

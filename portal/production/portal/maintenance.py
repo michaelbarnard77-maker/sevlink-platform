@@ -244,12 +244,16 @@ def collection(request):
             except ValueError:
                 raise ValueError('Idempotency-Key must be a UUID.')
         if request.content_type == 'multipart/form-data':
-            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information'))
+            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information', 'job_type', 'access_responsibility', 'limit'))
         else:
-            data = payload(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information'))
+            data = payload(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information', 'job_type', 'access_responsibility', 'limit'))
             uploads = []
         if any(not isinstance(value, str) for value in data.values()):
             raise ValueError('Report fields must be text.')
+        direct = access(request.user)[0] in (Membership.PM,Membership.ADMIN)
+        routing = {key:data.pop(key) for key in ('job_type','access_responsibility','limit') if key in data}
+        if routing and not direct:
+            raise ValueError('Only the property manager can authorise and route a repair.')
         form = ReportForm(data, user=request.user)
         if not form.is_valid():
             return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
@@ -258,6 +262,7 @@ def collection(request):
             raise ValueError('Tenants may flag a safety concern; only the property manager selects official urgency.')
         fingerprint = hashlib.sha256(json.dumps({
             'fields': {key: str(value.pk) if key == 'property' else value for key, value in form.cleaned_data.items() if not ((key=='urgency' and value=='normal') or (key=='access_information' and not value))},
+            **({'routing':routing} if routing else {}),
             'attachments': [(item['filename'], hashlib.sha256(item['data']).hexdigest()) for item in prepared],
         }, sort_keys=True).encode()).hexdigest()
         with transaction.atomic():
@@ -269,7 +274,15 @@ def collection(request):
                     return JsonResponse(serialize(get_object_or_404(requests_for(request.user), pk=existing.pk), request.user))
             job = MaintenanceRequest.objects.create(reported_by=request.user,workflow_version=1,safety_concern=form.cleaned_data.get('urgency')=='safety', submission_key=submission_key,
                                                      submission_fingerprint=fingerprint, **{**form.cleaned_data,'urgency':'normal'})
-            MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=job.status)
+            if direct:
+                from .workflow import review_request
+                review_request(job,request.user,dict(job_type=routing.get('job_type','quoted'),
+                    urgency='urgent' if form.cleaned_data.get('urgency')=='safety' else form.cleaned_data.get('urgency','normal'),
+                    access_responsibility=routing.get('access_responsibility',job.property.access_responsibility or 'pm'),
+                    access_information=form.cleaned_data.get('access_information',''),limit=routing.get('limit')))
+                job.save()
+            if not direct:
+                MaintenanceStatusEvent.objects.create(request=job, actor=request.user, status=job.status)
             Audit.objects.create(agency=job.property.agency, actor=request.user,
                                  action='Maintenance request submitted', object_id=str(job.pk))
             attachments.save_files(job, request.user, prepared, keys)

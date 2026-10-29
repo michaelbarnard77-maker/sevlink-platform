@@ -156,7 +156,7 @@ process.stdin.on('end', async () => {
     await page.getByRole('heading', {name:'Operations notifications', exact:true}).waitFor();
     await page.getByRole('button', {name:'Mark read', exact:true}).first().click();
     await page.getByRole('button', {name:'Mark unread', exact:true}).first().waitFor();
-    await page.getByRole('button', {name:'Open job', exact:true}).first().click();
+    await page.locator('#modal').getByRole('button', {name:'Open job', exact:true}).first().click();
     await page.getByRole('tab',{name:'Comments',exact:true}).click();
     await page.locator('#commentForm').waitFor();
     await context.close();

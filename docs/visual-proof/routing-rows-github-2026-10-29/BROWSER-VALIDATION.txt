@@ -1,0 +1,12 @@
+Creating test database for alias 'default'...
+Destroying old test database for alias 'default'...
+.
+----------------------------------------------------------------------
+Ran 1 test in 59.197s
+
+OK
+Destroying test database for alias 'default'...
+Found 1 test(s).
+System check identified no issues (0 silenced).
+PASS: 90 authenticated/source screenshots captured with role privacy checks.
+

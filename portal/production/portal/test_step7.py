@@ -187,7 +187,7 @@ class Step7Tests(TestCase):
             response = self.client.post(self.comment_url,{'text':'PRIVATE SUBCONTRACTOR IDENTITY','visibility':'internal','attachments':self.photo()},HTTP_IDEMPOTENCY_KEY=str(key))
             self.assertEqual(response.status_code,201,response.content)
             file = response.json()['attachments'][0]
-            self.assertEqual(OperationsNotification.objects.count(),1)  # submission only
+            self.assertEqual(OperationsNotification.objects.count(),0)  # tenant submission goes to PM
             for user in (self.pm,self.admin,self.tenant):
                 data = self.detail(user)
                 self.assertEqual(data['comments'],[])
@@ -246,6 +246,9 @@ class Step7Tests(TestCase):
             self.assertEqual(len([p for p in Path(directory).rglob('*') if p.is_file()]),1)
 
     def test_notification_centre_persistent_per_operator_private_and_independent_of_email(self):
+        from .events import record
+        with transaction.atomic():
+            record(self.job,self.pm,'workflow_event','pm-route-fixture',{'action':'Request reviewed and routed','decision_id':str(self.job.pk)},private=True)
         url=reverse('operations_notifications')
         notice=OperationsInboxItem.objects.get()
         state=reverse('operations_notification_state',args=[notice.pk])
@@ -278,6 +281,9 @@ class Step7Tests(TestCase):
         self.assertFalse(any(e['type']=='notification_state' for e in self.detail(self.pm)['activity']))
 
     def test_notification_pagination_csrf_and_strict_receipt_state(self):
+        from .events import record
+        with transaction.atomic():
+            record(self.job,self.pm,'workflow_event','pm-route-fixture',{'action':'Request reviewed and routed','decision_id':str(self.job.pk)},private=True)
         from datetime import timedelta
         from django.test import Client
         from django.utils import timezone
@@ -315,15 +321,15 @@ class Step7Tests(TestCase):
         self.client.force_login(self.pm)
         for version,status in enumerate(('reviewed','in_progress','completed'),1):
             self.assertEqual(self.client.patch(self.detail_url,json.dumps(dict(status=status,version=version)),content_type='application/json').status_code,200)
-        self.assertEqual(deliver(),8)  # 2 submitted + three decisions + comment + cancelled + completed
-        self.assertEqual(len(mail.outbox),8)
+        self.assertEqual(deliver(),6)  # three decisions + comment + cancelled + completed
+        self.assertEqual(len(mail.outbox),6)
         for message in mail.outbox:
             self.assertIn('SEVLINK',message.alternatives[0].content)
             self.assertNotIn('PRIVATE',message.body)
             self.assertNotIn('PRIVATE',message.alternatives[0].content)
             self.assertEqual(message.to,['maintenance@sevlink.co.za'])
-        self.assertEqual(OperationsInboxItem.objects.count(),8)
-        self.assertEqual(OperationsNotification.objects.filter(state='sent').count(),8)
+        self.assertEqual(OperationsInboxItem.objects.count(),6)
+        self.assertEqual(OperationsNotification.objects.filter(state='sent').count(),6)
         self.assertEqual(deliver(),0)
 
     def test_audit_comments_and_decision_history_are_append_only(self):
@@ -354,7 +360,7 @@ class Step7Tests(TestCase):
                 self.mutate(quote,'decision',status='approved',reason='OK')
         self.assertEqual(JobQuotation.objects.get(pk=quote['id']).status,'sent')
         self.assertFalse(QuotationAction.objects.filter(kind='approved').exists())
-        self.assertEqual(OperationsInboxItem.objects.count(),1)
+        self.assertEqual(OperationsInboxItem.objects.count(),0)
 
 
 @override_settings(SECURE_SSL_REDIRECT=False, ALLOWED_HOSTS=['testserver'])

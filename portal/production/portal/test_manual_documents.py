@@ -133,7 +133,7 @@ class ManualDocumentTests(TestCase):
         self.assertEqual(response.status_code,409)
         self.assertEqual(self.client.get(self.detail_url).json()['quotations'][0]['legacy_without_pdf'],True)
         self.assertNotIn('lines',self.client.get(self.detail_url).json()['quotations'][0])
-        self.assertEqual(OperationsNotification.objects.count(),1)
+        self.assertEqual(OperationsNotification.objects.count(),0)
 
     def test_invoice_upload_due_date_and_immutable_header(self):
         response=self.invoice();self.assertEqual(response.status_code,201,response.content)
@@ -206,7 +206,7 @@ class ManualDocumentTests(TestCase):
             self.assertNotIn('PRIVATE PAYMENT',json.dumps(data))
         # Invoice updates do not silently move job status or emit a staff self-notification.
         self.job.refresh_from_db();self.assertEqual((self.job.status,self.job.version),('awaiting_review',1))
-        self.assertEqual(OperationsNotification.objects.count(),1)
+        self.assertEqual(OperationsNotification.objects.count(),0)
 
     def test_private_supplier_invoice_payment_has_no_external_audit_leak(self):
         invoice=self.invoice(number='PRIVATE SUPPLIER',visibility='internal').json()

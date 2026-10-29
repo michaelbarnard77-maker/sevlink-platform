@@ -61,6 +61,10 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
    if(role!=='tenant'){
     await p.locator('#nav [data-view=requests]').click();await p.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();await p.locator('#rows [data-job]').first().waitFor();await shot(p,role+'-repair-register',role,role==='pm'?'PM repair jobs':role==='admin'?'Agency Admin repair jobs':'Operations repair register',differences.register);
    }
+   if(role==='tenant'){await p.locator('#nav [data-view=requests]').click();await p.getByRole('heading',{name:'Your repair history.',exact:true}).waitFor();}
+   const clickableRow=p.locator('#rows tr[data-job]').first();assert.equal(await clickableRow.locator('button').count(),0);
+   await clickableRow.locator('strong').first().click();await p.locator('#modal[open] .job-summary').waitFor();await shot(p,role+'-row-opens-job',role,'Clicking the job row opens the authenticated job popup',[]);await p.locator('#modal [data-close]').click();
+   await clickableRow.focus();await clickableRow.press('Enter');await p.locator('#modal[open] .job-summary').waitFor();await p.locator('#modal [data-close]').click();
    await openJob(p,existing_req);
    assert.match(await p.locator('.job-summary').innerText(),/REQ-\d+/,'Existing saved REQ record remains usable');
    if(role==='tenant'){const body=await (await p.request.get(url+'/api/maintenance/requests/'+existing_req+'/')).json();assert.equal('deposit' in body.workflow,false);}
@@ -113,6 +117,15 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
    if(role==='pm'){
     await openJob(p,pending);await panel(p,'Quotes');await p.locator('.quoteDecision').waitFor();await shot(p,'pm-quotation-awaiting-decision',role,'Quotation awaiting PM decision',differences.tabs);
     await openJob(p,callout);await panel(p,'Attendance');await p.locator('#attendanceRequest').waitFor();await shot(p,'pm-attendance-ready-callout',role,'Authorised call-out attendance request',['Call-outs correctly unlock attendance without a quote or deposit.',...differences.tabs]);
+   }
+   if(role==='pm'){
+    if(await p.locator('#modal').evaluate(m=>m.open))await p.locator('#modal [data-close]').click();
+    await p.locator('#nav [data-view=report]').click();await p.locator('[data-category="Plumbing"]').click();
+    const report=p.locator('#reportForm');await report.locator('[name=title]').fill('PM direct repair — browser test');await report.locator('[name=description]').fill('Synthetic direct submission, no actual repair.');await report.locator('[name=job_type]').selectOption('callout');await report.locator('[name=limit]').fill('1500');
+    await shot(p,'pm-direct-repair-form',role,'PM reports directly to Sevlink with explicit call-out authorisation',[],'#reportForm');
+    await report.getByRole('button',{name:'Send repair to Sevlink',exact:true}).click();const directRow=p.locator('#rows tr[data-job]').filter({hasText:'PM direct repair — browser test'});await directRow.waitFor();const directId=await directRow.getAttribute('data-job');await directRow.locator('strong').click();await p.locator('#modal[open] .job-summary').waitFor();
+    const directSaved=await(await p.request.get(url+'/api/maintenance/requests/'+directId+'/')).json();assert.equal(directSaved.status,'reviewed');assert.equal(directSaved.workflow.attendance_ready,true);
+    await shot(p,'pm-direct-repair-saved',role,'PM repair reaches Sevlink without a second PM review',[]);await p.locator('#modal [data-close]').click();
    }
    await p.setViewportSize({width:390,height:844});await p.goto(url+'/maintenance/');await p.locator('#phoneMenuButton').click();await p.locator('#nav button.active').waitFor();await p.waitForFunction(()=>Math.abs(document.querySelector('aside').getBoundingClientRect().x)<1);
    assert.equal(await p.locator('#nav button.active').evaluate(b=>getComputedStyle(b).backgroundColor),'rgb(18, 76, 126)');

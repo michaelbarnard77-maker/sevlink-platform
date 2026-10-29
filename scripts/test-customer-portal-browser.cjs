@@ -21,7 +21,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   await p.locator('#stageJobs > .panel > h2').waitFor();
   assert.equal(await p.locator('#stageJobs [data-stage-job]').count(),dashboard.stages[0].count);
   for(const item of attention.items){
-   const card=p.locator('#stageJobs .job-card').filter({has:p.locator(`[data-stage-job="${item.job}"]`)});
+   const card=p.locator(`#stageJobs .job-card[data-stage-job="${item.job}"]`);
    assert((await card.locator('.job-attention-reasons').innerText()).includes(item.action));
   }
   assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','profile','report','publicCalendar','updates','quotes','accounts','issues']);

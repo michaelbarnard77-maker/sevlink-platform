@@ -71,7 +71,7 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(JobComment.objects.filter(visibility='shared').count(), 1)
         self.assertEqual(JobComment.objects.filter(visibility='agency').count(),1)
         self.assertEqual(JobComment.objects.filter(visibility='internal').count(), 1)
-        self.assertEqual(OperationsNotification.objects.count(), 6)
+        self.assertEqual(OperationsNotification.objects.count(), 5)
         self.assertEqual(JobInvoice.objects.get(previous__isnull=True).document_status,'void')
         self.assertTrue(JobInvoice.objects.get(previous__isnull=False).reconciliation_required)
         self.assertEqual(InvoicePayment.objects.get().amount,1000)

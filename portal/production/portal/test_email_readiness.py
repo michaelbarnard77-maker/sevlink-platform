@@ -26,7 +26,7 @@ class EmailReadinessTests(TestCase):
     new_job=fixtures.EventWorkflowTests.new_job
 
     def setUp(self):
-        self.new_job()
+        self.new_job(as_pm=True)
         self.item=OperationsNotification.objects.get()
 
     def event(self,kind):
@@ -101,7 +101,7 @@ class EmailReadinessTests(TestCase):
 
     def test_negative_feedback_suppresses_future_recipient_mail_and_audited_resolution_releases(self):
         event=self.event('complaint');feedback(event)
-        self.new_job()
+        self.new_job(as_pm=True)
         self.assertEqual(deliver(),0)
         self.assertEqual(OperationsNotification.objects.filter(state='dead').count(),2)
         with self.assertRaises(ValueError):replay(self.item.pk,self.ops,'Cannot replay suppressed')

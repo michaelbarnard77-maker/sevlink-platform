@@ -52,13 +52,13 @@ def record(job, actor, kind, dedup_key, details=None, *, private=False):
         raise ValueError('Event key conflicts with an existing event.')
     notify_kinds = {JobActivity.Kind.WORKFLOW, JobActivity.Kind.SUBMITTED, JobActivity.Kind.COMMENT, JobActivity.Kind.QUOTE_APPROVED,
                     JobActivity.Kind.QUOTE_REJECTED, JobActivity.Kind.QUOTE_REVISION, JobActivity.Kind.CANCELLED, JobActivity.Kind.COMPLETED}
-    should_notify = kind in notify_kinds and (kind != JobActivity.Kind.COMMENT or role in ('tenant', 'pm', 'admin'))
+    should_notify = kind in notify_kinds and (kind != JobActivity.Kind.SUBMITTED or role in ('pm','admin')) and (kind != JobActivity.Kind.COMMENT or role in ('tenant', 'pm', 'admin'))
     if created and should_notify:
         OperationsNotification.objects.create(event=event, recipient=settings.OPERATIONS_NOTIFICATION_EMAIL)
         OperationsInboxItem.objects.create(event=event)
     if created:
         from .workflow import notify,participants,operators
-        if kind=='job_submitted':notify(event,participants(job))
+        if kind=='job_submitted':notify(event,operators() if role in ('pm','admin') else participants(job))
         elif kind in ('quote_sent','invoice_uploaded') and not private:notify(event,participants(job))
         elif kind in ('quote_approved','quote_rejected','quote_revision_requested'):notify(event,operators())
     return event

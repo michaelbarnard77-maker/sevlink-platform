@@ -240,7 +240,8 @@ class MaintenanceTests(TestCase):
         self.assertEqual(self.client.post(self.detail_url, '{}', content_type='application/json').status_code, 405)
         self.assertEqual(self.client.patch(self.collection, '{}', content_type='application/json').status_code, 405)
         self.assertEqual(self.client.post(self.context_url).status_code, 405)
-        self.assertTrue(all(j.status=='awaiting_review' for j in MaintenanceRequest.objects.all()))
+        for job in MaintenanceRequest.objects.all():
+            self.assertEqual(job.status,'awaiting_review' if job.reported_by.membership.role=='tenant' else 'reviewed')
 
     def test_paginated_results_and_invalid_page(self):
         self.create_report()

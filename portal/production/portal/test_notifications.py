@@ -66,8 +66,8 @@ class EventWorkflowTests(TestCase):
     def post(self, url, body, key=None):
         return self.client.post(url, json.dumps(body), content_type='application/json', HTTP_IDEMPOTENCY_KEY=str(key or uuid.uuid4()))
 
-    def new_job(self, key=None):
-        self.client.force_login(self.tenant)
+    def new_job(self, key=None, as_pm=False):
+        self.client.force_login(self.pm if as_pm else self.tenant)
         response = self.post(self.collection, {'property': str(self.home.pk), 'title': 'Kitchen repair',
             'description': 'Private tenant description', 'category': 'Plumbing'}, key)
         self.assertEqual(response.status_code, 201, response.content)
@@ -100,10 +100,10 @@ class EventWorkflowTests(TestCase):
 
     def test_new_job_creates_exactly_one_durable_operations_notification(self):
         with patch('portal.notifications.get_connection', side_effect=AssertionError('Must not send during job save')):
-            job = self.new_job()
+            job = self.new_job(as_pm=True)
         event = JobActivity.objects.get()
         self.assertEqual(event.kind, 'job_submitted')
-        self.assertEqual(event.actor, self.tenant)
+        self.assertEqual(event.actor, self.pm)
         delivery = OperationsNotification.objects.get()
         self.assertEqual(delivery.event, event)
         self.assertEqual(delivery.recipient, 'maintenance@sevlink.co.za')
@@ -121,7 +121,7 @@ class EventWorkflowTests(TestCase):
             'description': 'Private tenant description', 'category': 'Plumbing'}, key)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(MaintenanceRequest.objects.count(), 1)
-        self.assertEqual(OperationsNotification.objects.count(), 1)
+        self.assertEqual(OperationsNotification.objects.count(), 0)
         changed = self.post(self.collection, {'property': str(self.home.pk), 'title': 'Changed',
             'description': 'Private tenant description', 'category': 'Plumbing'}, key)
         self.assertEqual(changed.status_code, 409)
@@ -178,7 +178,7 @@ class EventWorkflowTests(TestCase):
         replay = self.upload_quote(key)
         self.assertEqual(replay.status_code, 200)
         self.assertEqual(JobQuotation.objects.count(), 1)
-        self.assertEqual(OperationsNotification.objects.count(), 1)
+        self.assertEqual(OperationsNotification.objects.count(), 0)
         self.client.force_login(self.tenant)
         data = self.client.get(self.detail_url).json()
         self.assertEqual(data['quotations'], [])
@@ -195,7 +195,7 @@ class EventWorkflowTests(TestCase):
             self.assertEqual(self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote.pk]),
                 {'status':'approved','reason':'Approved scope.','version':quote.version}).status_code, 404)
         self.assertEqual(JobComment.objects.count(), 0)
-        self.assertEqual(OperationsNotification.objects.count(), 1)
+        self.assertEqual(OperationsNotification.objects.count(), 0)
 
     def test_tenant_and_operations_cannot_approve_agency_quotations(self):
         self.new_job(); quote = self.new_quote()
@@ -219,7 +219,7 @@ class EventWorkflowTests(TestCase):
         self.new_job()
         self.assertEqual(self.status('cancelled',1).status_code,200)
         self.assertEqual(OperationsNotification.objects.filter(event__kind='job_cancelled').count(),1)
-        self.assertEqual(OperationsNotification.objects.count(),4)  # two submissions, completion, cancellation
+        self.assertEqual(OperationsNotification.objects.count(),2)  # completion and cancellation; tenant reports go to the PM
 
     def test_failed_and_invalid_mutations_do_not_create_events_or_outbox(self):
         self.new_job()
@@ -228,7 +228,7 @@ class EventWorkflowTests(TestCase):
                 self.post(self.comment_url, {'text':'This must roll back.'})
         self.assertEqual(JobComment.objects.count(),0)
         self.assertEqual(JobActivity.objects.count(),1)
-        self.assertEqual(OperationsNotification.objects.count(),1)
+        self.assertEqual(OperationsNotification.objects.count(),0)
         self.assertEqual(self.post(self.comment_url, {'text':''}).status_code,400)
         self.assertEqual(self.post(self.comment_url, {'text':'x'*2501}).status_code,400)
         self.assertEqual(self.post(self.comment_url, {'text':'x','author':'forged'}).status_code,400)
@@ -256,7 +256,7 @@ class EventWorkflowTests(TestCase):
         self.post(self.comment_url,{'text':'SENSITIVE COMMENT BODY and tenant@example.test'})
         quote = self.new_quote(); self.decision(quote)
         deliver()
-        self.assertEqual(len(mail.outbox),3)
+        self.assertEqual(len(mail.outbox),2)
         for message in mail.outbox:
             self.assertEqual(message.to,['maintenance@sevlink.co.za'])
             self.assertFalse(message.cc or message.bcc)
@@ -267,7 +267,7 @@ class EventWorkflowTests(TestCase):
 
     @override_settings(OPERATIONS_NOTIFICATION_EMAIL='ops-review@example.test', SITE_URL='https://portal.example.test')
     def test_configurable_recipient_and_trusted_secure_link(self):
-        self.new_job()
+        self.new_job(as_pm=True)
         event = JobActivity.objects.get(); event.property_name = 'Event Home\nEvent: forged'
         _, preview = notification_message(event)
         self.assertEqual(preview.count('\nEvent:'), 1)
@@ -293,12 +293,12 @@ class EventWorkflowTests(TestCase):
         with transaction.atomic():
             same=record(job,self.tenant,'job_submitted',event.dedup_key,{'status':job.status})
         self.assertEqual(same.pk,event.pk)
-        self.assertEqual(OperationsNotification.objects.count(),1)
+        self.assertEqual(OperationsNotification.objects.count(),0)
         with self.assertRaises(ValueError), transaction.atomic():
             record(job,self.tenant,'job_submitted','invalid',{'status':job.status,'internal_notes':'private'})
 
     def test_delivery_retries_backoff_and_final_audit_without_resending_success(self):
-        self.new_job()
+        self.new_job(as_pm=True)
         with patch('portal.notifications.get_connection',side_effect=OSError('SECRET SMTP ERROR')):
             self.assertEqual(deliver(),1)
         notification=OperationsNotification.objects.get()
@@ -316,14 +316,14 @@ class EventWorkflowTests(TestCase):
         self.assertIn(str(notification.event_id),mail.outbox[0].extra_headers['Message-ID'])
 
     def test_retry_exhaustion_and_stale_worker_recovery_are_audited(self):
-        self.new_job()
+        self.new_job(as_pm=True)
         lease=claim()
         self.assertIsNone(claim())
         OperationsNotification.objects.update(lease_expires_at=timezone.now()-timedelta(seconds=1))
         self.assertEqual(deliver(),1)
         self.assertEqual(OperationsDeliveryAttempt.objects.get(number=1).outcome,'uncertain')
         self.assertEqual(OperationsNotification.objects.get().state,'sent')
-        self.new_job()
+        self.new_job(as_pm=True)
         with patch('portal.notifications.get_connection',side_effect=OSError('unavailable')):
             for _ in range(5):
                 OperationsNotification.objects.filter(state='pending').update(next_attempt_at=timezone.now()-timedelta(seconds=1))
@@ -334,7 +334,7 @@ class EventWorkflowTests(TestCase):
         self.assertEqual(deliver(),0)
 
     def test_live_backend_is_disabled_and_queue_backend_loop_is_rejected(self):
-        self.new_job()
+        self.new_job(as_pm=True)
         with self.settings(OPERATIONS_EMAIL_DELIVERY_BACKEND='django.core.mail.backends.smtp.EmailBackend'):
             with self.assertRaises(ImproperlyConfigured): deliver()
         with self.settings(OPERATIONS_EMAIL_DELIVERY_BACKEND='portal.mail.QueueBackend', OPERATIONS_LIVE_DELIVERY_ENABLED=True):
@@ -342,7 +342,7 @@ class EventWorkflowTests(TestCase):
         self.assertEqual(OperationsNotification.objects.get().attempts,0)
 
     def test_local_preview_backend_and_configuration_checks(self):
-        self.new_job()
+        self.new_job(as_pm=True)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)/'preview'
             with self.settings(OPERATIONS_EMAIL_DELIVERY_BACKEND='portal.mail.PrivatePreviewBackend',EMAIL_FILE_PATH=root):
@@ -362,7 +362,7 @@ class DeliveryTransactionTests(TransactionTestCase):
     def test_delivery_runs_outside_job_transaction_and_failure_cannot_rollback_job(self):
         user=User.objects.create_user(username='transaction@example.test',email='transaction@example.test')
         agency=Agency.objects.create(name='Transaction agency',phone='test',area='Test')
-        Membership.objects.create(user=user,agency=agency,role='tenant')
+        Membership.objects.create(user=user,agency=agency,role='pm')
         prop=Property.objects.create(agency=agency,name='Home',address='Example')
         with transaction.atomic():
             job=MaintenanceRequest.objects.create(property=prop,reported_by=user,title='Repair',description='Test',category='Plumbing')
