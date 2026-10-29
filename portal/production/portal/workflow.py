@@ -85,6 +85,9 @@ def stage(job):
     if job.status in ('on_site','attended','in_progress'):return 'underway'
     if job.status=='scheduled' or job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exists():return 'booked'
     if job.job_type=='unclassified' and job.workflow_version:return 'new'
+    triage=job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').first()
+    if not job.quotations.exists() and not triage:return 'new'
+    if not job.quotations.exists() and triage and triage.snapshot.get('decision')=='attendance' and job.job_type!='callout':return 'new'
     if job.job_type=='callout':return 'ready' if job.authorised_at else 'new'
     if job.quotations.filter(status='sent').exists():return 'approval'
     if effective_quotes(job).exists():return 'ready' if eligible(job) else 'deposit'
@@ -125,6 +128,8 @@ def data(job,user):
     manual=job.workflow_decisions.filter(operation='manual-stage').order_by('-created_at','-pk').first()
     return dict(manual_stage=bool(manual and manual.snapshot.get('version')==job.version),
         manual_move_options=[dict(value=k,label=v) for k,v in STAGES] if staff else [],
+        operations_triage=(job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').values_list('snapshot',flat=True).first() or {}).get('decision'),
+        can_triage=staff and job.job_type!='unclassified' and not job.quotations.exists() and not job.closed_at and job.status not in ('completed','cancelled','closed'),
         **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
         **({} if tenant else {'access_responsibility':job.access_responsibility}),access_information=job.access_information,
         spending_limit=None if tenant else str(job.spending_limit) if job.spending_limit is not None else None,
@@ -283,7 +288,7 @@ def action(request,job_id,operation):
             values['version']=int(values['version']);prepared=attachments.prepare(files)
         else:
             values=payload(request,('version','job_type','urgency','access_responsibility','access_information','limit','reason','additional','decision','date','window','preference','confirmation','report','before_unavailable','exception_reason'))
-        allowed={'review':{'job_type','urgency','access_responsibility','access_information','limit','reason'},'additional-request':{'limit','reason'},'additional-decision':{'additional','decision'},'verify-deposit':{'confirmation'},'attendance-request':{'preference','date','window'},'attendance-decline':{'additional','reason'},'completion':{'report','before_unavailable','exception_reason'}}
+        allowed={'operations-triage':{'decision'},'review':{'job_type','urgency','access_responsibility','access_information','limit','reason'},'additional-request':{'limit','reason'},'additional-decision':{'additional','decision'},'verify-deposit':{'confirmation'},'attendance-request':{'preference','date','window'},'attendance-decline':{'additional','reason'},'completion':{'report','before_unavailable','exception_reason'}}
         if operation not in allowed or set(values)-{'version'}-allowed[operation]:raise ValueError('Unexpected fields for this workflow action.')
         fingerprint=digest(dict(values,operation=operation,job=str(job_id),**({'photos':[(p['filename'],hashlib.sha256(p['data']).hexdigest()) for p in prepared]} if prepared else {})))
         with transaction.atomic():
@@ -302,6 +307,9 @@ def action(request,job_id,operation):
             if operation=='review':
                 review_request(job,request.user,values)
                 if prepared:attachments.save_files(job,request.user,prepared,keys,visibility='shared',purpose='general')
+            elif operation=='operations-triage':
+                if job.job_type=='unclassified' or job.quotations.exists():raise ValueError('Only a forwarded request without a quotation can be assessed.')
+                if values.get('decision') not in ('desktop','attendance'):raise ValueError('Choose attendance needed or desktop quote.')
             elif operation=='additional-request':
                 if job.job_type!='callout' or not job.authorised_at:raise ValueError('An authorised call-out is required.')
                 limit=money(values.get('limit'))
@@ -358,7 +366,7 @@ def action(request,job_id,operation):
             job.version+=1;job.save()
             snapshot={k:v for k,v in values.items() if k!='version'}
             decision=WorkflowDecision.objects.create(request=job,actor=request.user,operation=operation,key=key,fingerprint=fingerprint,snapshot=snapshot)
-            labels={'review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Please confirm attendance date','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
+            labels={'operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Please confirm attendance date','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
             event=record(job,request.user,'workflow_event','workflow:'+str(key),{'action':labels[operation],'decision_id':str(decision.pk)},private=operation in ('additional-request','additional-decision','review','verify-deposit'))
             notify(event,operators() if pm else participants(job,operation=='completion'))
             if operation=='review' and job.job_type=='callout':attention_notifications(job,request.user,'Please confirm attendance date','ready:'+str(key))

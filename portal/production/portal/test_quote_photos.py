@@ -104,3 +104,23 @@ class QuotePhotoTests(TestCase):
         if response.status_code==200:
             self.assertNotContains(response,'Sevlink arranges access')
             self.assertNotContains(response,'Agency arranges access')
+
+    def test_forwarded_request_waits_for_operations_assessment(self):
+        from .workflow import stage
+        for reporter in (self.tenant,self.pm):
+            job=self.submit(reporter,[])
+            if reporter==self.tenant:
+                result=self.review(job,[])
+                self.assertEqual(result.status_code,200,result.content)
+                job=self.client.get(reverse('maintenance_detail',args=[job['id']])).json()
+            saved=MaintenanceRequest.objects.get(pk=job['id'])
+            self.assertEqual(stage(saved),'new')
+            self.client.force_login(self.pm)
+            denied=self.post(reverse('workflow_action',args=[saved.pk,'operations-triage']),dict(version=saved.version,decision='desktop'))
+            self.assertEqual(denied.status_code,403)
+            self.client.force_login(self.ops)
+            key=uuid.uuid4()
+            values=dict(version=saved.version,decision='desktop')
+            response=self.post(reverse('workflow_action',args=[saved.pk,'operations-triage']),values)
+            self.assertEqual(response.status_code,200,response.content)
+            saved.refresh_from_db();self.assertEqual(stage(saved),'quoting')

@@ -295,7 +295,8 @@ class PMDashboardAdjustmentTests(TestCase):
         self.assertEqual(len(self.client.get(url).json()['stages']),8)
         self.client.force_login(self.ops)
         operations=self.client.get(url).json()
-        self.assertEqual(len(operations['stages']),10)
+        self.assertEqual(len(operations['stages']),11)
+        self.assertIn('declined',{s['key'] for s in operations['stages']})
         self.assertEqual([item['label'] for item in operations['summary']],['New today','Urgent attention','Visits today','Waiting on Sevlink'])
         self.assertEqual(operations['summary'][0]['count'],1)
 
