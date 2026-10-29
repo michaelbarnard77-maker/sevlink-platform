@@ -26,7 +26,7 @@ def move_job(request,job_id):
         values=payload(request,('version','stage','reason'))
         key=request_key(request);reason=text(values.get('reason'),1000)
         target=values.get('stage')
-        if target not in dict(STAGES) or type(values.get('version')) is not int:raise ValueError('Choose a job stage and current version.')
+        if not isinstance(target,str) or target not in dict(STAGES) or type(values.get('version')) is not int:raise ValueError('Choose a job stage and current version.')
         fingerprint=hashlib.sha256(json.dumps(values,sort_keys=True).encode()).hexdigest()
         with transaction.atomic():
             job=get_object_or_404(m.MaintenanceRequest.objects.select_for_update(),pk=job_id)
@@ -207,6 +207,7 @@ def remove(request,kind,identifier):
                     keeps_jobs=kind=='tenant',note='Tenant login and structured contact details will be removed. Original job text, photos, quotes and invoices remain as history.' if kind=='tenant' else 'Permanently removes the selected record and the linked jobs, documents, payments, calendar entries and notifications shown below from the live portal. Shared accounts, existing backups and previously delivered emails are retained.'))
             values=payload(request,('token','confirmation'))
             if values.get('confirmation')!='REMOVE':raise ValueError('Type REMOVE to confirm.')
+            if not isinstance(values.get('token'),str):raise ValueError('Open the removal preview before confirming.')
             try:preview=signing.loads(values.get('token',''),salt='removal-preview',max_age=600)
             except signing.BadSignature:raise ValueError('Removal preview expired. Open it again.')
             if preview!=dict(kind=kind,id=str(identifier),digest=plan['digest'],actor=request.user.pk):

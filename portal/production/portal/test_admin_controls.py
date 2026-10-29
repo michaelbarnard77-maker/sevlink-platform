@@ -24,6 +24,7 @@ class AdminControlTests(TestCase):
             self.assertEqual(self.post(url,dict(version=1,stage='closed',reason='Test')).status_code,403)
         self.client.force_login(self.ops)
         self.assertEqual(self.post(url,dict(version=1,stage='closed',reason='')).status_code,400)
+        self.assertEqual(self.post(url,dict(version=1,stage=[],reason='Test')).status_code,400)
         for target in ('booked','closed','quoting'):
             self.job.refresh_from_db();version=self.job.version;key=uuid.uuid4()
             values=dict(version=version,stage=target,reason='PRIVATE MANUAL OVERRIDE REASON')
@@ -93,6 +94,7 @@ class AdminControlTests(TestCase):
     def test_stale_preview_and_atomic_failure_cannot_remove_anything(self):
         url=self.removal('property',self.home.pk)
         self.client.force_login(self.ops);preview=self.client.get(url).json()
+        self.assertEqual(self.post(url,dict(token=None,confirmation='REMOVE')).status_code,400)
         self.job.title='Changed repair';self.job.save(update_fields=['title'])
         self.assertEqual(self.post(url,dict(token=preview['token'],confirmation='REMOVE')).status_code,409)
         preview=self.client.get(url).json()
