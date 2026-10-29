@@ -83,3 +83,24 @@ class QuotePhotoTests(TestCase):
         self.assertEqual(MaintenanceRequest.objects.get(pk=job['id']).status,'awaiting_review')
         self.assertEqual(set(MaintenanceAttachment.objects.filter(request_id=job['id']).values_list('pk',flat=True)),original)
         self.assertFalse(WorkflowDecision.objects.filter(request_id=job['id']).exists())
+
+    def test_rejected_quote_enters_declined_pot(self):
+        from .workflow import stage,STAGES
+        self.client.force_login(self.ops);quote=self.sent()
+        self.client.force_login(self.pm)
+        result=self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote['id']]),dict(version=quote['version'],status='rejected',reason='Not proceeding with this quote'))
+        self.assertEqual(result.status_code,200,result.content)
+        self.job.refresh_from_db()
+        self.assertEqual(stage(self.job),'declined')
+        self.assertEqual(dict(STAGES)['declined'],'Declined')
+
+    def test_tenant_access_responsibility_is_private(self):
+        from .workflow import data
+        self.assertNotIn('access_responsibility',data(self.job,self.tenant))
+        self.assertIn('access_responsibility',data(self.job,self.pm))
+        self.assertIn('access_responsibility',data(self.job,self.ops))
+        self.client.force_login(self.tenant)
+        response=self.client.get('/')
+        if response.status_code==200:
+            self.assertNotContains(response,'Sevlink arranges access')
+            self.assertNotContains(response,'Agency arranges access')

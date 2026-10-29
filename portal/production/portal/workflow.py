@@ -20,7 +20,7 @@ from .quotations import digest
 from .events import record
 
 WINDOWS=('09:00–13:00','12:00–17:00')
-STAGES=(('new','New Requests'),('quoting','Quoting'),('approval','Awaiting Quotation Approval'),
+STAGES=(('new','New Requests'),('quoting','Quoting'),('approval','Awaiting Quotation Approval'),('declined','Declined'),
         ('deposit','Awaiting Deposit'),('ready','Ready to Schedule'),('booked','Booked Appointments'),
         ('underway','Work Underway'),('invoice','Ready to Invoice'),('payment','Awaiting Final Payment'),('closed','Closed Jobs'))
 
@@ -88,6 +88,8 @@ def stage(job):
     if job.job_type=='callout':return 'ready' if job.authorised_at else 'new'
     if job.quotations.filter(status='sent').exists():return 'approval'
     if effective_quotes(job).exists():return 'ready' if eligible(job) else 'deposit'
+    latest=job.quotations.order_by('-created_at','-pk').first()
+    if latest and latest.status=='rejected':return 'declined'
     return 'new' if job.status=='awaiting_review' else 'quoting'
 
 
@@ -124,7 +126,7 @@ def data(job,user):
     return dict(manual_stage=bool(manual and manual.snapshot.get('version')==job.version),
         manual_move_options=[dict(value=k,label=v) for k,v in STAGES] if staff else [],
         **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
-        access_responsibility=job.access_responsibility,access_information=job.access_information,
+        **({} if tenant else {'access_responsibility':job.access_responsibility}),access_information=job.access_information,
         spending_limit=None if tenant else str(job.spending_limit) if job.spending_limit is not None else None,
         authorised_at=job.authorised_at,closed_at=job.closed_at,parent_request=str(job.parent_request_id) if job.parent_request_id else None,
         stage=stage(job),attendance_ready=eligible(job),arrival_windows=WINDOWS,attendance=arrivals,

@@ -36,7 +36,7 @@ def move_job(request,job_id):
                 return JsonResponse(serialize(job,request.user))
             if job.version!=values['version']:return JsonResponse({'error':'Job changed. Refresh before moving it.'},status=409)
             previous=job.status
-            job.status={'new':'awaiting_review','quoting':'reviewed','approval':'reviewed','deposit':'reviewed','ready':'reviewed','booked':'scheduled','underway':'in_progress','invoice':'completed','payment':'completed','closed':'closed'}[target]
+            job.status={'new':'awaiting_review','quoting':'reviewed','approval':'reviewed','declined':'reviewed','deposit':'reviewed','ready':'reviewed','booked':'scheduled','underway':'in_progress','invoice':'completed','payment':'completed','closed':'closed'}[target]
             job.closed_at=timezone.now() if target=='closed' else None
             job.version+=1;job.save(update_fields=['status','closed_at','version','updated_at'])
             decision=m.WorkflowDecision.objects.create(request=job,actor=request.user,operation='manual-stage',key=key,fingerprint=fingerprint,
