@@ -27,7 +27,13 @@ from .maintenance import api_access, requests_for
 logger = logging.getLogger(__name__)
 MAX_BYTES = 5 * 1024 * 1024
 MAX_BATCH = 5
-MAX_PER_JOB = 10
+PHOTO_MAX_FILES = 50
+PHOTO_TOTAL_BYTES = 25 * 1024 * 1024
+
+
+def photo_request(request):
+    path=request.path.rstrip('/')
+    return path=='/api/maintenance/requests' or path.endswith('/attachments') or path.endswith('/workflow/review') or path.endswith('/comments')
 MAX_PIXELS = 20_000_000
 TYPES = {'JPEG': ('jpg', 'image/jpeg'), 'PNG': ('png', 'image/png'), 'WEBP': ('webp', 'image/webp')}
 EXTENSIONS = {'.jpg': 'JPEG', '.jpeg': 'JPEG', '.png': 'PNG', '.webp': 'WEBP', '.pdf': 'PDF'}
@@ -46,23 +52,25 @@ class BoundedUploadHandler(FileUploadHandler):
     def __init__(self, request=None):
         super().__init__(request)
         self.total = self.count = self.current = 0
-        self.batch_limit = 10 if request and request.path.endswith('/completed-report/') else MAX_BATCH
+        self.batch_limit = PHOTO_MAX_FILES if request and photo_request(request) else 10 if request and request.path.endswith('/completed-report/') else MAX_BATCH
+        self.byte_limit = PHOTO_TOTAL_BYTES if request and photo_request(request) else self.batch_limit * MAX_BYTES
 
     def new_file(self, *args, **kwargs):
         super().new_file(*args, **kwargs)
         self.count += 1
         self.current = 0
         if self.count > self.batch_limit:
-            self.reject()
+            self.reject('Maximum fifty files per photo selection.' if photo_request(self.request) else 'Too many files in this upload.')
 
-    def reject(self):
+    def reject(self,message=None):
         self.request.attachment_upload_rejected = True
+        self.request.attachment_upload_error = message
         raise StopUpload(connection_reset=True)
 
     def receive_data_chunk(self, raw_data, start):
         self.current += len(raw_data)
         self.total += len(raw_data)
-        if self.current > MAX_BYTES or self.total > self.batch_limit * MAX_BYTES:
+        if self.current > MAX_BYTES or self.total > self.byte_limit:
             self.reject()
         return raw_data
 
@@ -82,14 +90,15 @@ def multipart(request, allowed_fields=()):
     except (RequestDataTooBig, TooManyFilesSent, TooManyFieldsSent):
         raise UploadRejected('Upload exceeds the allowed limits.')
     if getattr(request, 'attachment_upload_rejected', False):
-        raise UploadRejected('Maximum five files per upload and 5 MB per file.')
+        raise UploadRejected(getattr(request,'attachment_upload_error',None) or ('Photos must be 5 MB or less each and 25 MB total.' if photo_request(request) else 'Maximum five files per upload and 5 MB per file.'))
     if set(fields) - set(allowed_fields) or set(files) - {'attachments'}:
         raise UploadRejected('Unexpected upload fields.')
     if any(len(fields.getlist(key)) != 1 for key in fields):
         raise UploadRejected('Repeated report fields are not allowed.')
     uploads = files.getlist('attachments')
-    if len(uploads) > MAX_BATCH:
-        raise UploadRejected('Maximum five files per upload.')
+    if len(uploads) > (PHOTO_MAX_FILES if photo_request(request) else MAX_BATCH):
+        raise UploadRejected('Maximum fifty files per photo selection.' if photo_request(request) else 'Maximum five files per upload.')
+    if photo_request(request) and sum(f.size for f in uploads)>PHOTO_TOTAL_BYTES:raise UploadRejected('Photos must total 25 MB or less.')
     return fields.dict(), uploads
 
 
@@ -202,8 +211,11 @@ def cleanup(keys):
 
 
 def save_files(job, actor, prepared, saved_keys, comment=None, visibility="shared", purpose="general"):
-    if purpose == "general" and job.attachments.filter(visibility=visibility, purpose="general").count() + len(prepared) > MAX_PER_JOB:
-        raise UploadRejected('Maximum ten attachments per maintenance request.')
+    if purpose=='general':
+        from django.db.models import Sum
+        group=('internal',) if visibility=='internal' else ('shared','agency')
+        used=job.attachments.filter(purpose='general',visibility__in=group).aggregate(total=Sum('size'))['total'] or 0
+        if used+sum(len(item['data']) for item in prepared)>PHOTO_TOTAL_BYTES:raise UploadRejected('Repair photos and documents must total 25 MB or less.')
     saved_files = []
     for item in prepared:
         attachment_id = uuid.uuid4()

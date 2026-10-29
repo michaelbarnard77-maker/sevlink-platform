@@ -320,6 +320,7 @@ class Financial75Tests(TestCase):
         other=MaintenanceRequest.objects.create(property=home,reported_by=self.ops,title='Other',description='Test',category='Plumbing')
         response=self.client.post(reverse('maintenance_quote',args=[other.pk]),dict(reference='Q-001',amount='1000',attachments=fixtures.document()),HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(response.status_code,400)
+        q=self.approve(q,'revision_requested').json()
         revision=self.amendment(q,operation='revise',reference=q['reference']).json()
         self.assertEqual(revision['reference'],q['reference'])
         self.assertEqual(revision['revision'],2)

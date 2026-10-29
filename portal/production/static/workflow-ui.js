@@ -1,6 +1,18 @@
 /* Real Django workflow presentation; no localStorage, sample records or operational simulation. */
 window.SevlinkWorkflowUI = (() => {
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function photoPicker(input,existingBytes=0){
+    if(!input)return;let selected=[];
+    const list=document.createElement('div');list.className='photo-selection';const error=document.createElement('p');error.setAttribute('role','alert');error.hidden=true;input.after(list,error);
+    const sync=()=>{const transfer=new DataTransfer();selected.forEach(f=>transfer.items.add(f));input.files=transfer.files;list.replaceChildren();
+      if(selected.length){const total=document.createElement('p');total.textContent=`${selected.length} selected · ${(selected.reduce((n,f)=>n+f.size,0)/1024/1024).toFixed(2)} MB`;list.append(total);}
+      selected.forEach((f,index)=>{const row=document.createElement('div');row.className='toolbar';const name=document.createElement('span');name.style.flex='1';name.textContent=f.name;const remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.textContent='Remove photo';remove.onclick=()=>{selected.splice(index,1);error.hidden=true;input.setCustomValidity('');sync();};row.append(name,remove);list.append(row);});if(selected.length||!error.hidden){const clear=document.createElement('button');clear.type='button';clear.className='secondary';clear.textContent='Clear photo selection';clear.onclick=()=>{selected=[];error.hidden=true;input.setCustomValidity('');sync();};list.append(clear);}
+    };
+    input.onchange=()=>{const candidate=[...selected];for(const f of input.files){if(!candidate.includes(f))candidate.push(f);}
+      const message=candidate.some(f=>f.size===0)?'Empty files cannot be uploaded.':candidate.some(f=>f.size>5*1024*1024)?'Each photo must be 5 MB or less.':existingBytes+candidate.reduce((n,f)=>n+f.size,0)>25*1024*1024?'Photos and documents for this repair must total 25 MB or less.':'';
+      input.setCustomValidity(message);if(message){error.textContent=message;error.hidden=false;}else{selected=candidate;error.hidden=true;}sync();
+    };
+  }
   const paths=[
     'M4 9h12v5a4 4 0 0 1-8 0V9m4-5v5m4-3h4v4h-4M4 7v4',
     'm13 2-9 12h7l-1 8 10-13h-7z',
@@ -126,15 +138,16 @@ window.SevlinkWorkflowUI = (() => {
     nav.querySelectorAll('button').forEach(b=>b.onclick=()=>show(b.dataset.tab));show(names[previous]?previous:'overview');
     const submit=(form,operation,transform=x=>x)=>{
       const key=crypto.randomUUID();form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');if(b)b.disabled=true;
-        try{const values=transform(Object.fromEntries(new FormData(form)));await api(`requests/${job.id}/workflow/${operation}/`,{method:'POST',body:JSON.stringify({version:job.version,...values}),headers:{'Idempotency-Key':key}});showDetail(await api(`requests/${job.id}/`));toast('Saved to the job history.');}
-        catch(e){let error=form.querySelector('[role=alert]');if(!error){error=document.createElement('p');error.setAttribute('role','alert');form.append(error);}error.textContent=e.message;}
+        try{const values=transform(Object.fromEntries(new FormData(form)));let body=JSON.stringify({version:job.version,...values});if(form.id==='workflowReview'){body=new FormData(form);body.set('version',job.version);if(!body.getAll('attachments').some(f=>f.size))body.delete('attachments');}await api(`requests/${job.id}/workflow/${operation}/`,{method:'POST',body,headers:{'Idempotency-Key':key}});showDetail(await api(`requests/${job.id}/`));toast('Saved to the job history.');}
+        catch(e){let error=form.querySelector('[role=alert]');if(!error){error=document.createElement('p');error.setAttribute('role','alert');form.append(error);}error.textContent=e.message;error.hidden=false;}
         finally{if(b?.isConnected)b.disabled=false;}
       };
     };
     panels.overview.insertAdjacentHTML('afterbegin',`<section class="notice"><h2>${esc(w.job_type==='callout'?'Authorised Call-Out':w.job_type==='quoted'?'Quotation Required':'Awaiting PM review')}</h2>${w.spending_limit?`<p>Maximum authorised total: <strong>R ${esc(w.spending_limit)}</strong> · VAT-inclusive where applicable.</p>`:''}<p>${esc(w.access_responsibility==='pm'?'Property Manager Arranges Access':'Sevlink Arranges Access')}</p>${w.safety_concern?'<p><strong>Tenant has flagged a safety concern.</strong></p>':''}${w.compatibility?'<p>Historical workflow — review existing evidence before authorising further work.</p>':''}${w.closed_at?`<p>${w.manual_stage?'Closed manually by Sevlink. Invoice balances remain as recorded.':'Closed after final agency payment. All job history is retained.'}</p>`:''}${w.parent_request?'<p>Separately authorised additional work linked to the original call-out.</p>':''}</section>`);
     if(pm && job.status==='awaiting_review' && !w.authorised_at && !job.quotations.some(q=>q.status==='approved')){
-      panels.overview.insertAdjacentHTML('beforeend',`<form id="workflowReview" class="panel"><h2>Send request to Sevlink</h2>${select('job_type','Job type',[['quoted','Quotation Required'],['callout','Call-Out']])}${select('urgency','Official urgency',[['normal','Normal'],['high','High'],['urgent','Urgent']])}${select('access_responsibility','Access responsibility',[['sevlink','Sevlink Arranges Access'],['pm','Property Manager Arranges Access']])}<label>Maximum authorised call-out total in ZAR (VAT-inclusive)</label><input name="limit" type="number" min="0.01" step="0.01"><label>Access information / further details</label><textarea name="access_information" maxlength="2500">${esc(w.access_information)}</textarea><label>Reason for review or change</label><textarea name="reason" maxlength="2500"></textarea><button type="submit" class="primary">Send to Sevlink</button></form>`);
+      panels.overview.insertAdjacentHTML('beforeend',`<form id="workflowReview" class="panel"><h2>Send request to Sevlink</h2>${select('job_type','Job type',[['quoted','Quotation Required'],['callout','Call-Out']])}${select('urgency','Official urgency',[['normal','Normal'],['high','High'],['urgent','Urgent']])}${select('access_responsibility','Access responsibility',[['sevlink','Sevlink Arranges Access'],['pm','Property Manager Arranges Access']])}<label>Maximum authorised call-out total in ZAR (VAT-inclusive)</label><input name="limit" type="number" min="0.01" step="0.01"><label>Access information / further details</label><textarea name="access_information" maxlength="2500">${esc(w.access_information)}</textarea><label>Reason for review or change</label><textarea name="reason" maxlength="2500"></textarea><div class="notice">${job.attachments.filter(f=>f.purpose==='general').length?`${job.attachments.filter(f=>f.purpose==='general').length} request photos/documents are already attached and will be included automatically when you send this repair to Sevlink.`:'The tenant has not attached photos. You can add photos below before sending this repair to Sevlink.'}</div><label>Add repair photos (optional)</label><input name="attachments" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"><small>Choose photos together or add more selections. Up to 5 MB each and 25 MB total for this repair.</small><button type="submit" class="primary">Send to Sevlink</button></form>`);
       const reviewForm=panels.overview.querySelector('form');if(w.job_type!=='unclassified')reviewForm.elements.job_type.value=w.job_type;reviewForm.elements.urgency.value=job.urgency==='high'?'high':job.urgency==='urgent'?'urgent':'normal';reviewForm.elements.access_responsibility.value=w.access_responsibility;
+      photoPicker(reviewForm.querySelector('[name=attachments]'),job.attachments.filter(f=>f.purpose==='general').reduce((n,f)=>n+f.size,0));
       submit(reviewForm,'review');
     }
     if(staff && w.job_type==='callout' && !w.closed_at){
@@ -227,5 +240,5 @@ window.SevlinkWorkflowUI = (() => {
         }catch(e){toast(e.message);}
       });app.querySelectorAll('[data-agency-job]').forEach(b=>b.onclick=async()=>{try{showDetail(await api(`requests/${b.dataset.agencyJob}/`));}catch(e){toast(e.message);}});}catch(e){toast(e.message);}
   }
-  return {icon,decorate,stages,inbox,job,agencies};
+  return {icon,decorate,stages,inbox,job,agencies,photoPicker};
 })();

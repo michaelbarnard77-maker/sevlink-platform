@@ -101,6 +101,10 @@ def create_uploaded(request,job_id,publish=False):
                 return JsonResponse({'error': 'Idempotency key conflict.'}, status=409)
             if job.workflow_version and job.job_type!='quoted':
                 raise ValueError('The PM must classify this request as Quotation Required. Additional quoted call-out work needs its own linked request.')
+            if publish:
+                from .workflow import effective_quotes
+                if job.quotations.filter(status__in=('draft','sent','revision_requested')).exists() or effective_quotes(job).exists():
+                    return JsonResponse({'error':'A current quote already exists. Use the PM-requested revision or approved amendment workflow.'},status=409)
             if job.status in ('completed', 'cancelled', 'closed'):
                 return JsonResponse({'error': 'The request is closed.'}, status=400)
             series_id = uuid.uuid4()
@@ -135,6 +139,8 @@ def create_uploaded(request,job_id,publish=False):
 @require_POST
 def mutate(request, job_id, quote_id, operation):
     get_object_or_404(requests_for(request.user), pk=job_id)
+    publish_revision=operation=='revise-and-send'
+    if publish_revision:operation='revise'
     decision = operation == 'decision'
     if (decision and access(request.user)[0] not in (Membership.PM, Membership.ADMIN)) or (not decision and not request.user.is_superuser):
         return JsonResponse({'error': 'You cannot perform this quotation action.'}, status=403)
@@ -160,7 +166,7 @@ def mutate(request, job_id, quote_id, operation):
                 raise ValueError('Invalid decision.')
             reason = text(data.get('reason'), 1000)
         fingerprint = digest(dict(data, operation=operation, quote_id=str(quote_id),
-                                  file=file_fingerprint(prepared) if prepared else None))
+                                  file=file_fingerprint(prepared) if prepared else None,**({'publish':True} if publish_revision else {})))
         with transaction.atomic():
             job = lock_job(request.user, job_id)
             quote = get_object_or_404(JobQuotation.objects.select_for_update(), pk=quote_id, request=job)
@@ -209,6 +215,8 @@ def mutate(request, job_id, quote_id, operation):
                         return JsonResponse({'error':'Only the current approved quotation without an amendment can be amended. Use the existing amendment revision chain.'},status=409)
                 elif quote.status not in ('sent','rejected','revision_requested'):
                     return JsonResponse({'error': 'This revision cannot be superseded. Approved quotations are immutable.'}, status=409)
+                if operation=='revise' and not quote.amends_id and quote.status!='revision_requested':
+                    return JsonResponse({'error':'The PM must request a revision before a replacement quote can be uploaded.'},status=409)
                 reserve_quote_reference(values['reference'], quote.series_id)
                 document = attachments.save_files(job, request.user, prepared, keys,
                     visibility='internal', purpose='quotation')[0]
@@ -224,6 +232,10 @@ def mutate(request, job_id, quote_id, operation):
                     creation_key=uuid.uuid4(), creation_fingerprint=fingerprint, series_id=old.series_id,
                     revision=old.revision+1, previous=old, **values)
                 action(quote, request.user, 'amended' if operation == 'amend' else 'revised', key, fingerprint, reason)
+                if publish_revision:
+                    quote.public_snapshot={k:v for k,v in quote_data(quote).items() if k in ('record_number','amends_id','amendment_reason','title','scope','reference','currency','amount','document')}
+                    quote.status='sent';quote.sent_at=timezone.now();quote.version+=1;quote.save()
+                    action(quote,request.user,'sent',uuid.uuid5(key,'revision-upload-and-send'),fingerprint)
                 return JsonResponse(quote_data(quote, request.user), status=201)
             else:
                 return JsonResponse({'error': 'Unknown quotation action.'}, status=404)

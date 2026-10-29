@@ -192,15 +192,15 @@ class AttachmentTests(TestCase):
     def test_empty_oversized_too_many_and_missing_files_are_rejected(self):
         self.assertEqual(self.upload([SimpleUploadedFile('empty.png', b'', 'image/png')]).status_code, 400)
         self.assertEqual(self.upload([SimpleUploadedFile('big.pdf', b'x'*(MAX_BYTES+1), 'application/pdf')]).status_code, 400)
-        self.assertEqual(self.upload([photo(str(i)+'.png') for i in range(6)]).status_code, 400)
+        self.assertEqual(self.upload([photo(str(i)+'.png') for i in range(51)]).status_code, 400)
         self.assertEqual(self.client.post(self.upload_url, {}).status_code, 400)
         self.assertEqual(self.stored_files(), [])
 
-    def test_maximum_ten_files_is_enforced_and_closed_requests_are_read_only(self):
+    def test_more_than_ten_small_photos_fit_the_byte_budget_and_closed_requests_are_read_only(self):
         for _ in range(2):
             self.assertEqual(self.upload([photo(str(i)+'.png') for i in range(5)]).status_code, 201)
-        self.assertEqual(self.upload().status_code, 400)
-        self.assertEqual(MaintenanceAttachment.objects.count(), 10)
+        self.assertEqual(self.upload().status_code, 201)
+        self.assertEqual(MaintenanceAttachment.objects.count(), 11)
         MaintenanceRequest.objects.filter(pk=self.job.pk).update(status='completed')
         self.assertEqual(self.upload().status_code, 400)
         response = self.client.get(attachment_data(MaintenanceAttachment.objects.first())['download_url'])

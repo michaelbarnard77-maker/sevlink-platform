@@ -1,5 +1,6 @@
 """Saved operational decisions, conservative legacy compatibility and public projections."""
 import uuid
+import hashlib
 from datetime import timedelta
 from decimal import Decimal
 from functools import wraps
@@ -266,13 +267,23 @@ def review_request(job,actor,values):
 @require_POST
 @checked
 def action(request,job_id,operation):
+    if operation=='review':
+        if access(request.user)[0] not in ('pm','admin'):return JsonResponse({'error':'Authorised property manager required.'},status=403)
+        get_object_or_404(requests_for(request.user),pk=job_id)
     keys=[]
     try:
         key=request_key(request)
-        values=payload(request,('version','job_type','urgency','access_responsibility','access_information','limit','reason','additional','decision','date','window','preference','confirmation','report','before_unavailable','exception_reason'))
+        prepared=[]
+        if operation=='review' and request.content_type=='multipart/form-data':
+            from . import attachments
+            values,files=attachments.multipart(request,('version','job_type','urgency','access_responsibility','access_information','limit','reason'))
+            if not values.get('version','').isdigit():raise ValueError('A current job version is required.')
+            values['version']=int(values['version']);prepared=attachments.prepare(files)
+        else:
+            values=payload(request,('version','job_type','urgency','access_responsibility','access_information','limit','reason','additional','decision','date','window','preference','confirmation','report','before_unavailable','exception_reason'))
         allowed={'review':{'job_type','urgency','access_responsibility','access_information','limit','reason'},'additional-request':{'limit','reason'},'additional-decision':{'additional','decision'},'verify-deposit':{'confirmation'},'attendance-request':{'preference','date','window'},'attendance-decline':{'additional','reason'},'completion':{'report','before_unavailable','exception_reason'}}
         if operation not in allowed or set(values)-{'version'}-allowed[operation]:raise ValueError('Unexpected fields for this workflow action.')
-        fingerprint=digest(dict(values,operation=operation,job=str(job_id)))
+        fingerprint=digest(dict(values,operation=operation,job=str(job_id),**({'photos':[(p['filename'],hashlib.sha256(p['data']).hexdigest()) for p in prepared]} if prepared else {})))
         with transaction.atomic():
             job=get_object_or_404(requests_for(request.user).select_for_update(of=('self',)),pk=job_id)
             prior=WorkflowDecision.objects.filter(key=key).first()
@@ -288,6 +299,7 @@ def action(request,job_id,operation):
             reason=text(values.get('reason',''),2500,False)
             if operation=='review':
                 review_request(job,request.user,values)
+                if prepared:attachments.save_files(job,request.user,prepared,keys,visibility='shared',purpose='general')
             elif operation=='additional-request':
                 if job.job_type!='callout' or not job.authorised_at:raise ValueError('An authorised call-out is required.')
                 limit=money(values.get('limit'))
@@ -349,9 +361,10 @@ def action(request,job_id,operation):
             notify(event,operators() if pm else participants(job,operation=='completion'))
             if operation=='review' and job.job_type=='callout':attention_notifications(job,request.user,'Please confirm attendance date','ready:'+str(key))
         return JsonResponse(data(job,request.user))
-    except Exception:
-        from .attachments import cleanup
+    except Exception as error:
+        from .attachments import cleanup,UploadStorageError
         cleanup(keys)
+        if isinstance(error,UploadStorageError):return JsonResponse({'error':'Photo storage is unavailable. No photos or forwarding changes were saved.'},status=503)
         raise
 
 
