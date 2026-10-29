@@ -71,6 +71,16 @@ def upload_fields(data):
 @api_access
 @require_POST
 def create(request, job_id):
+    return create_uploaded(request,job_id,publish=False)
+
+
+@api_access
+@require_POST
+def upload(request,job_id):
+    return create_uploaded(request,job_id,publish=True)
+
+
+def create_uploaded(request,job_id,publish=False):
     get_object_or_404(requests_for(request.user), pk=job_id)
     if not request.user.is_superuser:
         return JsonResponse({'error': 'Only Sevlink Operations can upload quotation PDFs.'}, status=403)
@@ -79,7 +89,7 @@ def create(request, job_id):
         key = request_key(request)
         data, prepared = uploaded_pdf(request, ('reference', 'title', 'scope', 'amount'))
         values = upload_fields(data)
-        fingerprint = digest(dict(values, file=file_fingerprint(prepared)))
+        fingerprint = digest(dict(values, file=file_fingerprint(prepared), **({"publish":True} if publish else {})))
         with transaction.atomic():
             job = lock_job(request.user, job_id)
             existing = JobQuotation.objects.filter(creation_key=key).first()
@@ -100,6 +110,15 @@ def create(request, job_id):
             quote = JobQuotation.objects.create(request=job, created_by=request.user, document=document,
                 series_id=series_id, creation_key=key, creation_fingerprint=fingerprint, **values)
             action(quote, request.user, 'created', key, fingerprint)
+            if publish:
+                quote.public_snapshot = {k:v for k,v in quote_data(quote).items()
+                    if k in ('record_number','amends_id','amendment_reason','title','scope','reference','currency','amount','document')}
+                quote.status='sent'
+                quote.sent_at=timezone.now()
+                quote.version+=1
+                quote.save()
+                action(quote,request.user,'sent',uuid.uuid5(key,'upload-and-send'),fingerprint)
+
     except ValueError as error:
         attachments.cleanup(keys)
         return JsonResponse({'error': str(error)}, status=400)

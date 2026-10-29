@@ -51,6 +51,7 @@ urlpatterns = [
     path('api/maintenance/notifications/<int:item_id>/', operations.state, name='operations_notification_state'),
     path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/pdf/', quotations.pdf, name='maintenance_quote_pdf'),
     path('api/maintenance/requests/<uuid:job_id>/comments/', collaboration.add_comment, name='maintenance_comment'),
+    path('api/maintenance/requests/<uuid:job_id>/quotations/upload/', quotations.upload, name='maintenance_quote_upload'),
     path('api/maintenance/requests/<uuid:job_id>/quotations/', quotations.create, name='maintenance_quote'),
     path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/decision/', quotations.mutate, {'operation': 'decision'}, name='maintenance_quote_decision'),
     path('api/maintenance/requests/<uuid:job_id>/quotations/<uuid:quote_id>/<str:operation>/', quotations.mutate, name='maintenance_quote_action'),

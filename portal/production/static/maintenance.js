@@ -164,7 +164,7 @@
   function collaborationMarkup(job) {
     const canDecide = ['pm','admin'].includes(context.user.role), operations = context.user.role === 'superadmin', open = !['completed','cancelled','closed'].includes(job.status);
     const quotations = context.user.role === 'tenant' ? '' : `<h2>Quotations</h2>${job.quotations.map(q => `<div class="card" data-record-id="${q.id}"><h2>${esc(q.title)} · Revision ${q.revision}</h2><p>Quotation reference printed on PDF: ${esc(q.reference)}</p>${q.status === 'approved' ? `<div class="notice">${q.approval_valid ? 'Current approval remains valid until a replacement is approved.' : 'Historical approval — replaced only after the linked amendment was approved.'}</div>` : ''}${q.amends_id ? `<p>Amends previously approved quotation ${esc(q.amends_reference || q.amends_id)}. The original approval remains valid while this amendment is pending/rejected.</p><p>${esc(q.amendment_reason)}</p>` : ''}<p style="white-space:pre-wrap">${esc(q.scope)}</p><h2>ZAR ${esc(q.amount)}</h2>${badge(q.status)}${q.decision_reason ? `<p>${esc(q.decision_reason)}</p>` : ''}${q.document ? `<p>Uploaded ${esc(date(q.document.uploaded_at))}</p><p><a class="secondary" href="${esc(q.document.download_url)}" download>Download quotation PDF</a></p>` : '<p>Legacy quotation record — no uploaded PDF. No document is generated.</p>'}${q.history.map(h => `<small>${esc(h.action)} · ${esc(h.actor)} · ${esc(date(h.at))}${h.reason ? ' · ' + esc(h.reason) : ''}</small><br>`).join('')}${q.document && q.status === 'sent' && canDecide && open ? `<form class="quoteDecision" data-quote="${q.id}" data-version="${q.version}"><label>Decision</label><select name="status"><option value="approved">Approve</option><option value="rejected">Reject</option><option value="revision_requested">Request revision</option></select><label>Decision comment</label><textarea name="reason" required maxlength="1000"></textarea><p class="collaborationError" role="alert" hidden></p><button class="primary" type="submit">Save quotation decision</button></form>` : ''}${operations && q.document && q.status === 'draft' && open ? `<form class="quoteEdit" data-quote="${q.id}" data-version="${q.version}">${quoteFields(q,false)}<p class="collaborationError" role="alert" hidden></p><button class="secondary" type="submit">Save draft details</button></form><button class="primary quoteAction" data-quote="${q.id}" data-version="${q.version}" data-action="send">Send for approval</button>` : ''}${operations && q.approval_valid && !q.has_next_revision && open ? `<form class="quoteAmendment" data-quote="${q.id}" data-version="${q.version}"><h2>Request approved quotation amendment</h2>${quoteFields(q)}<label>Amendment reason shared with agency</label><textarea name="reason" required maxlength="1000"></textarea>${errorMarkup}<button class="secondary" type="submit">Upload quotation amendment</button></form>` : ''}${operations && ['sent','rejected','revision_requested'].includes(q.status) && open ? `<form class="quoteRevision" data-quote="${q.id}" data-version="${q.version}"><h2>Upload next revision</h2>${quoteFields(q)}<p class="collaborationError" role="alert" hidden></p><button class="secondary" type="submit">Upload revised quotation</button></form>` : ''}</div>`).join('') || '<p>No quotations yet.</p>'}`;
-    const issue = operations && open ? `<form id="quoteForm"><h2>Upload quotation PDF</h2>${quoteFields()}<p class="collaborationError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Save quotation draft</button></div></form>` : '';
+    const issue = operations && open ? `<form id="quoteForm"><h2>Upload quotation PDF</h2>${quoteFields()}<p class="collaborationError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Upload quote</button></div></form>` : '';
     const canComment = context.user.role !== 'tenant' || job.tenant_comments_allowed;
     return `${quotations}${issue}${invoiceMarkup(job)}${operations ? `<p><button class="secondary" id="tenantConversation">${job.tenant_comments_allowed ? 'Disable' : 'Enable'} tenant conversation access</button></p>` : ''}<h2 style="margin-top:20px">Job conversation</h2>${job.comments.map(c => `<div class="comment"><b>${esc(c.actor)}${c.visibility === 'internal' ? ' · Operations only' : ''}</b><p style="white-space:pre-wrap">${esc(c.text)}</p><small>${esc(date(c.at))}</small>${c.attachments.map(a => `<p><a href="${esc(a.download_url)}" download>${esc(a.filename)}</a></p>`).join('')}</div>`).join('') || '<p>No comments yet.</p>'}${canComment ? `<form id="commentForm"><label>Comment</label><textarea name="text" required maxlength="2500" rows="3"></textarea>${context.user.role!=='tenant'?'<label>Message audience</label><select name="visibility"><option value="agency">Sevlink Operations Only / private PM discussion</option><option value="shared">Sevlink Operations and Tenant</option>'+ (operations?'<option value="internal">Sevlink internal note</option>':'')+'</select>':''}<label>Photos or documents (optional)</label><input name="attachments" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"><p class="collaborationError" role="alert" hidden></p><div class="actions"><button class="secondary" type="submit">Add comment</button></div></form>` : '<p>Tenant conversation access is disabled for this job.</p>'}`;
   }
@@ -219,7 +219,7 @@
         catch (error) { toast(error.message); button.disabled = false; }
       };
     });
-    const forms = [[$('#invoiceForm'), `requests/${job.id}/invoices/`], [$('#commentForm'), `requests/${job.id}/comments/`], [$('#quoteForm'), `requests/${job.id}/quotations/`],
+    const forms = [[$('#invoiceForm'), `requests/${job.id}/invoices/`], [$('#commentForm'), `requests/${job.id}/comments/`], [$('#quoteForm'), `requests/${job.id}/quotations/upload/`],
       ...Array.from(modal.querySelectorAll('.quoteDecision')).map(form => [form, `requests/${job.id}/quotations/${form.dataset.quote}/decision/`]),
       ...Array.from(modal.querySelectorAll('.quoteEdit')).map(form => [form, `requests/${job.id}/quotations/${form.dataset.quote}/edit/`]),
       ...Array.from(modal.querySelectorAll('.quoteRevision')).map(form => [form, `requests/${job.id}/quotations/${form.dataset.quote}/revise/`]),
@@ -234,6 +234,7 @@
       form.onsubmit = async event => {
         event.preventDefault(); const button = form.querySelector('[type=submit]'); button.disabled = true;
         const originalLabel=button.textContent;
+        if(form.id==='quoteForm')button.textContent='Uploading quote…';
         if(form.id==='invoiceForm'){button.textContent='Uploading invoice…';const error=form.querySelector('.collaborationError');if(error)error.hidden=true;}
         try {
           let body;
@@ -254,6 +255,12 @@
           priorBody = signature;
           const saved=await api(path, {method:'POST', body, headers:{'Idempotency-Key':key}});
           showDetail(await api(`requests/${job.id}/`));
+          if(form.id==='quoteForm'){
+            const panel=modal.querySelector('[data-tab-panel="quotes"]') || modal;
+            const notice=document.createElement('div');notice.id='quoteUploadResult';notice.className='notice';notice.setAttribute('role','status');
+            notice.textContent='Quote '+saved.reference+' uploaded. The property manager has been notified and can approve it under Quotes.';
+            panel.prepend(notice);notice.scrollIntoView({block:'center'});
+          }
           if(form.id==='invoiceForm'){
             const panel=modal.querySelector('[data-tab-panel="invoices"]') || modal;
             const notice=document.createElement('div');notice.className='notice';notice.setAttribute('role','status');notice.id='invoiceUploadResult';

@@ -141,9 +141,10 @@ process.stdin.on('end', async () => {
     await page.locator('#quoteForm [name=amount]').fill('1250.00');
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();
     await page.locator('#quoteForm [name=attachments]').setInputFiles({name:'quotation.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
-    await page.getByRole('button', {name:'Save quotation draft', exact:true}).click();
+    await page.getByRole('button', {name:'Upload quote', exact:true}).click();
     await page.locator('.card h2').filter({hasText:'Browser quotation'}).waitFor();
-    await page.getByRole('button', {name:'Send for approval', exact:true}).click();
+    await page.locator('#quoteUploadResult').waitFor();
+    if(process.env.SEVLINK_QUOTE_PROOF_DIR){const fs=require('fs');fs.mkdirSync(process.env.SEVLINK_QUOTE_PROOF_DIR,{recursive:true});await page.screenshot({path:process.env.SEVLINK_QUOTE_PROOF_DIR+'/operations-quote-uploaded.png'});}
     await page.locator('.card .badge').filter({hasText:'sent'}).waitFor();
     await page.getByRole('tab',{name:'Comments',exact:true}).click();
     await page.locator('#commentForm [name=visibility]').selectOption('internal');
@@ -168,6 +169,7 @@ process.stdin.on('end', async () => {
     await page.goto(url + '/maintenance/?job=' + jobId);
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();
     await page.locator('.quoteDecision').waitFor();
+    if(process.env.SEVLINK_QUOTE_PROOF_DIR)await page.screenshot({path:process.env.SEVLINK_QUOTE_PROOF_DIR+'/pm-quote-ready-for-approval.png'});
     assert.equal(await page.locator('#modal').innerText().then(t => /PRIVATE BANK RECEIPT/.test(t)),false);
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     assert.equal(await page.locator('.invoicePayment').count(),0);
