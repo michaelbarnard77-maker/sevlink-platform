@@ -30,6 +30,8 @@ class PaymentReportTests(TestCase):
         self.assertEqual(result.json()['payment_status'],'unpaid')
         self.assertEqual(result.json()['outstanding'],'1000.00')
         self.assertEqual(InvoicePayment.objects.count(),0)
+        attention=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
+        self.assertFalse(any(i.get('target_id')==invoice['id'] for i in attention))
         self.assertEqual(self.report(invoice,key).status_code,200)
         self.assertEqual(self.report(invoice).status_code,200)
         self.assertEqual(InvoiceAction.objects.filter(kind='payment_reported').count(),1)

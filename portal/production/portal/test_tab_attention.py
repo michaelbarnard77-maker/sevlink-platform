@@ -69,7 +69,7 @@ class TabAttentionTests(TestCase):
         self.comment(self.pm,'agency','Own message should not require my attention')
         self.assertEqual(self.tabs(self.pm)['counts']['comments'],2)
         actions=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
-        self.assertEqual([a['action'] for a in actions if a['key'].startswith('comments:')],['Unread job comments (2)'])
+        self.assertEqual([a['action'] for a in actions if a['key'].startswith('comments:')],[])
         notice=self.tabs(self.pm)['unread']['comments'][0]
         self.assertEqual(self.read(self.foreign,notice).status_code,404)
         self.assertEqual(self.tabs(self.pm)['counts']['comments'],2)

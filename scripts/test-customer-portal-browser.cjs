@@ -26,14 +26,14 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   }
   assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','profile','report','publicCalendar','updates','quotes','accounts','issues']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
-  await p.locator('#attention .attention-card').filter({hasText:'Review new maintenance request'}).filter({hasText:'GP repair'}).getByRole('button',{name:'Review job'}).click();
+  await p.locator('#attention .attention-card').filter({hasText:'Approve, reject or request quotation revision'}).filter({hasText:'GP repair'}).getByRole('button',{name:/Open quotation/}).click();
   assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'(1)');
   assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)');
   await p.getByRole('tab',{name:'Invoices',exact:true}).click();
   assert.equal(await p.getByRole('button',{name:'Email preview',exact:true}).count(),0,'PM has no email preview control');
   assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'(1)','Opening an unpaid invoice does not resolve it');
   await p.getByRole('tab',{name:'Timeline',exact:true}).click();await p.locator('#statusForm [name=status]').selectOption('reviewed');await p.locator('#statusForm button').click();await p.locator('#jobcontent').getByText('Reviewed',{exact:false}).waitFor();await p.getByRole('button',{name:'Close',exact:true}).click();
-  await p.locator('#attention .attention-card').filter({hasText:'GP repair'}).filter({hasText:'Review new maintenance request'}).waitFor({state:'detached'});
+  const currentAttention=await(await p.request.get(url+'/api/maintenance/portal/attention/')).json();assert(currentAttention.items.every(i=>i.target==='quotation'||i.target==='invoice'||i.key.startsWith('attendance-ready:')));assert(currentAttention.items.some(i=>i.target==='quotation'));
   await p.locator('#nav [data-view=accounts]').click();await p.locator('#accountFilter').selectOption('overdue');await p.locator('.attention-card').filter({hasText:'CUSTOMER-PDF-001'}).waitFor();
   assert(/1[^0-9]?000[.,]00/.test(await p.locator('#app').textContent()));
   const file=p.locator('#app a').filter({hasText:'Download invoice PDF'});assert.equal((await p.request.get(url+await file.getAttribute('href'))).status(),200);

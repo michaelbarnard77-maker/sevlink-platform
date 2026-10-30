@@ -109,8 +109,7 @@ class OperationalWorkflowTests(TestCase):
         self.client.force_login(self.admin);r=self.post(reverse('maintenance_quote_decision',args=[self.job.pk,q['id']]),dict(version=sent['version'],status='approved',reason='Approved'));self.assertEqual(r.status_code,200,r.content)
         self.job.refresh_from_db();self.assertIsNotNone(self.job.job_number)
         self.client.force_login(self.pm)
-        attention=self.client.get(reverse('workflow_stages'),{'stage':'attention'}).json()['results'][0]
-        self.assertEqual([a['action'] for a in attention['attention_actions']],['Awaiting invoice / deposit arrangements before scheduling'])
+        self.assertEqual(self.client.get(reverse('workflow_stages'),{'stage':'attention'}).json()['results'],[])
         self.assertEqual(self.act('attendance-request',preference='call').status_code,409)
         if historical:
             self.job.workflow_version=0;self.job.job_type='unclassified'
@@ -326,6 +325,8 @@ class AttendanceAndFinanceTests(TestCase):
         stages=self.client.get(reverse('workflow_stages')).json()['stages']
         self.assertEqual(next(s['count'] for s in stages if s['key']=='booked'),1)
         self.assertEqual(len(self.client.get(reverse('workflow_stages')).json()['upcoming']),1)
+        attention=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
+        self.assertFalse(any(i['job']==str(self.job.pk) for i in attention))
         MaintenanceRequest.objects.filter(pk=self.job.pk).update(status='completed')
         self.assertEqual(self.client.get(reverse('workflow_stages')).json()['upcoming'],[])
     def test_alternative_requires_contact_confirmation_on_server(self):
@@ -406,13 +407,13 @@ class PMDashboardAdjustmentTests(TestCase):
         url=reverse('workflow_stages')
         data=self.client.get(url).json()
         self.assertEqual(len(data['stages']),8)
-        self.assertGreaterEqual(data['attention_action_count'],2)
+        self.assertEqual(data['attention_action_count'],1)
         self.assertEqual(data['stages'][0]['count'],1)
         attention_jobs=self.client.get(url,{'stage':'attention'}).json()['results']
         self.assertEqual(len(attention_jobs),1)
         reasons=attention_jobs[0]['attention_actions']
         self.assertEqual(len(reasons),data['attention_action_count'])
-        self.assertIn('Additional-work authorisation required',[a['action'] for a in reasons])
+        self.assertNotIn('Additional-work authorisation required',[a['action'] for a in reasons])
         self.assertIn('Please confirm attendance date',[a['action'] for a in reasons])
         self.assertNotIn('requested_by',str(reasons))
         self.assertEqual(self.client.get(url,{'stage':'booked'}).json()['results'],[])

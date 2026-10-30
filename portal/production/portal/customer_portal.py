@@ -105,12 +105,12 @@ def attention_rows(user):
                            **details))
     qs=requests_for(user)
     if finance:
-        for job in qs.filter(status='awaiting_review'):
-            add(job,'review:'+str(job.pk),'Review new maintenance request',5,target='job')
         for q in JobQuotation.objects.filter(request__in=qs,status='sent').select_related('request__property'):
             add(q.request,'quote:'+str(q.pk),'Review revised quotation' if q.revision>1 or q.amends_id else 'Approve, reject or request quotation revision',
                 2,amount=str(q.amount),target='quotation',target_id=str(q.pk))
-        for i in shared_invoices(user).filter(document_status='active'):
+        from .invoices import pending_payment_report
+        for i in shared_invoices(user).filter(document_status='active',reconciliation_required=False):
+            if pending_payment_report(i):continue
             net=i.paid_amount-i.refunded_amount;balance=i.amount-net
             if balance<=0:continue
             state=deposit(i.request);required=Decimal(state['required']);received=Decimal(state['received'])
@@ -124,13 +124,15 @@ def attention_rows(user):
             else:action='Invoice balance outstanding'
             add(i.request,'invoice:'+str(i.pk),action,1 if overdue else 3 if i.request.status not in CLOSED else 5,
                 target='invoice',target_id=str(i.pk),amount=str(balance),due_date=str(i.due_date),deposit_received=cash_met)
-    if finance:
-        published_jobs=set(public_appointments(user).filter(cancelled_at=None).values_list('assignment__request_id',flat=True))
-        for job in qs.filter(quotations__status='approved').exclude(status__in=(*CLOSED,'scheduled','on_site','attended')).distinct():
-            if job.pk in published_jobs or any(r['job']==str(job.pk) and r['target']=='invoice' for r in result):continue
-            state=deposit_state(job)
-            add(job,'scheduling:'+str(job.pk),'Deposit received; awaiting Sevlink scheduling' if state['ready'] else 'Awaiting invoice / deposit arrangements before scheduling',3,
-                target='job',amount=state['outstanding'])
+        from .workflow import eligible,can_arrange,assessment_ids,free_assessment
+        for job in qs:
+            confirmed=job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True)
+            if not free_assessment(job):confirmed=confirmed.exclude(pk__in=assessment_ids(job))
+            if job.workflow_version and can_arrange(job,user) and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not confirmed.exists():
+                add(job,'attendance-ready:'+str(job.pk),'Please confirm attendance date',3,target='job')
+        # PM attention is limited to decisions/payments/attendance requiring their response.
+        # Bookings, new requests and informational updates remain in their own views.
+        return sorted({row['key']:row for row in result}.values(),key=lambda r:(r['priority'],r.get('due_date') or '9999',r['key']))
     for job in qs.filter(urgency__in=['urgent','safety']).exclude(status__in=CLOSED):
         if not any(r['job']==str(job.pk) for r in result):add(job,'urgency:'+str(job.pk),'Review urgent maintenance / safety concern',0,target='job')
     # No private appointment times or internal cancellation/override reasons leave this service.
@@ -147,20 +149,6 @@ def attention_rows(user):
     for item in JobActionRequest.objects.filter(request__in=qs,audience=audience,resolved_at=None).exclude(request__status__in=CLOSED).select_related('request__property'):
         add(item.request,'action:'+str(item.pk),item.text,1 if item.due_date and item.due_date<today else 5,
             target='action',target_id=item.pk,due_date=str(item.due_date) if item.due_date else None)
-    if finance:
-        from .models import AdditionalAuthorisation,UserJobNotification
-        from .workflow import eligible,can_arrange
-        for extra in AdditionalAuthorisation.objects.filter(request__in=qs,status='pending',request__closed_at__isnull=True).exclude(request__status='cancelled').select_related('request__property'):
-            add(extra.request,'additional:'+str(extra.pk),'Additional-work authorisation required',2,target='job')
-        for job in qs:
-            if job.workflow_version and can_arrange(job,user) and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True).exists():
-                add(job,'attendance-ready:'+str(job.pk),'Please confirm attendance date',3,target='job')
-        conversations={}
-        for n in UserJobNotification.objects.filter(user=user,read_at=None,event__kind='comment_added',event__request__in=qs).exclude(event__actor=user).select_related('event__request__property'):
-            job,count=conversations.get(n.event.request_id,(n.event.request,0))
-            conversations[job.pk]=(job,count+1)
-        for job,count in conversations.values():
-            add(job,'comments:'+str(job.pk),'Unread job comment' if count==1 else f'Unread job comments ({count})',5,target='job')
     # Stable identity per underlying action; derived items disappear as soon as saved state resolves them.
     return sorted({row['key']:row for row in result}.values(),key=lambda r:(r['priority'],r.get('due_date') or r.get('appointment_date') or '9999',r['key']))
 

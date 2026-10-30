@@ -27,11 +27,13 @@ class CustomerPortalTests(TestCase):
     def test_attention_scoped_and_removed_after_review(self):
         other=Property.objects.create(agency=self.agency,manager=self.other_pm,name='Other PM',address='OTHER PM PRIVATE')
         MaintenanceRequest.objects.create(property=other,reported_by=self.tenant,title='OTHER PRIVATE REPAIR',description='Private',category='Plumbing')
-        data=self.page('attention').json()['items'];self.assertEqual(len(data),1)
-        self.assertEqual(data[0]['reference'],self.job.reference)
-        self.assertEqual(data[0]['job'],str(self.job.pk))
-        self.assertEqual(self.page('attention',self.other_pm).json()['items'][0]['property'],'OTHER PM PRIVATE')
+        self.assertEqual(self.page('attention').json()['items'],[])
+        self.assertEqual(self.page('attention',self.other_pm).json()['items'],[])
         self.assertEqual(self.page('attention',self.foreign).json()['items'],[])
+        self.client.force_login(self.pm)
+        own=self.client.get(reverse('workflow_stages'),{'stage':'new'}).json()['results']
+        self.assertTrue(any(i['id']==str(self.job.pk) for i in own))
+        self.assertFalse(any(i['property']=='OTHER PM PRIVATE' for i in own))
         self.client.force_login(self.pm)
         response=self.client.patch(self.detail_url,json.dumps({'status':'reviewed','version':self.job.version}),content_type='application/json')
         self.assertEqual(response.status_code,200)
@@ -177,6 +179,9 @@ class CustomerCalendarTests(TestCase):
         self.assertEqual(save(self.client,data(self.job,self.partner,self.crew,customer_visible=True)).status_code,201)
         a=TeamAppointment.objects.get();a.cancelled_at=timezone.now();a.cancellation_reason='PRIVATE supplier scheduling note';a.save()
         self.client.force_login(self.pm)
+        result=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
+        self.assertFalse(any(r['target']=='appointment' for r in result))
+        self.client.force_login(self.tenant)
         result=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
         item=next(r for r in result if r['target']=='appointment')
         self.assertEqual(self.client.post(reverse('customer_portal_acknowledge'),json.dumps({'key':item['key']}),content_type='application/json').status_code,200)
