@@ -164,7 +164,7 @@ def save_values(request,data):
                 if active.exists():raise Rejected(JsonResponse({'error':'Use reschedule to change the existing appointment.'},status=409))
             booking={'assignment':allocation.pk,'starts_at':data['starts_at'],'ends_at':data['ends_at']}
             if 'override_reason' in data: booking['override_reason']=data['override_reason']
-            response=accept(save_appointment(request.user,supplier_id,booking,attendance_authorised=getattr(request,'_attendance_authorised',False),assessment_authorised=getattr(request,'_assessment_authorised',False)))
+            response=accept(save_appointment(request.user,supplier_id,booking,attendance_authorised=getattr(request,'_attendance_authorised',False),assessment_authorised=getattr(request,'_assessment_authorised',False),phone_confirmed=getattr(request,'_phone_confirmed',False)))
             entry=TeamAppointment.objects.get(pk=response['id'])
             entry.submission_key=key;entry.fingerprint=fingerprint;entry.rescheduled_from=old;entry.customer_visible=data.get('customer_visible',old.customer_visible if old else False);entry.save(update_fields=['submission_key','fingerprint','rescheduled_from','customer_visible'])
             record(job,request.user,'appointment_changed','calendar:'+str(key),{'appointment_id':str(entry.pk),'action':'rescheduled' if old else 'created'},private=True)

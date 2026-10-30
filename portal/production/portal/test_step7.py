@@ -148,14 +148,14 @@ class Step7Tests(TestCase):
     def test_decision_comments_replays_and_stale_versions(self):
         quote = self.sent()
         self.client.force_login(self.pm)
-        self.assertEqual(self.mutate(quote,'decision',status='approved',reason='').status_code,400)
+        self.assertEqual(self.mutate(quote,'decision',status='rejected',reason='').status_code,400)
         stale = dict(quote,version=quote['version']-1)
         self.assertEqual(self.mutate(stale,'decision',status='approved',reason='OK').status_code,409)
         url = reverse('maintenance_quote_decision',args=[self.job.pk,quote['id']])
-        key = uuid.uuid4(); body = dict(version=quote['version'],status='approved',reason='OK')
+        key = uuid.uuid4(); body = dict(version=quote['version'],status='approved',reason='')
         self.assertEqual(self.post(url,body,key).status_code,200)
         self.assertEqual(self.post(url,body,key).status_code,200)
-        self.assertEqual(self.post(url,dict(body,status='rejected'),key).status_code,409)
+        self.assertEqual(self.post(url,dict(body,status='rejected',reason='Changed decision'),key).status_code,409)
         self.assertEqual(self.post(url,body).status_code,409)
         self.assertEqual(OperationsInboxItem.objects.filter(event__kind='quote_approved').count(),1)
 

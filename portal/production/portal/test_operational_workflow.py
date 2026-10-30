@@ -269,24 +269,28 @@ class AttendanceAndFinanceTests(TestCase):
         self.client.force_login(self.ops);result=self.confirm(v);self.assertEqual(result.status_code,201,result.content)
         self.assertEqual(TeamAppointment.objects.filter(cancelled_at=None).count(),2)
 
-    def test_booking_picks_an_available_team_without_a_team_field(self):
-        v=self.prepare();v.pop('team')
-        busy=scheduling_fixtures.save(self.client,scheduling_fixtures.data(self.more_jobs[0],self.partner,self.crew,day=self.when,start='09:00',end='10:00'))
-        self.assertEqual(busy.status_code,201,busy.content)
-        key=uuid.uuid4();response=self.confirm(v,key)
-        self.assertEqual(response.status_code,201,response.content)
-        self.arrival.refresh_from_db();self.assertEqual(self.arrival.appointment.team_id,self.crew_b.pk)
-        self.assertEqual(self.confirm(v,key).status_code,200)
-
-    def test_booking_without_team_rejects_fully_booked_subcontractor(self):
-        v=self.prepare();v.pop('team')
+    def test_phone_booking_does_not_use_recorded_team_availability(self):
+        v=self.prepare();v.pop('team');v['phone_confirmed']=True
         for job,team in zip(self.more_jobs,(self.crew,self.crew_b)):
             response=scheduling_fixtures.save(self.client,scheduling_fixtures.data(job,self.partner,team,day=self.when,start='09:00',end='10:00'))
             self.assertEqual(response.status_code,201,response.content)
+        key=uuid.uuid4();response=self.confirm(v,key)
+        self.assertEqual(response.status_code,201,response.content)
+        self.arrival.refresh_from_db();self.assertEqual(self.arrival.appointment.team.name,'Bookings — team not specified')
+        self.assertEqual(self.confirm(v,key).status_code,200)
+        saved=WorkflowDecision.objects.get(request=self.job,operation='attendance-confirm')
+        self.assertTrue(saved.snapshot['phone_confirmed']);self.assertEqual(saved.snapshot['booking_source'],'phone')
+
+    def test_phone_booking_with_unknown_hours_keeps_progress_manual(self):
+        from .models import SubcontractorTeam
+        v=self.prepare();v.pop('team')
+        self.assertEqual(self.confirm(v).status_code,400)
+        SubcontractorTeam.objects.filter(subcontractor=self.partner).update(active=False,working_days=[])
+        v['phone_confirmed']=True;v['ends_at']=str(self.when)+'T18:00:00+02:00'
         response=self.confirm(v)
-        self.assertEqual(response.status_code,409,response.content)
-        self.assertIn('no availability',response.json()['error'])
-        self.arrival.refresh_from_db();self.assertEqual(self.arrival.status,'pending')
+        self.assertEqual(response.status_code,201,response.content)
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'scheduled')
+        self.assertIsNone(self.job.closed_at)
 
     def test_confirm_booking_keeps_private_duration_separate_and_notifies_both(self):
         v=self.prepare();key=uuid.uuid4();r=self.confirm(v,key);self.assertEqual(r.status_code,201,r.content)

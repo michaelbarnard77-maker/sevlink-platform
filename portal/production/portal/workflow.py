@@ -450,7 +450,7 @@ def confirm_attendance(request,job_id):
     from .staff_access import can_schedule
     from . import scheduling
     if not can_schedule(request.user):return JsonResponse({'error':'Sevlink scheduling access required.'},status=403)
-    v=payload(request,('version','attendance','date','window','client_confirmed','contact_category','subcontractor','team','starts_at','ends_at','appointment','reason','override_reason'))
+    v=payload(request,('version','attendance','date','window','client_confirmed','contact_category','subcontractor','team','starts_at','ends_at','appointment','reason','override_reason','phone_confirmed'))
     if type(v.get('attendance'))is not int or v['attendance']<1:raise ValueError('A saved attendance request is required.')
     if any(not isinstance(v.get(k),str) for k in ('starts_at','ends_at')):raise ValueError('Actual private booking times are required.')
     key=request_key(request);fingerprint=digest(dict(v,job=str(job_id)))
@@ -478,22 +478,23 @@ def confirm_attendance(request,job_id):
             if not start or not end or not timezone.is_aware(start) or not timezone.is_aware(end):raise ValueError('Record actual private booking start/end times separately.')
             local=start.astimezone(ZoneInfo('Africa/Johannesburg'))
             if local.date()!=when or not ((540<=local.hour*60+local.minute<=780) if window==WINDOWS[0] else (720<=local.hour*60+local.minute<1020)):raise ValueError('Private booking arrival must fall within the agreed public arrival window.')
+            if 'phone_confirmed' in v and type(v['phone_confirmed'])is not bool:raise ValueError('A valid phone confirmation is required.')
+            phone_confirmed=v.get('phone_confirmed') is True
             if not v.get('team'):
+                if not phone_confirmed:raise ValueError('Record that the booking was agreed with the subcontractor by phone.')
                 from .models import Subcontractor,SubcontractorTeam
-                from .suppliers import valid_window
                 supplier=get_object_or_404(Subcontractor.objects.select_for_update(),pk=uuid.UUID(v.get('subcontractor','')))
-                teams=list(SubcontractorTeam.objects.select_for_update().filter(subcontractor=supplier,active=True).order_by('name','pk'))
-                candidates=[team for team in teams if valid_window(team,start,end)]
-                available=[team for team in candidates if not team.appointments.filter(cancelled_at=None,starts_at__lt=end,ends_at__gt=start).exclude(pk=v.get('appointment')).exists()]
-                chosen=available[0] if available else candidates[0] if candidates and request.user.is_superuser and str(v.get('override_reason','')).strip() else None
-                if not chosen:return JsonResponse({'error':'This subcontractor has no availability at the selected time. Choose another time or subcontractor.'},status=409)
-                v['team']=str(chosen.pk)
+                # Internal booking group, explicitly not a claim about the contractor's teams or availability.
+                group,_=SubcontractorTeam.objects.get_or_create(subcontractor=supplier,name='Bookings — team not specified',defaults={'active':True,'working_days':[]})
+                v['team']=str(group.pk)
+            if phone_confirmed and (start>=end or start.astimezone(ZoneInfo('Africa/Johannesburg')).date()!=end.astimezone(ZoneInfo('Africa/Johannesburg')).date()):raise ValueError('Choose an end time after the start time on the same day.')
             booking={k:v[k] for k in ('version','subcontractor','team','starts_at','ends_at')}
             booking.update(job=str(job.pk),submission_key=str(key),customer_visible=True)
             for k in ('appointment','reason','override_reason'):
                 if k in v:booking[k]=v[k]
             request._attendance_authorised=True
             request._assessment_authorised=assessment
+            request._phone_confirmed=phone_confirmed
             response=scheduling.save_values(request,booking)
             if response.status_code>=400:raise scheduling.Rejected(response)
             import json
@@ -502,7 +503,7 @@ def confirm_attendance(request,job_id):
             item.confirmed_by=request.user;item.confirmed_at=timezone.now();item.appointment_id=appointment_id;item.save()
             job.refresh_from_db();job.status='reviewed' if assessment else 'scheduled';job.version+=1;job.save(update_fields=['status','version'])
             MaintenanceStatusEvent.objects.create(request=job,actor=request.user,status=job.status)
-            WorkflowDecision.objects.create(request=job,actor=request.user,key=key,fingerprint=fingerprint,operation='attendance-confirm',snapshot=dict(purpose='assessment' if assessment else 'work',**{k:v[k] for k in ('date','window','contact_category','client_confirmed') if k in v}))
+            WorkflowDecision.objects.create(request=job,actor=request.user,key=key,fingerprint=fingerprint,operation='attendance-confirm',snapshot=dict(purpose='assessment' if assessment else 'work',phone_confirmed=phone_confirmed,booking_source='phone' if phone_confirmed else 'calendar',**{k:v[k] for k in ('date','window','contact_category','client_confirmed') if k in v}))
             attention_notifications(job,request.user,'Free quotation assessment confirmed' if assessment else 'Attendance confirmed' if not alternative else 'Alternative attendance confirmed','attendance:'+str(key),tenant=True)
         return JsonResponse({'confirmed':True},status=201)
     except scheduling.Rejected as e:return e.response

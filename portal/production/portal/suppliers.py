@@ -290,7 +290,7 @@ def appointment(request, subcontractor_id):
     return save_appointment(request.user,subcontractor_id,payload(request,('assignment','starts_at','ends_at','cancel','reason','override_reason')))
 
 
-def save_appointment(user,subcontractor_id,data,attendance_authorised=False,assessment_authorised=False):
+def save_appointment(user,subcontractor_id,data,attendance_authorised=False,assessment_authorised=False,phone_confirmed=False):
     from .staff_access import can_schedule
     if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     with transaction.atomic():
@@ -328,7 +328,8 @@ def save_appointment(user,subcontractor_id,data,attendance_authorised=False,asse
         if not start or not end or not timezone.is_aware(start) or not timezone.is_aware(end): raise ValueError
         if not a.team_id: return JsonResponse({'error':'Assign a team before recording an appointment.'},status=400)
         t=SubcontractorTeam.objects.select_for_update().get(pk=a.team_id)
-        if not item.active or item.archived or not t.active or not valid_window(t,start,end): raise ValueError
+        manual=phone_confirmed and attendance_authorised
+        if not item.active or item.archived or not t.active or (not manual and not valid_window(t,start,end)): raise ValueError
         if not current_assignments().filter(pk=a.pk).exists() or a.request.status in ('completed','cancelled','closed') or a.reviews.filter(resolution__isnull=True).exists():
             return JsonResponse({'error':'Assignment changed, closed or requires Operations review.'},status=409)
         if not eligible(a.request.property).filter(pk=item.pk).exists(): raise ValueError
@@ -345,14 +346,14 @@ def save_appointment(user,subcontractor_id,data,attendance_authorised=False,asse
         if not isinstance(override,str) or len(override)>1000: raise ValueError
         if override and not user.is_superuser:
             return JsonResponse({'error':'Only Super Admin can authorise an overlap exception.'},status=403)
-        if overlaps and not (user.is_superuser and override.strip()):
+        if overlaps and not manual and not (user.is_superuser and override.strip()):
             return JsonResponse({'error':'Team already has an overlapping appointment. Super Admin authorisation with a reason is required.'},status=409)
         entry=TeamAppointment.objects.create(assignment=a,team=t,starts_at=start,ends_at=end,actor=user)
-        if overlaps:
+        if overlaps and not manual:
             from .models import AppointmentOverride
             AppointmentOverride.objects.create(appointment=entry,actor=user,reason=override.strip(),overlapping_ids=overlaps)
             audit(item,user,'Overlap exception authorised',appointment=entry.pk)
-        audit(item,user,'Appointment recorded',appointment=entry.pk,assignment=a.pk)
+        audit(item,user,'Phone-confirmed booking recorded' if manual else 'Appointment recorded',appointment=entry.pk,assignment=a.pk)
     return JsonResponse(appointment_data(entry),status=201)
 
 

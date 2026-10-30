@@ -49,12 +49,11 @@ process.stdin.on('end', async () => {
     assert.equal(await page.locator('#supplierProfileForm [name=contact_person]').inputValue(),'Synthetic browser contact');
     assert.equal(await page.locator('#supplierBank').count(),0,'Banking controls have been removed');
     assert.equal((await page.request.get(url+`/api/maintenance/operations/subcontractors/${ids.partner}/bank/`)).status(),404);
-    for (const name of ['Team A','Team B']) {
-      await page.locator('#supplierNewTeam').click();
-      await page.locator('#supplierTeam [name=name]').fill(name);
-      await page.locator('#supplierTeam [name=working_days][value="0"]').check();
-      await page.getByRole('button',{name:'Save team',exact:true}).click();
-      await page.locator('#supplierProfile .panel').filter({has:page.getByRole('heading',{name,exact:true})}).waitFor();
+    assert.equal(await page.locator('#supplierNewTeam,#supplierTeamSearch,#supplierTeamStatus,.supplierTeamCard').count(),0);
+    const apiPost=async(path,data)=>page.request.post(url+'/api/maintenance/'+path,{headers:{'X-CSRFToken':(await context.cookies()).find(c=>c.name==='csrftoken').value},data});
+    const teams=[];
+    for(const name of ['Team A','Team B']){
+      const created=await apiPost(`operations/subcontractors/${ids.partner}/teams/`,{name,working_days:[0],day_start:'09:00',day_end:'17:00',active:true,version:0});assert.equal(created.status(),200);teams.push(await created.json());
     }
     await page.locator('#supplierDocument [name=title]').fill('Synthetic public liability insurance');
     await page.locator('#supplierDocument [name=kind]').selectOption('insurance');
@@ -72,16 +71,10 @@ process.stdin.on('end', async () => {
     await page.locator('#modal p').filter({hasText:'Team A'}).waitFor();
     await page.getByRole('button',{name:'Close',exact:true}).click();
     await page.locator(`[data-supplier="${ids.partner}"]`).click();
-    const teamA=page.locator('#supplierProfile .panel').filter({has:page.getByRole('heading',{name:'Team A',exact:true})});
-    await teamA.locator('.supplierAppointment [name=assignment]').selectOption({index:1});
-    await teamA.locator('.supplierAppointment [name=starts_at]').fill(appointmentDay+'T10:00');
-    await teamA.locator('.supplierAppointment [name=ends_at]').fill(appointmentDay+'T11:00');
-    await teamA.getByRole('button',{name:'Record appointment',exact:true}).click();
-    await page.locator('.supplierCancelAppointment').waitFor();
-    await teamA.locator('.supplierUnavailable [name=date]').fill(unavailableDay);
-    await teamA.locator('.supplierUnavailable [name=reason]').fill('Synthetic unavailable date');
-    await teamA.getByRole('button',{name:'Add unavailable date',exact:true}).click();
-    await page.getByText('Synthetic unavailable date',{exact:false}).waitFor();
+    const profile=await(await page.request.get(url+`/api/maintenance/operations/subcontractors/${ids.partner}/`)).json();
+    const assignment=profile.assignments.find(a=>a.current&&a.team_id===teams[0].id);
+    const booked=await apiPost(`operations/subcontractors/${ids.partner}/appointments/`,{assignment:assignment.id,starts_at:appointmentDay+'T10:00:00+02:00',ends_at:appointmentDay+'T11:00:00+02:00'});assert.equal(booked.status(),201);
+    const unavailable=await apiPost(`operations/subcontractors/${ids.partner}/teams/${teams[0].id}/unavailable/`,{date:unavailableDay,reason:'Synthetic unavailable date'});assert.equal(unavailable.status(),200);
     await page.locator('#supplierAgreement [name=commission_percent]').fill('12.50');
     await page.locator('#supplierAgreement [name=rate]').fill('450.25');
     await page.locator('#supplierAgreement [name=terms]').fill('PRIVATE browser agreement');
