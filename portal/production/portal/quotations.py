@@ -164,7 +164,7 @@ def mutate(request, job_id, quote_id, operation):
         if decision:
             if data.get('status') not in ('approved', 'rejected', 'revision_requested'):
                 raise ValueError('Invalid decision.')
-            reason = text(data.get('reason'), 1000)
+            reason = text(data.get('reason', ''), 1000, required=data['status'] != 'approved')
         fingerprint = digest(dict(data, operation=operation, quote_id=str(quote_id),
                                   file=file_fingerprint(prepared) if prepared else None,**({'publish':True} if publish_revision else {})))
         with transaction.atomic():

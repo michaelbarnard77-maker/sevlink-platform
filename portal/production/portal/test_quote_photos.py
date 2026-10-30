@@ -124,3 +124,15 @@ class QuotePhotoTests(TestCase):
             response=self.post(reverse('workflow_action',args=[saved.pk,'operations-triage']),values)
             self.assertEqual(response.status_code,200,response.content)
             saved.refresh_from_db();self.assertEqual(stage(saved),'quoting')
+
+    def test_quote_approval_comment_optional_but_other_decisions_need_reason(self):
+        self.client.force_login(self.ops);quote=self.sent()
+        self.client.force_login(self.pm)
+        url=reverse('maintenance_quote_decision',args=[self.job.pk,quote['id']])
+        for status in ('rejected','revision_requested'):
+            result=self.post(url,dict(version=quote['version'],status=status,reason=''))
+            self.assertEqual(result.status_code,400,result.content)
+        result=self.post(url,dict(version=quote['version'],status='approved'))
+        self.assertEqual(result.status_code,200,result.content)
+        self.assertEqual(result.json()['status'],'approved')
+        self.assertEqual(result.json()['decision_reason'],'')

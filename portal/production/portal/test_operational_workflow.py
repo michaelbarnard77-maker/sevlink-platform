@@ -269,6 +269,25 @@ class AttendanceAndFinanceTests(TestCase):
         self.client.force_login(self.ops);result=self.confirm(v);self.assertEqual(result.status_code,201,result.content)
         self.assertEqual(TeamAppointment.objects.filter(cancelled_at=None).count(),2)
 
+    def test_booking_picks_an_available_team_without_a_team_field(self):
+        v=self.prepare();v.pop('team')
+        busy=scheduling_fixtures.save(self.client,scheduling_fixtures.data(self.more_jobs[0],self.partner,self.crew,day=self.when,start='09:00',end='10:00'))
+        self.assertEqual(busy.status_code,201,busy.content)
+        key=uuid.uuid4();response=self.confirm(v,key)
+        self.assertEqual(response.status_code,201,response.content)
+        self.arrival.refresh_from_db();self.assertEqual(self.arrival.appointment.team_id,self.crew_b.pk)
+        self.assertEqual(self.confirm(v,key).status_code,200)
+
+    def test_booking_without_team_rejects_fully_booked_subcontractor(self):
+        v=self.prepare();v.pop('team')
+        for job,team in zip(self.more_jobs,(self.crew,self.crew_b)):
+            response=scheduling_fixtures.save(self.client,scheduling_fixtures.data(job,self.partner,team,day=self.when,start='09:00',end='10:00'))
+            self.assertEqual(response.status_code,201,response.content)
+        response=self.confirm(v)
+        self.assertEqual(response.status_code,409,response.content)
+        self.assertIn('no availability',response.json()['error'])
+        self.arrival.refresh_from_db();self.assertEqual(self.arrival.status,'pending')
+
     def test_confirm_booking_keeps_private_duration_separate_and_notifies_both(self):
         v=self.prepare();key=uuid.uuid4();r=self.confirm(v,key);self.assertEqual(r.status_code,201,r.content)
         self.assertEqual(self.confirm(v,key).status_code,200);self.assertEqual(TeamAppointment.objects.count(),1)

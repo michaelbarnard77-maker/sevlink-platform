@@ -478,6 +478,16 @@ def confirm_attendance(request,job_id):
             if not start or not end or not timezone.is_aware(start) or not timezone.is_aware(end):raise ValueError('Record actual private booking start/end times separately.')
             local=start.astimezone(ZoneInfo('Africa/Johannesburg'))
             if local.date()!=when or not ((540<=local.hour*60+local.minute<=780) if window==WINDOWS[0] else (720<=local.hour*60+local.minute<1020)):raise ValueError('Private booking arrival must fall within the agreed public arrival window.')
+            if not v.get('team'):
+                from .models import Subcontractor,SubcontractorTeam
+                from .suppliers import valid_window
+                supplier=get_object_or_404(Subcontractor.objects.select_for_update(),pk=uuid.UUID(v.get('subcontractor','')))
+                teams=list(SubcontractorTeam.objects.select_for_update().filter(subcontractor=supplier,active=True).order_by('name','pk'))
+                candidates=[team for team in teams if valid_window(team,start,end)]
+                available=[team for team in candidates if not team.appointments.filter(cancelled_at=None,starts_at__lt=end,ends_at__gt=start).exclude(pk=v.get('appointment')).exists()]
+                chosen=available[0] if available else candidates[0] if candidates and request.user.is_superuser and str(v.get('override_reason','')).strip() else None
+                if not chosen:return JsonResponse({'error':'This subcontractor has no availability at the selected time. Choose another time or subcontractor.'},status=409)
+                v['team']=str(chosen.pk)
             booking={k:v[k] for k in ('version','subcontractor','team','starts_at','ends_at')}
             booking.update(job=str(job.pk),submission_key=str(key),customer_visible=True)
             for k in ('appointment','reason','override_reason'):
