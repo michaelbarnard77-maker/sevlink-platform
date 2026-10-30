@@ -83,8 +83,8 @@ window.SevlinkWorkflowUI = (() => {
   let inboxGeneration=0;
   async function inbox({api,app,showDetail,toast}){
     const generation=++inboxGeneration;
-    try{const d=await api('workflow/notifications/');if(generation!==inboxGeneration || !document.querySelector('[data-view=updates].active'))return;app.innerHTML=`<div class="heading"><div><span class="eyebrow">SAVED JOB UPDATES</span><h1>Updates & Notifications</h1><p>${d.unread} unread</p></div></div>${d.results.map(n=>`<article class="panel"><h2>${esc(n.label)}</h2><p>${esc(n.reference)} · ${esc(n.property)} · ${esc(new Date(n.at).toLocaleString('en-ZA'))}</p><button class="primary" data-notice="${n.id}" data-notice-job="${n.job}">Open job</button> <button class="secondary" data-notice-read="${n.id}" data-read="${!n.read}">${n.read?'Mark unread':'Mark read'}</button></article>`).join('')||'<section class="panel">No saved notifications yet.</section>'}`;
-      app.querySelectorAll('[data-notice]').forEach(b=>b.onclick=async()=>{await api(`workflow/notifications/${b.dataset.notice}/`,{method:'POST',body:JSON.stringify({read:true})});showDetail(await api(`requests/${b.dataset.noticeJob}/`));});
+    try{const d=await api('workflow/notifications/');if(generation!==inboxGeneration || !document.querySelector('[data-view=updates].active'))return;document.dispatchEvent(new CustomEvent('sevlink-notifications-changed',{detail:{unread:d.unread}}));app.innerHTML=`<div class="heading"><div><span class="eyebrow">SAVED JOB UPDATES</span><h1>Updates & Notifications</h1><p>${d.unread} unread</p></div></div>${d.results.map(n=>`<article class="panel"><h2>${esc(n.label)}</h2><p>${esc(n.reference)} · ${esc(n.property)} · ${esc(new Date(n.at).toLocaleString('en-ZA'))}</p><button class="primary" data-notice="${n.id}" data-notice-job="${n.job}">Open job</button> <button class="secondary" data-notice-read="${n.id}" data-read="${!n.read}">${n.read?'Mark unread':'Mark read'}</button></article>`).join('')||'<section class="panel">No saved notifications yet.</section>'}`;
+      app.querySelectorAll('[data-notice]').forEach(b=>b.onclick=async()=>{await api(`workflow/notifications/${b.dataset.notice}/`,{method:'POST',body:JSON.stringify({read:true})});document.dispatchEvent(new CustomEvent('sevlink-notifications-changed'));showDetail(await api(`requests/${b.dataset.noticeJob}/`));});
       app.querySelectorAll('[data-notice-read]').forEach(b=>b.onclick=async()=>{await api(`workflow/notifications/${b.dataset.noticeRead}/`,{method:'POST',body:JSON.stringify({read:b.dataset.read==='true'})});inbox({api,app,showDetail,toast});});
     }catch(e){toast(e.message);}
   }
@@ -150,6 +150,7 @@ window.SevlinkWorkflowUI = (() => {
         if(informational.has(tab))attention.counts[tab]=failed.length;
         else if(tab==='attendance' && !((pm&&w.attendance_ready&&!w.attendance.some(a=>['pending','confirmed'].includes(a.status)))||(staff&&w.attendance.some(a=>a.status==='pending'))))attention.counts[tab]=failed.length;
         updateBadge(tab);
+        document.dispatchEvent(new CustomEvent('sevlink-notifications-changed'));
         if(failed.length)toast('Some updates could not be marked read. Open this tab again to retry.');
       }finally{reading.delete(tab);}
     };

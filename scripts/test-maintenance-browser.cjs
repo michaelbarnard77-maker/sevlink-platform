@@ -258,13 +258,10 @@ process.stdin.on('end', async () => {
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     assert.equal(await page.locator('.invoicePayment').count(),0,'Replacement on reconciliation hold');
     await page.getByRole('tab',{name:'Quotes',exact:true}).click();
-    const amend=page.locator('.quoteAmendment');
-    await amend.locator('[name=title]').fill('Browser quotation amendment');
-    await amend.locator('[name=reference]').fill('EXTERNAL-AMEND-2');
-    await amend.locator('[name=amount]').fill('1500.00');
-    await amend.locator('[name=attachments]').setInputFiles({name:'amendment.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')});
-    await amend.locator('[name=reason]').fill('Public scope expanded');
-    await amend.getByRole('button',{name:'Upload quotation amendment',exact:true}).click();
+    assert.equal(await page.locator('.quoteAmendment,.quoteRevision,#quoteForm').count(),0);
+    const amendedJob=await page.locator('#modal').getAttribute('data-job'),beforeAmend=(await(await page.request.get(url+'/api/maintenance/requests/'+amendedJob+'/')).json()),baseQuote=beforeAmend.quotations.find(q=>q.approval_valid);
+    const amendment=await page.request.post(url+`/api/maintenance/requests/${amendedJob}/quotations/${baseQuote.id}/amend/`,{headers:{'X-CSRFToken':(await context.cookies()).find(c=>c.name==='csrftoken').value,'Idempotency-Key':crypto.randomUUID()},multipart:{version:String(baseQuote.version),reference:'EXTERNAL-AMEND-2',title:'Browser quotation amendment',amount:'1500.00',scope:'Public scope expanded',reason:'Public scope expanded',attachments:{name:'amendment.pdf',mimeType:'application/pdf',buffer:Buffer.from(pdf,'base64')}}});assert.equal(amendment.status(),201);
+    await page.goto(url+'/maintenance/?job='+amendedJob);await page.getByRole('tab',{name:'Quotes',exact:true}).click();
     await page.locator('.card h2').filter({hasText:'Browser quotation amendment'}).waitFor();
     await page.getByRole('button',{name:'Send for approval',exact:true}).click();
     await page.locator('.card .badge').filter({hasText:'sent'}).waitFor();

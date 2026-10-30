@@ -1,0 +1,7 @@
+# Approved quote cards and unread update highlighting
+
+Approved quotes, including approved amendments, no longer display an automatically opened amendment upload form. Revision upload is shown only for revision_requested, without a later saved revision. Rejected amendments do not automatically offer another revision upload. Saved approval amounts, original PDFs, document history and commercial replacement rules remain unchanged; the legacy explicit amendment APIs remain covered independently from automatic UI.
+
+The customer Updates button and Operations notification button use a soft yellow background, amber border and dark text when their saved unread count is positive. Reading the final notification removes the highlight. Inbox mark-read/unread, opening a saved notification and tab read acknowledgements refresh the header's authoritative count. A generation guard prevents an older count response from restoring stale unread styling. Existing accessible button names remain stable; the unread count is visible and exposed as a description.
+
+Validation: 40 commercial/quote/photo tests (38 passed, 2 PostgreSQL-only skips); 6 authenticated browser/tab-attention regressions passed. Scoped proof passed with 36 source/authenticated captures, including PM-requested revision upload, approved revised quote read-only, approved amendment without a follow-up form, yellow unread and normal read header states. All 26 Windows updater payloads were compared to source. No new migration, merge, deployment or live email.
