@@ -1,0 +1,59 @@
+.stage-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:15px;margin:24px 0}.stage-card:not(.ops-pod){background:#fff;border:1px solid #dfe7ef;border-radius:12px;padding:20px;text-align:left;color:#102e50;display:grid;grid-template-columns:1fr auto;gap:12px;min-height:160px;box-shadow:0 3px 12px #062f6104}.stage-card:not(.ops-pod):hover,.stage-card:not(.ops-pod):focus-visible{border-color:#006bb0;box-shadow:0 6px 18px #062f6112}.stage-card:not(.ops-pod) strong{font-size:32px;align-self:center}.stage-card:not(.ops-pod) b,.stage-card:not(.ops-pod) small{grid-column:1/-1}.stage-card:not(.ops-pod) small{color:#006bb0;font-size:11px}.stage-icon,.category.illustrated>span{width:45px;height:45px;background:#edf6ff;color:#006bb0;border-radius:12px;display:grid;place-items:center}.stage-icon svg,.category svg{width:27px;height:27px}.category.illustrated>span{margin:0 auto 14px}.nav-icon svg,#phoneNav button>span svg{width:20px;height:20px}.workflow-job-row{display:flex;gap:15px;align-items:center;justify-content:space-between;border-bottom:1px solid #dfe7ef;padding:16px 0}.workflow-tabs{max-width:100%}.workflow-tabs button{white-space:normal}.workflow-tab-panel[hidden]{display:none!important}.workflow-tab-panel input[type=checkbox]{width:auto;min-height:auto}.workflow-tab-panel .panel{margin:16px 0}.nav-heading{display:block;text-transform:uppercase;font-size:10px;letter-spacing:1.6px;color:#91b0cf;padding:20px 14px 5px}.workflow-overview>h2{font-size:26px;margin-top:8px}.workflow-tab-panel textarea{width:100%}.workflow-tabs~section h2{margin-top:12px}@media(max-width:1200px){.stage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:760px){.stage-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stage-card:not(.ops-pod){padding:16px;min-height:145px}.stage-card:not(.ops-pod) strong{font-size:28px}.workflow-tabs{max-width:100%}.workflow-job-row{align-items:flex-start}.workflow-job-row button{flex-shrink:0}#modal:has(.workflow-tabs){width:100vw}.nav-heading{padding-top:12px}.workflow-overview>h2{font-size:23px}}
+a.secondary{display:inline-block;text-decoration:none}#mondayFilters .filters{flex-wrap:wrap}#mondayFilters label{margin:0;min-width:130px}#mondayFilters input{display:block;max-width:180px}@media(max-width:760px){header .profile .demo{display:none}#userNotifications{font-size:12px;padding:8px}}
+aside #nav{min-height:0;overflow-y:auto;flex:1}aside footer{font-size:11px;padding-top:12px}.workflow-overview{margin-top:28px}.workflow-overview .stage-card:not(.ops-pod) .stage-icon{flex-shrink:0}
+
+@media(min-width:1100px){.pm-stage-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+.job-summary .toolbar{margin:16px 0}.job-summary .professional-next-step{margin-bottom:0}.completion-report .report-summary{white-space:pre-wrap}.photo-placeholder{background:#f2f7fb;padding:35px 12px;color:#64748b}.photo-pair section{min-width:0}.photo-pair a{display:block;color:var(--green);overflow-wrap:anywhere}.job-summary .notice p{margin:8px 0}
+
+.ops-overview{margin-top:0}
+
+/* Published demo navigation: retain its original button markup and styles. */
+#nav button:focus-visible,#phoneNav button:focus-visible{outline:2px solid #21b8b5;outline-offset:2px}
+
+.job-tab-count{display:inline-block;min-width:22px;padding:1px 5px;border-radius:10px;background:#fff;color:#006bb0;font-size:12px;font-weight:700}.workflow-tabs button.selected .job-tab-count{background:#e1f7fa;color:#075b79}.job-attention-reasons ul{padding-left:20px;margin:10px 0}.job-attention-reasons li{margin:8px 0}
+
+/* Exact published desktop navigation metrics, shared by authenticated roles. */
+body>aside #nav{overflow-x:hidden;color:#d0e2f2}
+#nav button{display:block;width:100%;text-align:left;padding:10px 12px;margin:4px 0;background:transparent;color:inherit;border-radius:8px;font:inherit;font-size:12px;line-height:normal;min-height:0}
+#nav button.active{background:#124c7e;color:white;border-left:0}
+@media(max-width:760px){
+ body>aside{background:#101c31}
+ body>aside nav button{min-height:46px;white-space:normal}
+ #phoneNav{background:white;border-top-color:#dce2ea}
+ #phoneNav button{color:#64748b}
+ #phoneNav button>span{color:inherit;font-size:23px;line-height:25px}
+ #phoneNav button.active{background:#e8f3fb;color:#006bb0;border-radius:10px;font-weight:800}
+}
+
+/* Attendance date uses the source palette with a clearer appointment hierarchy. */
+.attendance-card{border-left:4px solid #006bb0;padding:24px!important}
+.attendance-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.workflow-tab-panel .attendance-date{font-size:26px;line-height:1.3;letter-spacing:-.5px;margin:20px 0 14px;color:#102e50}
+.attendance-window{display:grid;gap:5px;margin:0 0 20px;padding:16px 18px;background:#eef6fc;border-radius:8px}
+.attendance-window>span{font-size:12px;color:#526d89}
+.attendance-window strong{font-size:22px;line-height:1.3;color:#006bb0}
+.attendance-window small{font-size:11px;color:#64748b}
+.attendance-actions button{min-width:125px;min-height:44px}
+.attendance-decision{border-top:1px solid #dfe7ef;margin-top:22px;padding-top:20px}
+.attendance-decision [role=alert]{color:#9b332a;background:#fff0ee;padding:12px;border-radius:7px}
+.attendance-decision [role=alert][hidden]{display:none}
+@media(max-width:760px){.workflow-tab-panel .attendance-date{font-size:22px}.attendance-card{padding:18px!important}.attendance-actions button{flex:1}}
+
+/* The complete repair row opens the existing authenticated job dialog. */
+.repair-job-row{cursor:pointer}.repair-job-row:hover{background:#edf6fc}.repair-job-row:focus-visible{outline:2px solid #006bb0;outline-offset:-2px;background:#edf6fc}
+
+.job-card[data-stage-job],.workflow-job-row[data-upcoming]{cursor:pointer}.job-card[data-stage-job]:hover,.workflow-job-row[data-upcoming]:hover{background:#edf6fc}.job-card[data-stage-job]:focus-visible,.workflow-job-row[data-upcoming]:focus-visible{outline:2px solid #006bb0;outline-offset:2px}
+
+/* Keep the selected Operations count readable on its navy background. */
+.ops-pod.selected b{color:#fff}
+
+/* Full-field booking time selector. */
+.booking-time-input{cursor:pointer;font-size:16px;font-weight:600;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%230062a0' stroke-width='1.6'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") no-repeat right 14px center;padding-right:46px;min-height:48px}
+.booking-time-picker{position:relative;border:1px solid #ccddeb;border-radius:12px;background:#fff;padding:16px;margin:8px 0 18px;box-shadow:0 10px 28px #062f6114}
+.booking-time-picker[hidden]{display:none}.booking-time-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.booking-time-heading button{padding:5px 12px}.booking-time-picker p{font-size:12px;margin:6px 0 14px}.booking-time-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;max-height:220px;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;padding:2px}.booking-time-options button{min-height:42px;border:1px solid #dbe7f1;border-radius:8px;background:#f5f9fd;color:#062f61;font-size:14px;font-weight:600}.booking-time-options button:hover,.booking-time-options button:focus-visible{background:#e5f2fc;outline:2px solid #006eb7;outline-offset:1px}.booking-time-options button[aria-pressed=true]{background:#006eb7;border-color:#006eb7;color:white}
+
+/* Unread notifications remain prominent until their saved read state clears. */
+#userNotifications.has-unread,#notifications.has-unread{background:#fff0b3;border-color:#dfb53b;color:#654500;font-weight:700;box-shadow:0 2px 6px #8a620014}
+#userNotifications.has-unread:hover,#notifications.has-unread:hover{background:#ffe49a;border-color:#c79520;color:#573b00}
+#userNotifications.has-unread:focus-visible,#notifications.has-unread:focus-visible{outline:2px solid #916400;outline-offset:3px}

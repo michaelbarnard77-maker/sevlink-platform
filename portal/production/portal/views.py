@@ -39,18 +39,26 @@ def properties_for(m):
         return Property.objects.filter(agency=m.agency)
     if m.role == Membership.PM:
         return Property.objects.filter(agency=m.agency,manager=m.user)
-    return Property.objects.filter(agency=m.agency,tenancy__user=m.user,tenancy__active=True).distinct()
+    if m.role == Membership.TENANT:
+        return Property.objects.filter(agency=m.agency,tenancy__user=m.user,tenancy__active=True).distinct()
+    return Property.objects.none()
 def form_page(request,form,title):
     return render(request,'portal/form.html',{'form':form,'title':title})
 @sensitive_post_parameters('password1','password2')
 def register(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
+    if not settings.AGENCY_REGISTRATION_ENABLED:
+        return HttpResponse('New agency registration is by prior arrangement. Contact Sevlink.', status=403)
     form = RegisterForm(request.POST if request.method=='POST' else None)
     if request.method=='POST':
         if limited('register:'+request.META.get('REMOTE_ADDR',''),maximum=5,minutes=60):
             return HttpResponse('Please try again in an hour.',status=429)
         if form.is_valid():
+            if (settings.AGENCY_REGISTRATION_ALLOWED_EMAILS and
+                    form.cleaned_data['email'].casefold() not in settings.AGENCY_REGISTRATION_ALLOWED_EMAILS):
+                form.add_error(None, 'Registration is by prior arrangement. Contact Sevlink.')
+                return form_page(request, form, 'Create your agency account')
             try:
                 with transaction.atomic():
                     user = form.save(commit=False)
@@ -69,9 +77,16 @@ def register(request):
 def dashboard(request):
     m = member(request)
     if not m:
-        if request.user.is_staff:
-            return render(request,'portal/staff.html',{'agencies':Agency.objects.all(),'property_count':Property.objects.count(),'tenant_count':Tenancy.objects.filter(active=True).count()})
+        from .staff_access import can_schedule, can_pay
+        if not request.user.is_superuser and (can_schedule(request.user) or can_pay(request.user)):
+            return redirect('maintenance_workspace')
+        if request.user.is_superuser:
+            return redirect('maintenance_workspace')
         return HttpResponseForbidden('No workspace access. Contact Sevlink.')
+    if m.role not in (Membership.ADMIN, Membership.PM, Membership.TENANT):
+        return HttpResponseForbidden('No workspace access. Contact Sevlink.')
+    if m.role in (Membership.PM,Membership.ADMIN) and request.GET.get('setup')!='1':
+        return redirect('maintenance_workspace')
     props = properties_for(m).select_related('manager')
     tenants = Tenancy.objects.filter(property__in=props,active=True)
     if m.role==Membership.TENANT:
@@ -90,7 +105,7 @@ def invite_tenant(request,pid):
         return HttpResponseForbidden('Only the agency can link tenants.')
     return invite_person(request,m,get_object_or_404(properties_for(m),pk=pid))
 def invite_person(request,m,p=None):
-    form = InviteForm(request.POST if request.method=='POST' else None)
+    form = InviteForm(request.POST if request.method=='POST' else None, agency=m.agency, tenant=p is not None)
     if request.method=='POST' and form.is_valid():
         if limited('invite:'+str(request.user.pk),maximum=30,minutes=60):
             return HttpResponse('Invitation limit reached. Try again later.',status=429)
@@ -126,6 +141,10 @@ def accept_invitation(request,token):
     invitation = Invitation.objects.select_related('agency','tenancy').filter(token_hash=digest(token),accepted_at=None,revoked_at=None,expires_at__gt=timezone.now()).first()
     if not invitation:
         return render(request,'portal/sent.html',{'title':'Invitation unavailable','text':'This link expired, was replaced or has already been used. Ask your agency for a new invitation.'},status=410)
+    existing = User.objects.filter(email__iexact=invitation.email).first()
+    if existing and invitation.role == Membership.TENANT:
+        from .lifecycle import accept_existing_tenant
+        return accept_existing_tenant(request, invitation, existing)
     if request.user.is_authenticated:
         return render(request,'portal/sent.html',{'title':'Sign out first','text':'Sign out before accepting an invitation.'},status=409)
     activation = invitation.role==Membership.ADMIN
@@ -134,6 +153,7 @@ def accept_invitation(request,token):
     if request.method=='POST' and form.is_valid():
         try:
             with transaction.atomic():
+                Agency.objects.select_for_update().get(pk=invitation.agency_id)
                 invitation = Invitation.objects.select_for_update().get(pk=invitation.pk)
                 if invitation.accepted_at or invitation.revoked_at or invitation.expires_at<=timezone.now():
                     return HttpResponse('This invitation is no longer available.',status=410)

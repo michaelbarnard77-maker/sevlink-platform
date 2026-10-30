@@ -1,0 +1,48 @@
+const {chromium}=require('playwright');const assert=require('node:assert/strict');
+let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
+ const {url,sessions,ids,day}=JSON.parse(input);const browser=await chromium.launch({headless:true,...(process.env.SEVLINK_CHROMIUM_PATH?{executablePath:process.env.SEVLINK_CHROMIUM_PATH}:{}),args:['--no-sandbox']});const errors=[];
+ try{
+  async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');if(role==='tenant')await p.locator('#rows').waitFor();else await p.locator('#workflowStages .stage-card').first().waitFor();return {c,p};}
+  let {c,p}=await signed('scheduler');
+  await p.locator('#nav [data-view=calendar]').click();await p.locator('#calendarWeek').waitFor();
+  const originalWeek=await p.locator('#calendarWeek').textContent();
+  await p.locator('#calendarNext').click();await p.waitForFunction(old=>document.querySelector('#calendarWeek')?.textContent!==old,originalWeek);
+  await p.locator('#calendarPrevious').click();await p.waitForFunction(old=>document.querySelector('#calendarWeek')?.textContent===old,originalWeek);
+  async function form(job,team,start,end){await p.locator('#calendarNew').click();await p.locator('#calendarBooking [name=job]').selectOption(job);await p.locator('#calendarBooking [name=subcontractor]').selectOption(ids.supplier);await p.locator('#calendarBooking [name=team]').selectOption(team);await p.locator('#calendarBooking [name=date]').fill(day);await p.locator('#calendarBooking [name=start]').fill(start);await p.locator('#calendarBooking [name=end]').fill(end);}
+  await form(ids.jobs[0],ids.a,'09:00','12:00');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('.week-booking').waitFor();
+  let first=await p.locator('.week-booking').getAttribute('data-appointment');
+  const geometry=await p.locator('.week-booking').evaluate(b=>({ratio:b.getBoundingClientRect().width/b.parentElement.getBoundingClientRect().width,left:b.style.left,width:b.style.width}));
+  assert(Math.abs(geometry.ratio-.375)<.01);assert.equal(geometry.left,'0%');assert.equal(geometry.width,'37.5%');
+  await form(ids.jobs[1],ids.a,'12:00','14:00');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.waitForFunction(()=>document.querySelectorAll('.week-booking').length===2);
+  assert.equal(await p.locator('.week-booking[data-width="25"]').getAttribute('data-left'),'37.5');
+  await form(ids.jobs[2],ids.a,'10:00','11:00');assert.equal(await p.locator('[name=override_reason]').count(),0);await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('#calendarError').filter({hasText:'overlapping'}).waitFor();
+  await p.locator('#calendarBooking [name=team]').selectOption(ids.b);await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.waitForFunction(()=>document.querySelectorAll('.week-booking').length===3);
+  await p.locator(`[data-appointment="${first}"]`).click();await p.locator('#calendarReschedule').click();await p.locator('#calendarBooking [name=start]').fill('14:00');await p.locator('#calendarBooking [name=end]').fill('15:00');await p.locator('#calendarBooking [name=reason]').fill('Synthetic tenant reschedule');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('.week-booking[data-left="62.5"][data-width="12.5"]').waitFor();
+  const moved=await p.locator('.week-booking[data-left="62.5"]').getAttribute('data-appointment');await p.locator(`[data-appointment="${moved}"]`).click();await p.locator('#calendarCancel [name=reason]').fill('Synthetic cancellation');await p.getByRole('button',{name:'Cancel appointment',exact:true}).click();await p.getByText('Cancelled: Synthetic cancellation',{exact:false}).waitFor();
+  await p.locator('#calendarOpenJob').click();
+  for(const status of ['reviewed','scheduled','on_site','attended','completed']){await p.locator('#calendarProgress [name=status]').selectOption(status);const response=p.waitForResponse(r=>r.url().includes('/progress/')&&r.request().method()==='POST');await p.getByRole('button',{name:'Save public status',exact:true}).click();assert.equal((await response).status(),200);await p.locator('#modal p').filter({hasText:({reviewed:'Reviewed',scheduled:'Scheduled',on_site:'On Site',attended:'Attended',completed:'Completed'})[status]}).first().waitFor();}
+  await p.getByRole('button',{name:'Close',exact:true}).click();
+  await p.locator('#calendarFilters [name=city]').selectOption(String(ids.cape));await p.getByRole('button',{name:'Filter calendar',exact:true}).click();await p.waitForFunction(()=>document.querySelectorAll('.week-booking').length===1);
+  assert.equal((await p.request.get(url+'/api/maintenance/operations/monday-payments/')).status(),403);
+  await c.close();
+  ({c,p}=await signed('superadmin'));await p.locator('#nav [data-view=calendar]').click();await p.locator('#calendarWeek').waitFor();
+  await form(ids.jobs[3],ids.a,'12:30','13:30');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('#calendarError').filter({hasText:'overlapping'}).waitFor();await p.locator('#calendarBooking [name=override_reason]').fill('Super Admin approved joint appointment');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('.week-booking.has-override').waitFor();
+  await c.close();
+  ({c,p}=await signed('scheduler',390));await p.locator('#phoneNav [data-view=calendar]').click();await p.locator('#calendarMobileDay').waitFor();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.locator('#calendarMobileDay').selectOption('1');assert.equal(await p.locator('[data-cal-day="0"]').first().isVisible(),false);await c.close();
+  ({c,p}=await signed('finance'));await p.locator('#nav [data-view=monday]').click();await p.locator('#mondayFilters').waitFor();
+  // Supplier uploads are due the following Monday, including when uploaded on a
+  // Monday. Review Upcoming rather than assuming the default cutoff includes it.
+  await p.locator('#mondayFilters [name=period]').selectOption('upcoming');
+  const priorFilters=await p.locator('#mondayFilters').elementHandle();
+  await p.getByRole('button',{name:'Review payments',exact:true}).click();
+  // The existing form is replaced by the filtered response. Wait for that
+  // replacement before entering money, otherwise a reload discards the input.
+  await p.waitForFunction(previous=>!previous.isConnected,priorFilters);
+  await p.locator('#mondayInvoices .supplierPayment').waitFor();assert((await p.locator('.stats').textContent()).includes('500.00'));
+  const pdf=await p.locator('#mondayInvoices a').first().getAttribute('href');assert.equal((await p.request.get(url+pdf)).status(),200);
+  for(const amount of ['200.00','300.00']){await p.locator('#mondayInvoices .supplierPayment [name=amount]').fill(amount);await p.locator('#mondayInvoices .supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));await p.locator('#mondayInvoices .supplierPayment [name=reference]').fill('EXTERNAL-MONDAY-'+amount);await p.getByRole('button',{name:'Record payment / Mark as Paid',exact:true}).click();if(amount==='200.00')await p.getByText('Outstanding 300.00',{exact:false}).waitFor().catch(async error=>{throw Error(error.message+'\nPayment screen: '+await p.locator('#app').innerText()+'\nMessage: '+await p.locator('#toast').innerText());});else await p.getByText('No outstanding invoices in this filter.',{exact:true}).waitFor();}
+  assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),200);await c.close();
+  ({c,p}=await signed('tenant'));assert.equal(await p.locator('[data-view=calendar]').count(),0);assert.equal(await p.locator('[data-view=monday]').count(),0);const pub=await (await p.request.get(url+`/api/maintenance/requests/${ids.jobs[0]}/`)).json();assert.equal(pub.status,'completed');const text=JSON.stringify(pub);for(const secret of ['PRIVATE multi-region partner','Team A','appointment_changed','EXTERNAL-MONDAY'])assert(!text.includes(secret));assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),403);await c.close();
+  assert.deepEqual(errors,[]);console.log('PASS: weekly navigation/proportional multi-job timelines, conflicts, team separation, atomic reschedule/cancel, audited Super Admin exception, public progress, mobile day layout, Monday partial/full manual payments and staff/tenant isolation.');
+ }finally{await browser.close();}
+});

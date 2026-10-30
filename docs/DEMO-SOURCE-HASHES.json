@@ -1,0 +1,158 @@
+{
+  "verified_on": "2026-10-28",
+  "hosted_url": "https://sevlink-maintenance-demo.ableisle4.chatgpt.site/",
+  "version": 42,
+  "published_source_commit": "58a0777f69869461272cec00028dc0d51e27f57b",
+  "files": [
+    {
+      "file": "portal/dist/agency-finance.js",
+      "sha256": "229db8ed64a7a38e092ede940c3621929d2f5b80945d37f0eab591dcacb152c4",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/agency-start.js",
+      "sha256": "42ed027b860a181c82b3487d14f426ec8e619bc2b7114cd86a3609f25682751d",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/app.js",
+      "sha256": "25829c2f953ec1b330d087e82ed1ea0fa64897a15755e86d50e48c43dcd7d037",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/authority.js",
+      "sha256": "80d2fb3e0ac4a0420aa0f9e8ba1d522db7119ec4cca88af0287f70f98f63a886",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/booking-workflow.js",
+      "sha256": "25594a27341e4e13360fb49c8563417abd3667ece1f13f09a7c1573c9c142d05",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/date-time.js",
+      "sha256": "fa6054a7f03b844f720c4461322ae99785f8a7a48175eb107c4e7869811db224",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/deposit-workflow.js",
+      "sha256": "e37f8a7725500af8bf5943ab12a1733a62c006b98385449f4b3d7c3cc42d832d",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/dialog-navigation.js",
+      "sha256": "81bf1e8d3f8b91aff7ada260b62bb6e9ecb91dd2cd005a7dea7fe7495d3d1fb0",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/features.css",
+      "sha256": "61d810070a8f0f987829761279db8710642025cf54295e17ec4e3757a668d648",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/features.js",
+      "sha256": "124ff1e4669cadaf4d231342bf9fe0cbfad18b90296c92a41700800e03484ba1",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/flow-polish.js",
+      "sha256": "e7b1f919b565e50c6c919ce10da46b60a7fc7d70c0185484164dc1f61dd8a19b",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/index.html",
+      "sha256": "34052127e7640946f2274d3e0ac643a8e761fac201735750d9ac03c009c1c915",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/job-cancellation.js",
+      "sha256": "b04e0b39e8b368b286a7aa3673b685c03dcd53e2aad68c13be8d8be6bb5a5111",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/job-editor.js",
+      "sha256": "53730dbf158be1ac3ba679ed41eff5b05fc4a3b434a61b9a519c4abc22b22f99",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/mobile.css",
+      "sha256": "1a7c8c1d824dbd32362e0d75396551dd50028a829b7154402d3020ba16f63c3c",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/mobile.js",
+      "sha256": "e7a677eb39d6ba28cb35144069498f31682466ea4e43aaedee6040b2ed38fd69",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/operations-calendar.css",
+      "sha256": "1effd3856954c9764c43400fcf329123ba11248b8408bfce8e9b0603808c3e62",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/operations-calendar.js",
+      "sha256": "ba50d8abae5db44bb94383b29f5eb67da9004562e686ac8321c9fee9606d6895",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/operations.js",
+      "sha256": "39a0b3cf58035c39e52ff4a6448482df0661734a9604e5b09e072c8456612951",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/planner-calendar.js",
+      "sha256": "9ce9ffd4bad86db185dfd8465f1ec18050f7874f02e5cc724de2593f0435374f",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/planner.js",
+      "sha256": "033b688f7cfc41762fc9cc499c27f287c20659cb02b0614181ced16f9d78e2db",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/professional-polish.css",
+      "sha256": "f9fcef11f91299ccd91b68cee5f4ef2936c95ec3e881dafd4fe046104a0dacd8",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/professional-polish.js",
+      "sha256": "01249054c15237c38077dbbcd1196a0c3cc2585cd8f7f9f3d9dbbe3f21d2c46f",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/quoting.js",
+      "sha256": "2d62334fc3931b74093a12dc8383c46cac66edea75c9a078ecb8d1e752e344d0",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/repair-register.js",
+      "sha256": "f69a68a153f0f52d0aa4240104a0c7e7d5981709f999d9ccc208a222ae169525",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/sevlink-logo.png",
+      "sha256": "9855c7bb1cb564d4bb5cf9e3e0886eab5e5b98fc6d98cef2e6d8aa9dee0c7632",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/simple-callouts.js",
+      "sha256": "75bc90f3c3bc9ebb2c0ce41ab3a4ca29f440e26499b6cc1d19c2220047e344bb",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/single-invoice.js",
+      "sha256": "81e79841821705767039dc922774b40910bab67505ef9396b7c5157652b7598a",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/team.js",
+      "sha256": "a3694fe7d2c1cb352d480e3f631d6f713aa194b6b3b1b1acc3550d35324eb8b3",
+      "matches_published": true
+    },
+    {
+      "file": "portal/dist/website-issues.js",
+      "sha256": "3fab8922ed55c93287401572bb06f5bd7fd630f1e127944486e91e110cd184e7",
+      "matches_published": true
+    }
+  ]
+}
