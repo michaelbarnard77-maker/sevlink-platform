@@ -717,7 +717,7 @@ class JobAssignment(AppendOnlyModel):
     created_at = models.DateTimeField(auto_now_add=True)
     submission_key = models.UUIDField(unique=True)
     # Preserve the location reviewed at assignment time if a property moves later.
-    city = models.ForeignKey(City, on_delete=models.PROTECT)
+    city = models.ForeignKey(City, null=True, blank=True, on_delete=models.PROTECT)
     suburb = models.ForeignKey(Suburb, null=True, blank=True, on_delete=models.PROTECT)
 
     class Meta:

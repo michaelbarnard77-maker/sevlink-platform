@@ -154,7 +154,7 @@ def save_values(request,data):
                 assessment_appointments=job.attendance_requests.filter(pk__in=assessment_ids(job)).values_list('appointment_id',flat=True)
                 replace_assessment=allocation.appointments.filter(cancelled_at=None).exists() and not allocation.appointments.filter(cancelled_at=None).exclude(pk__in=assessment_appointments).exists()
             if replace_assessment or not allocation or allocation.subcontractor_id!=supplier_id or allocation.team_id!=team_id:
-                accept(assign_job(request.user,job.pk,{'version':job.version,'subcontractor':str(supplier_id),'team':str(team_id),'submission_key':str(uuid.uuid5(key,'assignment'))},assessment_authorised=getattr(request,'_assessment_authorised',False),replace_assessment=replace_assessment))
+                accept(assign_job(request.user,job.pk,{'version':job.version,'subcontractor':str(supplier_id),'team':str(team_id),'submission_key':str(uuid.uuid5(key,'assignment'))},assessment_authorised=getattr(request,'_assessment_authorised',False),replace_assessment=replace_assessment,phone_confirmed=getattr(request,'_phone_confirmed',False)))
                 job.refresh_from_db();allocation=job.assignments.first()
             else:
                 active=allocation.appointments.filter(cancelled_at__isnull=True)

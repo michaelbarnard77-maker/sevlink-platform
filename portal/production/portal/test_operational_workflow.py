@@ -292,6 +292,29 @@ class AttendanceAndFinanceTests(TestCase):
         self.job.refresh_from_db();self.assertEqual(self.job.status,'scheduled')
         self.assertIsNone(self.job.closed_at)
 
+    def test_phone_booking_service_area_is_confirmed_manually(self):
+        from .models import JobAssignment
+        v=self.prepare();v.pop('team');v['phone_confirmed']=True
+        self.partner.provinces.clear();self.partner.cities.clear();self.partner.suburbs.clear()
+        result=self.confirm(v)
+        self.assertEqual(result.status_code,201,result.content)
+        self.assertEqual(JobAssignment.objects.get(request=self.job).city,self.job.property.city)
+
+    def test_phone_booking_without_a_mapped_property_city(self):
+        from .models import Property,JobAssignment
+        v=self.prepare();v.pop('team');v['phone_confirmed']=True
+        Property.objects.filter(pk=self.job.property_id).update(city=None,suburb=None)
+        result=self.confirm(v)
+        self.assertEqual(result.status_code,201,result.content)
+        self.assertIsNone(JobAssignment.objects.get(request=self.job).city_id)
+
+    def test_phone_booking_still_rejects_inactive_subcontractor(self):
+        v=self.prepare();v.pop('team');v['phone_confirmed']=True
+        self.partner.active=False;self.partner.save(update_fields=['active'])
+        result=self.confirm(v)
+        self.assertEqual(result.status_code,400,result.content)
+        self.arrival.refresh_from_db();self.assertEqual(self.arrival.status,'pending')
+
     def test_confirm_booking_keeps_private_duration_separate_and_notifies_both(self):
         v=self.prepare();key=uuid.uuid4();r=self.confirm(v,key);self.assertEqual(r.status_code,201,r.content)
         self.assertEqual(self.confirm(v,key).status_code,200);self.assertEqual(TeamAppointment.objects.count(),1)

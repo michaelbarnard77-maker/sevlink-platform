@@ -233,7 +233,7 @@ def assignments(request, job_id):
     return assign_job(request.user,job_id,payload(request, ('subcontractor','version','submission_key','team')))
 
 
-def assign_job(user,job_id,data,assessment_authorised=False,replace_assessment=False):
+def assign_job(user,job_id,data,assessment_authorised=False,replace_assessment=False,phone_confirmed=False):
     from .staff_access import can_schedule
     if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     job=get_object_or_404(MaintenanceRequest,pk=job_id)
@@ -260,8 +260,10 @@ def assign_job(user,job_id,data,assessment_authorised=False,replace_assessment=F
             return JsonResponse({'id': prior.pk})
         if job.version != data['version'] or job.status in ('completed', 'cancelled', 'closed'):
             return JsonResponse({'error': 'Job changed or is closed. Refresh before assigning.'}, status=409)
-        if not eligible(prop).filter(pk=item.pk).exists():
-            return JsonResponse({'error': 'Subcontractor does not cover the mapped property location or is inactive.'}, status=400)
+        if not item.active or item.archived:
+            return JsonResponse({'error':'This subcontractor is inactive or archived. Select an active subcontractor.'},status=400)
+        if not phone_confirmed and not eligible(prop).filter(pk=item.pk).exists():
+            return JsonResponse({'error':'Subcontractor does not cover the mapped property location.'},status=400)
         if (item.teams.exists() and not team) or (team and not team.active):
             return JsonResponse({'error':'Select an active team belonging to this subcontractor.'},status=400)
         current = job.assignments.first()

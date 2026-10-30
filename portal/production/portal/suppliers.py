@@ -332,7 +332,7 @@ def save_appointment(user,subcontractor_id,data,attendance_authorised=False,asse
         if not item.active or item.archived or not t.active or (not manual and not valid_window(t,start,end)): raise ValueError
         if not current_assignments().filter(pk=a.pk).exists() or a.request.status in ('completed','cancelled','closed') or a.reviews.filter(resolution__isnull=True).exists():
             return JsonResponse({'error':'Assignment changed, closed or requires Operations review.'},status=409)
-        if not eligible(a.request.property).filter(pk=item.pk).exists(): raise ValueError
+        if not manual and not eligible(a.request.property).filter(pk=item.pk).exists(): raise ValueError
         prior_bookings=t.appointments.filter(assignment=a,cancelled_at__isnull=True)
         if attendance_authorised and not assessment_authorised:
             from .workflow import assessment_ids

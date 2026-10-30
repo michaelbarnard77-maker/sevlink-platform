@@ -86,6 +86,8 @@ class VisualProof(StaticLiveServerTestCase):
         pending=self.create('Bathroom tap quotation — visual test');self.action(self.pm,pending,'review',job_type='quoted',urgency='high',access_responsibility='sevlink');self.quote(pending,'SQ-VISUAL-002')
         callout=self.create('Authorised call-out — visual test');self.action(self.pm,callout,'review',job_type='callout',urgency='normal',access_responsibility='pm',limit='1500.00')
         deposit_job=self.create('Full job invoice and deposit — visual test');self.action(self.pm,deposit_job,'review',job_type='quoted',urgency='normal',access_responsibility='pm');self.quote(deposit_job,'SQ-VISUAL-FULL',True)
+        if os.environ.get('SEVLINK_NO_COVERAGE_PROOF')=='1':
+            supplier.provinces.clear();supplier.cities.clear();supplier.suburbs.clear()
         existing_req=self.create('New repair needing review — visual test',category='Electrical',safety=True)
         self.admin=User.objects.create_user(username='agency-admin-review',first_name='Agency Admin Review',email='agency-admin@example.test')
         Membership.objects.create(user=self.admin,agency=agency,role='admin')
