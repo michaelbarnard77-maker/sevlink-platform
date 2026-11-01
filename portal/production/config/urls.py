@@ -66,7 +66,7 @@ urlpatterns = [
     path('api/maintenance/requests/', maintenance.collection, name='maintenance_collection'),
     path('api/maintenance/requests/<uuid:job_id>/', maintenance.detail, name='maintenance_detail'),
     path('verify/resend/',views.resend_verification,name='resend_verification'),
-    path('',views.dashboard,name='dashboard'),path('register/',views.register,name='register'),
+    path('',views.landing,name='landing'),path('portal/',views.dashboard,name='dashboard'),path('register/',views.register,name='register'),
     path('login/',views.PortalLogin.as_view(),name='login'),path('logout/',auth.LogoutView.as_view(),name='logout'),
     path('team/invite/',views.invite_pm,name='invite_pm'),path('properties/new/',views.property_edit,name='property_new'),
     path('properties/<uuid:pid>/edit/',views.property_edit,name='property_edit'),path('properties/<uuid:pid>/tenant/',views.invite_tenant,name='invite_tenant'),

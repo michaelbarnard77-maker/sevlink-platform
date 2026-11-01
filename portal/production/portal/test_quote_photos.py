@@ -100,7 +100,7 @@ class QuotePhotoTests(TestCase):
         self.assertIn('access_responsibility',data(self.job,self.pm))
         self.assertIn('access_responsibility',data(self.job,self.ops))
         self.client.force_login(self.tenant)
-        response=self.client.get('/')
+        response=self.client.get('/portal/')
         if response.status_code==200:
             self.assertNotContains(response,'Sevlink arranges access')
             self.assertNotContains(response,'Agency arranges access')

@@ -14,6 +14,9 @@ from .models import User, Agency, Membership, Property, Tenancy, Invitation, Aud
 from .forms import RegisterForm, InviteForm, PropertyForm, EmailLoginForm
 from .services import digest, limited, queue_invite
 
+def landing(request):
+    return render(request,'portal/landing.html')
+
 class PortalLogin(LoginView):
     authentication_form = EmailLoginForm
     template_name = 'registration/login.html'

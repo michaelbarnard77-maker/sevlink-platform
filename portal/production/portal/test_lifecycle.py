@@ -43,7 +43,7 @@ class LifecycleTests(TestCase):
         self.assertEqual(self.action('move-out', self.tenancy.pk).status_code,302)
         self.client.force_login(self.tenant)
         self.assertEqual(self.client.get(f'/api/maintenance/requests/{self.job.pk}/').status_code,404)
-        self.assertContains(self.client.get('/'), 'Other')
+        self.assertContains(self.client.get('/portal/'), 'Other')
 
     def test_confirmation_permissions_and_foreign_targets(self):
         self.assertEqual(self.action('deactivate',self.pm.pk,confirm='').status_code,200)

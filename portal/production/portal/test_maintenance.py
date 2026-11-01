@@ -300,11 +300,11 @@ class MaintenanceTests(TestCase):
     def test_legacy_dashboard_fails_closed_for_staff_and_unknown_roles(self):
         for user in [self.staff, self.invalid_role, self.nonmember]:
             self.login(user)
-            response = self.client.get('/')
+            response = self.client.get('/portal/')
             self.assertEqual(response.status_code, 403)
             self.assertNotContains(response, self.other_agency.name, status_code=403)
         self.login(self.superadmin)
-        self.assertRedirects(self.client.get('/'),reverse('maintenance_workspace'))
+        self.assertRedirects(self.client.get('/portal/'),reverse('maintenance_workspace'))
         self.assertContains(self.client.get(reverse('workflow_agencies')),self.other_agency.name)
 
     def test_pm_reassignment_before_write_prevents_status_mutation(self):
