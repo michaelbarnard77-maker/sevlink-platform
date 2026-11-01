@@ -64,8 +64,8 @@ body>aside #nav{overflow-x:hidden;color:#d0e2f2}
 .categorygrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:14px;margin-top:22px}
 .categorygrid .category.illustrated{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:224px;padding:22px 12px 20px;border:1px solid #d7e3ee;border-radius:12px;background:#fff;color:#0b335c;box-shadow:0 2px 6px #0b335c04;transition:border-color .16s,background .16s,box-shadow .16s}
 .categorygrid .category.illustrated>span{display:grid;place-items:center;width:100px;height:100px;margin:0 0 14px;background:#f3f8fc;border-radius:22px;color:#0b335c}
-.categorygrid .category.illustrated svg{width:86px;height:86px;max-width:none}
-.repair-illustration .icon-accent{stroke:#0086c9}.repair-illustration .icon-surface{fill:#e5f2fc}
+.categorygrid .category.illustrated svg{width:94px;height:94px;max-width:none}
+.repair-illustration .icon-accent{stroke:#0086c9}.repair-illustration .icon-surface{fill:#edf5fc}.repair-illustration .icon-detail{stroke:#567b9a;stroke-width:1.15}
 .categorygrid .category.illustrated b{font-size:15px;line-height:1.4;max-width:190px}
 .categorygrid .category.illustrated small{font-size:12px;line-height:1.5;color:#526a80;margin-top:auto;padding-top:9px;max-width:190px}
 .categorygrid .category.illustrated:hover{background:#f5faff;border-color:#0787ca;box-shadow:0 5px 18px #0b335c12}
@@ -77,5 +77,5 @@ body>aside #nav{overflow-x:hidden;color:#d0e2f2}
 #phoneNav button{display:flex;align-items:center;gap:12px}
 #phoneNav button>span:first-child{display:grid;place-items:center;flex:0 0 24px;color:#087bb5}
 #phoneNav button.active>span:first-child{color:inherit}
-@media(max-width:600px){.categorygrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.categorygrid .category.illustrated{padding:18px 9px;min-height:210px}.categorygrid .category.illustrated>span{width:88px;height:88px;border-radius:20px}.categorygrid .category.illustrated svg{width:76px;height:76px}}
+@media(max-width:600px){.categorygrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.categorygrid .category.illustrated{padding:18px 9px;min-height:210px}.categorygrid .category.illustrated>span{width:88px;height:88px;border-radius:20px}.categorygrid .category.illustrated svg{width:82px;height:82px}}
 @media(prefers-reduced-motion:reduce){.categorygrid .category.illustrated{transition:none}}
