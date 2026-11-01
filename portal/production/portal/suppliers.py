@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from django import forms
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Subquery, Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -35,7 +35,7 @@ def audit(item, actor, action, **details):
 
 def current_assignments():
     latest = JobAssignment.objects.filter(request_id=OuterRef('request_id')).values('pk')[:1]
-    return JobAssignment.objects.filter(pk=Subquery(latest))
+    return JobAssignment.objects.filter(Q(pk=Subquery(latest))|Q(appointments__cancelled_at__isnull=True,appointments__ends_at__gte=timezone.now())).distinct()
 
 
 def flag_assignments(actor, reason, **filters):
@@ -290,7 +290,7 @@ def appointment(request, subcontractor_id):
     return save_appointment(request.user,subcontractor_id,payload(request,('assignment','starts_at','ends_at','cancel','reason','override_reason')))
 
 
-def save_appointment(user,subcontractor_id,data,attendance_authorised=False,assessment_authorised=False,phone_confirmed=False):
+def save_appointment(user,subcontractor_id,data,attendance_authorised=False,assessment_authorised=False,phone_confirmed=False,rescheduling=False):
     from .staff_access import can_schedule
     if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     with transaction.atomic():
@@ -314,12 +314,16 @@ def save_appointment(user,subcontractor_id,data,attendance_authorised=False,asse
             SubcontractorTeam.objects.select_for_update().get(pk=a.team_id)
             a=TeamAppointment.objects.select_for_update().get(pk=a.pk)
             if a.cancelled_at: return JsonResponse(appointment_data(a))
-            a.cancelled_at=timezone.now();a.cancelled_by=user;a.cancellation_reason=data['reason'];a.save()
+            a.cancelled_at=timezone.now();a.cancelled_by=user;a.cancellation_reason=data['reason'];a.progress_status='cancelled';a.version+=1;a.save()
             job=a.assignment.request
             if job.workflow_version:
-                job.status='reviewed';job.version+=1;job.save(update_fields=['status','version'])
                 from .workflow import attention_notifications
                 attention_notifications(job,user,'Attendance cancelled',f'attendance-cancel:{a.pk}',tenant=True)
+            if not rescheduling and a.customer_visible and hasattr(a,'public_arrival'):
+                from .workflow import notify,operators
+                from .events import record
+                notice=record(job,user,'workflow_event','needs-reschedule:'+str(a.pk),{'action':'Appointment cancelled — needs rescheduling','decision_id':str(a.pk)},private=True)
+                notify(notice,operators())
             audit(item,user,'Appointment cancelled',appointment=a.pk)
             return JsonResponse(appointment_data(a))
         if set(data)-{'override_reason'}!={'assignment','starts_at','ends_at'} or type(data['assignment'])is not int: raise ValueError

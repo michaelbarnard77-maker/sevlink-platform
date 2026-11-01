@@ -78,7 +78,7 @@ class VisualProof(StaticLiveServerTestCase):
             photo=SimpleUploadedFile(purpose+'-TEST-ILLUSTRATION.png',(ROOT/'public-site/dist/assets/hero-home.png').read_bytes(),content_type='image/png')
             self.post(self.ops,reverse('workflow_documents',args=[job.pk]),dict(kind=purpose),{'attachments':photo})
         self.action(self.ops,job,'completion',report='VISUAL TEST ONLY — no actual work was performed. The before and after images are the same existing website illustration, uploaded solely to demonstrate the report layout.',before_unavailable=False,exception_reason='')
-        for status in ['on_site','attended','completed']:
+        for status in ['on_site','completed']:
             job.refresh_from_db();self.post(self.ops,reverse('maintenance_detail',args=[job.pk]),dict(version=job.version,status=status),method='PATCH')
         self.invoice(job,'INV-VISUAL-FINAL','final','2000.00')
         for user,body,visibility in [(self.tenant,'Please keep me informed about attendance. Visual test message.','shared'),(self.pm,'Please review the uploaded documents. Visual test message.','agency'),(self.ops,'The report and final invoice are available for review. Visual test message.','shared'),(self.ops,'PRIVATE TEST INFORMATION — Operations only.','internal')]:
@@ -86,6 +86,7 @@ class VisualProof(StaticLiveServerTestCase):
         pending=self.create('Bathroom tap quotation — visual test');self.action(self.pm,pending,'review',job_type='quoted',urgency='high',access_responsibility='sevlink');self.quote(pending,'SQ-VISUAL-002')
         callout=self.create('Authorised call-out — visual test');self.action(self.pm,callout,'review',job_type='callout',urgency='normal',access_responsibility='pm',limit='1500.00')
         deposit_job=self.create('Full job invoice and deposit — visual test');self.action(self.pm,deposit_job,'review',job_type='quoted',urgency='normal',access_responsibility='pm');self.quote(deposit_job,'SQ-VISUAL-FULL',True)
+        if os.environ.get('SEVLINK_MULTI_APPOINTMENT_PROOF')=='1':Subcontractor.objects.create(name='SECOND PHONE COMPANY',created_by=self.ops)
         if os.environ.get('SEVLINK_NO_COVERAGE_PROOF')=='1':
             supplier.provinces.clear();supplier.cities.clear();supplier.suburbs.clear()
         existing_req=self.create('New repair needing review — visual test',category='Electrical',safety=True)

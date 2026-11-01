@@ -57,3 +57,5 @@ body>aside #nav{overflow-x:hidden;color:#d0e2f2}
 #userNotifications.has-unread,#notifications.has-unread{background:#fff0b3;border-color:#dfb53b;color:#654500;font-weight:700;box-shadow:0 2px 6px #8a620014}
 #userNotifications.has-unread:hover,#notifications.has-unread:hover{background:#ffe49a;border-color:#c79520;color:#573b00}
 #userNotifications.has-unread:focus-visible,#notifications.has-unread:focus-visible{outline:2px solid #916400;outline-offset:3px}
+
+.attendance-card[data-appointment-status=on_site]{border-left:4px solid #1767bf}.attendance-card[data-appointment-status=completed]{border-left:4px solid #21844b}.attendance-card[data-appointment-status=cancelled]{border-left:4px solid #c92a36}.attendance-card .badge.OnSite{background:#dbeafe;color:#123e75}.attendance-card .badge.Cancelled{background:#fee2e2;color:#8f1420}

@@ -24,6 +24,7 @@ urlpatterns = [
     path('security/mfa/', mfa.verify, name='mfa_verify'),
     path('accounts/<uuid:agency_id>/', lifecycle.accounts, name='agency_accounts'),
     path('accounts/<uuid:agency_id>/<str:kind>/<str:object_id>/', lifecycle.change, name='agency_account_change'),
+    path('api/maintenance/operations/calendar/appointments/<int:appointment_id>/status/',scheduling.appointment_progress,name='appointment_progress'),
     path('api/maintenance/operations/calendar/',scheduling.week,name='operations_calendar'),
     path('api/maintenance/operations/calendar/save/',scheduling.save,name='operations_calendar_save'),
     path('api/maintenance/operations/calendar/jobs/<uuid:job_id>/',scheduling.job_detail,name='operations_calendar_job'),

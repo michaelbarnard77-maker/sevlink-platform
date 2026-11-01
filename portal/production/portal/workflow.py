@@ -72,12 +72,17 @@ def effective_quotes(job):
 
 
 def assessment_ids(job):
-    return [s['assessment_attendance'] for s in job.workflow_decisions.filter(operation__in=('operations-triage','attendance-request')).values_list('snapshot',flat=True) if type(s.get('assessment_attendance')) is int]
+    return [s['assessment_attendance'] for s in job.workflow_decisions.filter(operation__in=('operations-triage','attendance-request','attendance-confirm')).values_list('snapshot',flat=True) if type(s.get('assessment_attendance')) is int]
 
 
 def free_assessment(job):
     last=job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').first()
     return bool(job.job_type=='quoted' and not job.quotations.exists() and last and last.snapshot.get('decision')=='attendance' and not job.closed_at and job.status not in ('completed','closed','cancelled'))
+
+
+def needs_rescheduling(job):
+    from .models import TeamAppointment
+    return TeamAppointment.objects.filter(assignment__request=job,cancelled_at__isnull=False,customer_visible=True,public_arrival__isnull=False,rescheduled_to__isnull=True).exists()
 
 
 def eligible(job):
@@ -149,13 +154,13 @@ def attention_notifications(job,actor,label,key,tenant=False):
 def data(job,user):
     role,_=access(user);staff=user.is_superuser;tenant=role=='tenant'
     arrivals=[dict(id=a.pk,preference=a.preference,requested_date=a.requested_date,requested_window=a.requested_window,
-        purpose='assessment' if a.pk in assessment_ids(job) else 'work',status='cancelled' if a.appointment_id and a.appointment.cancelled_at else a.status,appointment_id=a.appointment_id if staff else None,agreed_date=a.agreed_date,agreed_window=a.agreed_window,confirmed_at=a.confirmed_at)
-        for a in job.attendance_requests.order_by('-created_at','-pk')]
+        purpose='assessment' if a.pk in assessment_ids(job) else 'work',replacement_exists=bool(a.appointment_id and hasattr(a.appointment,'rescheduled_to')),appointment_status=('cancelled' if a.appointment.cancelled_at else a.appointment.progress_status) if a.appointment_id else None,status='cancelled' if a.appointment_id and a.appointment.cancelled_at else a.status,appointment_id=a.appointment_id if staff else None,agreed_date=a.agreed_date,agreed_window=a.agreed_window,confirmed_at=a.confirmed_at)
+        for a in job.attendance_requests.select_related('appointment').order_by('-created_at','-pk')]
     from .customer_portal import deposit_state
     manual=job.workflow_decisions.filter(operation='manual-stage').order_by('-created_at','-pk').first()
     return dict(manual_stage=bool(manual and manual.snapshot.get('version')==job.version),
         manual_move_options=[dict(value=k,label=v) for k,v in STAGES] if staff else [],
-        free_assessment=free_assessment(job),can_arrange_attendance=can_arrange(job,user),
+        needs_rescheduling=needs_rescheduling(job),free_assessment=free_assessment(job),can_arrange_attendance=can_arrange(job,user),
         operations_triage=(job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').values_list('snapshot',flat=True).first() or {}).get('decision'),
         can_triage=staff and job.job_type!='unclassified' and not job.quotations.exists() and not job.closed_at and job.status not in ('completed','cancelled','closed'),
         **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
@@ -165,7 +170,7 @@ def data(job,user):
         stage=stage(job),attendance_ready=eligible(job),arrival_windows=WINDOWS,attendance=arrivals,
         additional=[] if tenant else [dict(id=a.pk,amount=str(a.amount),reason=a.reason,status=a.status,linked_request=str(a.linked_request_id) if a.linked_request_id else None,decided_at=a.decided_at) for a in job.additional_authorisations.all()],
         completion=[dict(report=c.report,before_unavailable=c.before_unavailable,exception_reason=c.exception_reason,created_at=c.created_at) for c in job.completion_records.all()],
-        history=[] if tenant else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot) for d in job.workflow_decisions.select_related('actor').all() if staff or d.operation!='manual-stage'])
+        history=[] if tenant else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot if staff else {k:v for k,v in d.snapshot.items() if k!='duration'}) for d in job.workflow_decisions.select_related('actor').all() if staff or d.operation not in ('manual-stage','appointment-progress')])
 
 
 def tab_attention(job,user,visible):
@@ -253,11 +258,16 @@ def dashboard(request):
     if selected and selected not in dict(definitions):return JsonResponse({'error':'Unknown stage.'},status=400)
     result=grouped[selected] if selected else rows
     upcoming=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date__gte=timezone.localdate(),appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).select_related('request__property').order_by('agreed_date')[:12]
+    rescheduling=[]
+    if request.user.is_superuser:
+        from .models import TeamAppointment
+        cancelled=TeamAppointment.objects.filter(assignment__request__in=rows,cancelled_at__isnull=False,customer_visible=True,public_arrival__isnull=False,rescheduled_to__isnull=True).exclude(assignment__request__status__in=['completed','closed','cancelled']).select_related('assignment__request__property')
+        rescheduling=[dict(appointment=a.pk,job=str(a.assignment.request_id),reference=a.assignment.request.reference,property=a.assignment.request.property.address,date=str(timezone.localtime(a.starts_at).date()),reason=a.cancellation_reason) for a in cancelled]
     summary=None
     if request.user.is_superuser:
         today=timezone.localdate()
         summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','ready','underway','invoice')))]
-    return JsonResponse({'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
+    return JsonResponse({'rescheduling':rescheduling,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
         'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
 
 
@@ -345,6 +355,7 @@ def action(request,job_id,operation):
                     if pending:values['assessment_attendance']=pending.pk
                 elif values['decision']=='desktop' and job.attendance_requests.filter(status='pending',pk__in=assessment_ids(job)).exists():
                     raise ValueError('Arrange or decline the pending assessment visit before switching to desktop quoting.')
+                if values['decision']=='desktop' and job.status=='scheduled' and job.attendance_requests.filter(pk__in=assessment_ids(job)).exists():job.status='reviewed'
             elif operation=='additional-request':
                 if job.job_type!='callout' or not job.authorised_at:raise ValueError('An authorised call-out is required.')
                 limit=money(values.get('limit'))
@@ -450,7 +461,7 @@ def confirm_attendance(request,job_id):
     from .staff_access import can_schedule
     from . import scheduling
     if not can_schedule(request.user):return JsonResponse({'error':'Sevlink scheduling access required.'},status=403)
-    v=payload(request,('version','attendance','date','window','client_confirmed','contact_category','subcontractor','team','starts_at','ends_at','appointment','reason','override_reason','phone_confirmed'))
+    v=payload(request,('version','attendance','date','window','client_confirmed','contact_category','subcontractor','team','starts_at','ends_at','appointment','reason','override_reason','phone_confirmed','add_appointment','duration','replace_cancelled'))
     if type(v.get('attendance'))is not int or v['attendance']<1:raise ValueError('A saved attendance request is required.')
     if any(not isinstance(v.get(k),str) for k in ('starts_at','ends_at')):raise ValueError('Actual private booking times are required.')
     key=request_key(request);fingerprint=digest(dict(v,job=str(job_id)))
@@ -466,8 +477,17 @@ def confirm_attendance(request,job_id):
                 return JsonResponse({'confirmed':True})
             if type(v.get('version'))is not int or v['version']!=job.version:return JsonResponse({'error':'Job changed; refresh.'},status=409)
             if not eligible(job):return JsonResponse({'error':'Attendance is locked.'},status=409)
+            adding=v.get('add_appointment',False)
+            if type(adding)is not bool:raise ValueError('A valid additional appointment choice is required.')
+            if adding and (v.get('appointment') or v.get('phone_confirmed')is not True):raise ValueError('Additional appointments require phone confirmation and must not replace an existing booking.')
             item=get_object_or_404(AttendanceRequest.objects.select_for_update(),pk=v.get('attendance'),request=job)
-            if item.status=='confirmed' and v.get('appointment')!=item.appointment_id:raise ValueError('Reschedule the current confirmed appointment; do not replace a different visit.')
+            if adding and item.status!='confirmed':raise ValueError('Add an appointment from an existing confirmed booking.')
+            if not adding and item.status=='confirmed' and v.get('appointment')!=item.appointment_id:raise ValueError('Reschedule the current confirmed appointment; do not replace a different visit.')
+            replacement=v.get('replace_cancelled')
+            if replacement is not None:
+                if not adding or type(replacement)is not int or item.appointment_id!=replacement or not item.appointment.cancelled_at:raise ValueError('Choose the cancelled appointment being rescheduled.')
+                from .models import TeamAppointment
+                if TeamAppointment.objects.filter(rescheduled_from_id=replacement).exists():return JsonResponse({'error':'This cancelled appointment already has a replacement.'},status=409)
             assessment=item.pk in assessment_ids(job)
             if assessment and not free_assessment(job):raise ValueError('This assessment visit is no longer open for booking. Arrange work attendance separately.')
             when=day(v.get('date'));window=v.get('window')
@@ -476,6 +496,12 @@ def confirm_attendance(request,job_id):
             if alternative and (v.get('client_confirmed')is not True or v.get('contact_category')not in ('tenant','pm','other')):raise ValueError('Confirm the date with the client/tenant and record who was contacted before rescheduling.')
             start=parse_datetime(v.get('starts_at',''));end=parse_datetime(v.get('ends_at',''))
             if not start or not end or not timezone.is_aware(start) or not timezone.is_aware(end):raise ValueError('Record actual private booking start/end times separately.')
+            duration=v.get('duration')
+            if duration is not None:
+                if duration not in ('day','1','2','3','4','5','6','7'):raise ValueError('Choose one full day or 1–7 hours.')
+                local_start=start.astimezone(ZoneInfo('Africa/Johannesburg'));local_end=end.astimezone(ZoneInfo('Africa/Johannesburg'))
+                if duration=='day' and (local_start.strftime('%H:%M')!='09:00' or local_end.strftime('%H:%M')!='17:00' or end-start!=timedelta(hours=8)):raise ValueError('A full working day is 09:00–17:00.')
+                if duration!='day' and end-start!=timedelta(hours=int(duration)):raise ValueError('Booking times must match the selected duration.')
             local=start.astimezone(ZoneInfo('Africa/Johannesburg'))
             if local.date()!=when or not ((540<=local.hour*60+local.minute<=780) if window==WINDOWS[0] else (720<=local.hour*60+local.minute<1020)):raise ValueError('Private booking arrival must fall within the agreed public arrival window.')
             if 'phone_confirmed' in v and type(v['phone_confirmed'])is not bool:raise ValueError('A valid phone confirmation is required.')
@@ -495,15 +521,21 @@ def confirm_attendance(request,job_id):
             request._attendance_authorised=True
             request._assessment_authorised=assessment
             request._phone_confirmed=phone_confirmed
+            request._additional_appointment=adding
+            if adding:
+                item=AttendanceRequest.objects.create(request=job,requested_by=request.user,preference='date',requested_date=when,requested_window=window,status='confirmed')
             response=scheduling.save_values(request,booking)
             if response.status_code>=400:raise scheduling.Rejected(response)
             import json
             appointment_id=json.loads(response.content)['id']
+            if replacement is not None:
+                from .models import TeamAppointment
+                TeamAppointment.objects.filter(pk=appointment_id).update(rescheduled_from_id=replacement)
             item.status='confirmed';item.agreed_date=when;item.agreed_window=window;item.contact_category=v.get('contact_category','') if alternative else ''
             item.confirmed_by=request.user;item.confirmed_at=timezone.now();item.appointment_id=appointment_id;item.save()
-            job.refresh_from_db();job.status='reviewed' if assessment else 'scheduled';job.version+=1;job.save(update_fields=['status','version'])
+            job.refresh_from_db();job.status=job.status if job.status in ('on_site','in_progress','attended') else 'scheduled';job.version+=1;job.save(update_fields=['status','version'])
             MaintenanceStatusEvent.objects.create(request=job,actor=request.user,status=job.status)
-            WorkflowDecision.objects.create(request=job,actor=request.user,key=key,fingerprint=fingerprint,operation='attendance-confirm',snapshot=dict(purpose='assessment' if assessment else 'work',phone_confirmed=phone_confirmed,booking_source='phone' if phone_confirmed else 'calendar',**{k:v[k] for k in ('date','window','contact_category','client_confirmed') if k in v}))
+            WorkflowDecision.objects.create(request=job,actor=request.user,key=key,fingerprint=fingerprint,operation='attendance-confirm',snapshot=dict(purpose='assessment' if assessment else 'work',replaces_cancelled=replacement,additional=adding,attendance=item.pk,assessment_attendance=item.pk if assessment else None,duration=v.get('duration'),phone_confirmed=phone_confirmed,booking_source='phone' if phone_confirmed else 'calendar',**{k:v[k] for k in ('date','window','contact_category','client_confirmed') if k in v}))
             attention_notifications(job,request.user,'Free quotation assessment confirmed' if assessment else 'Attendance confirmed' if not alternative else 'Alternative attendance confirmed','attendance:'+str(key),tenant=True)
         return JsonResponse({'confirmed':True},status=201)
     except scheduling.Rejected as e:return e.response

@@ -36,7 +36,7 @@ def checked(view):
 def appointment_data(a):
     start=a.starts_at.astimezone(TZ);end=a.ends_at.astimezone(TZ)
     override=AppointmentOverride.objects.filter(appointment=a).first()
-    return {'id':a.pk,'job':str(a.assignment.request_id),'reference':a.assignment.request.reference, 'customer_visible':a.customer_visible,
+    return {'id':a.pk,'version':a.version,'appointment_status':'cancelled' if a.cancelled_at else a.progress_status,'appointment_status_label':'Cancelled' if a.cancelled_at else a.get_progress_status_display(),'job':str(a.assignment.request_id),'reference':a.assignment.request.reference, 'customer_visible':a.customer_visible,
         'property':a.assignment.request.property.address,'status':a.assignment.request.status,
         'status_label':a.assignment.request.get_status_display(),'title':a.assignment.request.title,
         'subcontractor':str(a.team.subcontractor_id),'supplier':a.team.subcontractor.name,
@@ -67,7 +67,7 @@ def week(request):
     if request.GET.get('team'): teams=teams.filter(pk=uuid.UUID(request.GET['team']))
     props=filter_properties(Property.objects.all(),loc)
     qs=appointments().filter(team__in=teams,assignment__request__property__in=props,
-        starts_at__gte=datetime.combine(start,time.min,tzinfo=TZ),starts_at__lt=datetime.combine(end,time.min,tzinfo=TZ),cancelled_at__isnull=True)
+        starts_at__gte=datetime.combine(start,time.min,tzinfo=TZ),starts_at__lt=datetime.combine(end,time.min,tzinfo=TZ))
     search=request.GET.get('job_search','').strip()
     if len(search)>180: raise ValueError
     reference=search.split('-',1)[1] if search.upper().startswith(('SV-','REQ-')) else search
@@ -142,19 +142,20 @@ def save_values(request,data):
             if data.get('appointment'):
                 if type(data['appointment'])is not int or not isinstance(data.get('reason'),str) or not data['reason'].strip(): raise ValueError
                 old=get_object_or_404(appointments(),pk=data['appointment'],assignment__request=job)
-                if old.cancelled_at or job.assignments.first().pk!=old.assignment_id:
+                if old.cancelled_at or (not getattr(request,'_attendance_authorised',False) and job.assignments.first().pk!=old.assignment_id):
                     return JsonResponse({'error':'Appointment is no longer current.'},status=409)
             supplier_ids=sorted({supplier_id}|({old.team.subcontractor_id} if old else set()),key=str)
             list(Subcontractor.objects.select_for_update().filter(pk__in=supplier_ids).order_by('pk'))
-            if old: accept(save_appointment(request.user,old.team.subcontractor_id,{'cancel':old.pk,'reason':data['reason']}))
+            if old: accept(save_appointment(request.user,old.team.subcontractor_id,{'cancel':old.pk,'reason':data['reason']},rescheduling=True))
             allocation=job.assignments.first()
             replace_assessment=False
             if allocation and not getattr(request,'_assessment_authorised',False):
                 from .workflow import assessment_ids
                 assessment_appointments=job.attendance_requests.filter(pk__in=assessment_ids(job)).values_list('appointment_id',flat=True)
                 replace_assessment=allocation.appointments.filter(cancelled_at=None).exists() and not allocation.appointments.filter(cancelled_at=None).exclude(pk__in=assessment_appointments).exists()
-            if replace_assessment or not allocation or allocation.subcontractor_id!=supplier_id or allocation.team_id!=team_id:
-                accept(assign_job(request.user,job.pk,{'version':job.version,'subcontractor':str(supplier_id),'team':str(team_id),'submission_key':str(uuid.uuid5(key,'assignment'))},assessment_authorised=getattr(request,'_assessment_authorised',False),replace_assessment=replace_assessment,phone_confirmed=getattr(request,'_phone_confirmed',False)))
+            additional=getattr(request,'_additional_appointment',False) or (bool(old) and getattr(request,'_phone_confirmed',False))
+            if additional or replace_assessment or not allocation or allocation.subcontractor_id!=supplier_id or allocation.team_id!=team_id:
+                accept(assign_job(request.user,job.pk,{'version':job.version,'subcontractor':str(supplier_id),'team':str(team_id),'submission_key':str(uuid.uuid5(key,'assignment'))},assessment_authorised=getattr(request,'_assessment_authorised',False),replace_assessment=replace_assessment,phone_confirmed=getattr(request,'_phone_confirmed',False),allow_additional=additional))
                 job.refresh_from_db();allocation=job.assignments.first()
             else:
                 active=allocation.appointments.filter(cancelled_at__isnull=True)
@@ -233,3 +234,40 @@ def monday(request):
         'results':[dict(invoice_data(i,request.user),supplier_name=i.subcontractor.name,job=str(i.request_id),
             job_number=i.request.reference,overdue=i.document_status=='active' and i.amount-i.paid_amount+i.refunded_amount>0 and i.due_date<today,attention=i.reconciliation_required)
             for i in qs.select_related('subcontractor').order_by('due_date','pk')[(page-1)*50:page*50]]})
+
+
+@staff_only(can_schedule)
+@require_POST
+@checked
+def appointment_progress(request,appointment_id):
+    from .collaboration import request_key
+    from .models import WorkflowDecision
+    values=payload(request,('version','status','reason'))
+    if type(values.get('version'))is not int or values.get('status') not in ('on_site','completed','cancelled'):raise ValueError('Choose On site, Complete or Cancelled.')
+    key=request_key(request);fingerprint=hashlib.sha256(json.dumps(dict(values,appointment=appointment_id),sort_keys=True).encode()).hexdigest()
+    first=get_object_or_404(TeamAppointment,pk=appointment_id)
+    with transaction.atomic():
+        Property.objects.select_for_update().get(pk=first.assignment.request.property_id)
+        job=MaintenanceRequest.objects.select_for_update().get(pk=first.assignment.request_id)
+        prior=WorkflowDecision.objects.filter(key=key).first()
+        if prior:
+            if prior.actor_id!=request.user.pk or prior.request_id!=job.pk or prior.fingerprint!=fingerprint:return JsonResponse({'error':'Submission key conflict.'},status=409)
+            return JsonResponse(appointment_data(appointments().get(pk=appointment_id)))
+        item=TeamAppointment.objects.select_for_update().get(pk=appointment_id)
+        if item.version!=values['version']:return JsonResponse({'error':'Appointment changed. Refresh before updating.'},status=409)
+        if item.cancelled_at:return JsonResponse({'error':'This appointment is cancelled. Add a new appointment if needed.'},status=409)
+        reason=values.get('reason','')
+        if not isinstance(reason,str) or len(reason)>500:raise ValueError('Invalid appointment reason.')
+        previous=item.progress_status
+        if values['status']=='cancelled':
+            if not reason.strip():raise ValueError('Record a reason for cancelling this appointment.')
+            response=save_values(request,dict(cancel=item.pk,reason=reason.strip()))
+            if response.status_code>=400:return response
+            item.refresh_from_db()
+        else:
+            item.progress_status=values['status'];item.version+=1;item.save(update_fields=['progress_status','version'])
+        WorkflowDecision.objects.create(request=job,actor=request.user,operation='appointment-progress',key=key,fingerprint=fingerprint,snapshot=dict(appointment=item.pk,previous=previous,status=item.progress_status,version=item.version,reason=reason))
+        from .workflow import attention_notifications
+        if values['status']!='cancelled' or not job.workflow_version:
+            attention_notifications(job,request.user,'Appointment '+item.get_progress_status_display().lower(),'appointment-progress:'+str(key),tenant=True)
+        return JsonResponse(appointment_data(appointments().get(pk=item.pk)))

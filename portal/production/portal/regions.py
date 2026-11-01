@@ -233,7 +233,7 @@ def assignments(request, job_id):
     return assign_job(request.user,job_id,payload(request, ('subcontractor','version','submission_key','team')))
 
 
-def assign_job(user,job_id,data,assessment_authorised=False,replace_assessment=False,phone_confirmed=False):
+def assign_job(user,job_id,data,assessment_authorised=False,replace_assessment=False,phone_confirmed=False,allow_additional=False):
     from .staff_access import can_schedule
     if not can_schedule(user): return JsonResponse({'error':'Scheduling access required.'},status=403)
     job=get_object_or_404(MaintenanceRequest,pk=job_id)
@@ -271,9 +271,9 @@ def assign_job(user,job_id,data,assessment_authorised=False,replace_assessment=F
             from .workflow import assessment_ids
             assessment_appointments=job.attendance_requests.filter(pk__in=assessment_ids(job)).values_list('appointment_id',flat=True)
             replace_assessment=bool(current and current.appointments.filter(cancelled_at=None).exists() and not current.appointments.filter(cancelled_at=None).exclude(pk__in=assessment_appointments).exists())
-        if current and not replace_assessment and current.appointments.filter(cancelled_at__isnull=True, ends_at__gte=timezone.now()).exists():
+        if current and not allow_additional and not replace_assessment and current.appointments.filter(cancelled_at__isnull=True, ends_at__gte=timezone.now()).exists():
             return JsonResponse({'error':'Cancel/reschedule the existing appointment before reassigning.'},status=409)
-        if current and not replace_assessment and current.subcontractor_id == item.pk and current.team_id == team_id:
+        if current and not allow_additional and not replace_assessment and current.subcontractor_id == item.pk and current.team_id == team_id:
             return JsonResponse({'error': 'Subcontractor is already assigned.'}, status=409)
         assignment = JobAssignment.objects.create(request=job, subcontractor=item, actor=user,
             submission_key=key, city=prop.city, suburb=prop.suburb, team=team)

@@ -39,7 +39,7 @@ class CompletionDeliveryTests(TestCase):
     def completed(self):
         r=self.upload();self.assertEqual(r.status_code,201,r.content)
         from .maintenance import update_status
-        for status in ['attended','completed']:
+        for status in ['on_site','completed']:
             self.job.refresh_from_db();r=update_status(self.ops,self.job,{'status':status,'version':self.job.version});self.assertEqual(r.status_code,200,r.content)
         self.job.refresh_from_db()
 
@@ -132,7 +132,7 @@ class CompletionDeliveryTests(TestCase):
         self.assertFalse(CompletionRecord.objects.exists())
         self.assertFalse(self.job.attachments.filter(purpose='completion_before').exists())
         from .maintenance import update_status
-        self.job.refresh_from_db();r=update_status(self.ops,self.job,{'status':'attended','version':self.job.version})
+        self.job.refresh_from_db();r=update_status(self.ops,self.job,{'status':'on_site','version':self.job.version})
         self.assertEqual(r.status_code,200,r.content)
         r=self.upload(mark_completed=True);self.assertEqual(r.status_code,201,r.content)
         self.job.refresh_from_db();self.assertEqual(self.job.status,'completed')

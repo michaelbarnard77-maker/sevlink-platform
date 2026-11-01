@@ -808,6 +808,8 @@ class TeamUnavailableDate(models.Model):
 
 class TeamAppointment(models.Model):
     customer_visible = models.BooleanField(default=False)
+    progress_status = models.CharField(max_length=12,default='booked',choices=[('booked','Booked'),('on_site','On site'),('completed','Complete'),('cancelled','Cancelled')])
+    version = models.PositiveIntegerField(default=1)
     submission_key = models.UUIDField(null=True,blank=True,unique=True)
     fingerprint = models.CharField(max_length=64,blank=True)
     rescheduled_from = models.OneToOneField('self',null=True,blank=True,on_delete=models.PROTECT,related_name='rescheduled_to')

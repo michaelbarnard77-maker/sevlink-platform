@@ -129,7 +129,7 @@ class SchedulingTests(TestCase):
 
     def test_public_progress_updates_preserve_privacy_and_actor_masking(self):
         self.login_scheduler();self.book()
-        for state in ('reviewed','scheduled','on_site','attended','completed'):
+        for state in ('reviewed','scheduled','on_site','completed'):
             self.job.refresh_from_db()
             response=self.client.post(reverse('operations_calendar_progress',args=[self.job.pk]),json.dumps({'status':state,'version':self.job.version}),content_type='application/json')
             self.assertEqual(response.status_code,200,response.content)
@@ -139,7 +139,7 @@ class SchedulingTests(TestCase):
             text=public.content.decode()
             for private in ('PRIVATE scheduler identity',str(self.crew.pk),self.partner.name,'appointment_changed','job_assigned'):
                 self.assertNotIn(private,text)
-        self.assertEqual(self.job.status_events.count(),5)
+        self.assertEqual(self.job.status_events.count(),4)
         self.assertEqual(self.client.get(reverse('maintenance_collection')).json()['count'],0)
 
     def test_plain_staff_agency_tenant_private_client_and_finance_cannot_schedule(self):

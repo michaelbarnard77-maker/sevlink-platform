@@ -35,3 +35,12 @@
  #phoneNav button.active{background:#124c7e;color:#fff}
 }
 #nav button.active{background:#124c7e;color:#fff;border-left:0}
+
+.week-booking[data-status=cancelled]{background:#fee2e2;border-color:#c92a36;color:#8f1420}
+.week-booking[data-status=on_site],.week-booking[data-status=in_progress]{background:#dbeafe;border-color:#1767bf;color:#123e75}
+.week-booking[data-status=completed]{background:#dcfce7;border-color:#21844b;color:#11572f}
+.calendar-status-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:13px}.calendar-status-legend span:before{content:'';display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:middle}.status-cancelled:before{background:#c92a36}.status-onsite:before{background:#1767bf}.status-completed:before{background:#21844b}
+
+.week-booking[data-status=booked]{background:#edf2f7;border-color:#94a8bd;color:#173e65}
+
+.week-track{overflow:hidden}

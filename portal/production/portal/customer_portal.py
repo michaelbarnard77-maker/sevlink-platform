@@ -81,7 +81,7 @@ def public_appointments(user):
 
 def appointment_row(a):
     job=a.assignment.request
-    state='cancelled' if a.cancelled_at else 'rescheduled' if a.rescheduled_from_id else 'scheduled'
+    state='cancelled' if a.cancelled_at else a.progress_status if a.progress_status in ('on_site','completed') else 'rescheduled' if a.rescheduled_from_id else 'scheduled'
     if job.workflow_version and hasattr(a,'public_arrival'):
         arrival=a.public_arrival
         return dict(job_row(job),id=a.pk,starts_at=str(arrival.agreed_date)+'T'+arrival.agreed_window.split('–')[0]+':00+02:00',ends_at=str(arrival.agreed_date)+'T'+arrival.agreed_window.split('–')[1]+':00+02:00',appointment_status=state,changed_at=(a.cancelled_at or a.created_at).isoformat())
@@ -124,11 +124,11 @@ def attention_rows(user):
             else:action='Invoice balance outstanding'
             add(i.request,'invoice:'+str(i.pk),action,1 if overdue else 3 if i.request.status not in CLOSED else 5,
                 target='invoice',target_id=str(i.pk),amount=str(balance),due_date=str(i.due_date),deposit_received=cash_met)
-        from .workflow import eligible,can_arrange,assessment_ids,free_assessment
+        from .workflow import eligible,can_arrange,assessment_ids,free_assessment,needs_rescheduling
         for job in qs:
             confirmed=job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at__isnull=True)
             if not free_assessment(job):confirmed=confirmed.exclude(pk__in=assessment_ids(job))
-            if job.workflow_version and can_arrange(job,user) and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not confirmed.exists():
+            if job.workflow_version and not needs_rescheduling(job) and can_arrange(job,user) and eligible(job) and not job.attendance_requests.filter(status='pending').exists() and not confirmed.exists():
                 add(job,'attendance-ready:'+str(job.pk),'Please confirm attendance date',3,target='job')
         # PM attention is limited to decisions/payments/attendance requiring their response.
         # Bookings, new requests and informational updates remain in their own views.

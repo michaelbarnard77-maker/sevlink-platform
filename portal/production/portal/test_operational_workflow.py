@@ -240,7 +240,7 @@ class AttendanceAndFinanceTests(TestCase):
         self.when=timezone.localdate()+timedelta(days=2)
         v=dict(version=self.job.version,attendance=self.arrival.pk,date=str(self.when),window='09:00–13:00',client_confirmed=True,contact_category='pm',subcontractor=str(self.partner.pk),team=str(self.crew.pk),starts_at=str(self.when)+'T09:00:00+02:00',ends_at=str(self.when)+'T10:00:00+02:00')
         result=self.confirm(v);self.assertEqual(result.status_code,201,result.content)
-        self.job.refresh_from_db();self.assertEqual(self.job.status,'reviewed');self.assertEqual(stage(self.job),'booked');self.assertFalse(deposit_state(self.job)['ready'])
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'scheduled');self.assertEqual(stage(self.job),'booked');self.assertFalse(deposit_state(self.job)['ready'])
         self.assertEqual(WorkflowDecision.objects.filter(request=self.job,operation='attendance-confirm').get().snapshot['purpose'],'assessment')
         # Desktop quoting after a booked assessment must not remain in Booked.
         result=self.client.post(url,__import__('json').dumps(dict(version=self.job.version,decision='desktop')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
@@ -313,6 +313,64 @@ class AttendanceAndFinanceTests(TestCase):
         result=self.confirm(v)
         self.assertEqual(result.status_code,400,result.content)
         self.arrival.refresh_from_db();self.assertEqual(self.arrival.status,'pending')
+
+    def test_add_appointment_keeps_original_and_allows_another_subcontractor(self):
+        from .models import Subcontractor
+        v=self.prepare();first=self.confirm(v);self.assertEqual(first.status_code,201,first.content)
+        original=TeamAppointment.objects.get();other=Subcontractor.objects.create(name='Second phone-confirmed subcontractor',created_by=self.ops)
+        self.job.refresh_from_db();new_day=self.when+timedelta(days=1)
+        extra=dict(version=self.job.version,attendance=self.arrival.pk,date=str(new_day),window='09:00–13:00',subcontractor=str(other.pk),starts_at=str(new_day)+'T09:00:00+02:00',ends_at=str(new_day)+'T17:00:00+02:00',duration='day',phone_confirmed=True,add_appointment=True,client_confirmed=True,contact_category='pm')
+        key=uuid.uuid4();result=self.confirm(extra,key);self.assertEqual(result.status_code,201,result.content)
+        self.assertEqual(self.confirm(extra,key).status_code,200)
+        original.refresh_from_db();self.assertIsNone(original.cancelled_at)
+        self.assertEqual(TeamAppointment.objects.filter(cancelled_at=None).count(),2)
+        self.assertEqual(AttendanceRequest.objects.filter(request=self.job,status='confirmed').count(),2)
+        self.assertEqual(set(TeamAppointment.objects.values_list('team__subcontractor_id',flat=True)),{self.partner.pk,other.pk})
+        self.job.refresh_from_db();job_version=self.job.version
+        visits=list(TeamAppointment.objects.order_by('pk'));first_visit=visits[0];second_visit=visits[1]
+        url=reverse('appointment_progress',args=[first_visit.pk]);key=uuid.uuid4()
+        update=dict(version=first_visit.version,status='on_site')
+        response=self.client.post(url,__import__('json').dumps(update),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(key))
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(self.client.post(url,__import__('json').dumps(update),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(key)).status_code,200)
+        first_visit.refresh_from_db();self.assertEqual(first_visit.progress_status,'on_site')
+        response=self.client.post(url,__import__('json').dumps(dict(version=first_visit.version,status='completed')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,200,response.content)
+        response=self.client.post(reverse('appointment_progress',args=[second_visit.pk]),__import__('json').dumps(dict(version=second_visit.version,status='cancelled',reason='PRIVATE Day 2 cancellation reason')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,200,response.content)
+        first_visit.refresh_from_db();second_visit.refresh_from_db();self.job.refresh_from_db()
+        self.assertEqual(first_visit.progress_status,'completed');self.assertIsNone(first_visit.cancelled_at)
+        self.assertEqual(second_visit.progress_status,'cancelled');self.assertIsNotNone(second_visit.cancelled_at)
+        week=self.client.get(reverse('operations_calendar'),{'week':str(new_day)}).json()['appointments']
+        self.assertTrue(any(row['id']==second_visit.pk and row['appointment_status']=='cancelled' for row in week))
+        self.assertEqual(self.job.status,'scheduled');self.assertEqual(self.job.version,job_version)
+        alerts=self.client.get(reverse('workflow_stages')).json()['rescheduling']
+        self.assertTrue(any(row['appointment']==second_visit.pk for row in alerts))
+        self.client.force_login(self.pm)
+        self.assertEqual(self.client.get(reverse('workflow_stages')).json()['rescheduling'],[])
+        attention=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
+        self.assertFalse(any(row['job']==str(self.job.pk) for row in attention))
+        self.client.force_login(self.ops)
+        cancelled_arrival=AttendanceRequest.objects.get(appointment=second_visit)
+        next_day=self.when+timedelta(days=2);self.job.refresh_from_db()
+        replacement=dict(extra,version=self.job.version,attendance=cancelled_arrival.pk,replace_cancelled=second_visit.pk,date=str(next_day),duration='2',starts_at=str(next_day)+'T09:00:00+02:00',ends_at=str(next_day)+'T11:00:00+02:00')
+        response=self.confirm(replacement);self.assertEqual(response.status_code,201,response.content)
+        self.assertTrue(TeamAppointment.objects.filter(rescheduled_from=second_visit,cancelled_at=None).exists())
+        self.assertEqual(self.client.get(reverse('workflow_stages')).json()['rescheduling'],[])
+        for user in (self.pm,self.tenant,self.finance):
+            self.client.force_login(user)
+            denied=self.client.post(url,__import__('json').dumps(dict(version=first_visit.version,status='on_site')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+            self.assertEqual(denied.status_code,403)
+        self.client.force_login(self.pm)
+        rows=self.client.get(reverse('customer_portal_section',args=['calendar']),{'week':str(self.when)}).json()['appointments']
+        self.assertTrue(any(row['job']==str(self.job.pk) for row in rows))
+        response=self.client.get(reverse('maintenance_detail',args=[self.job.pk]));self.assertNotIn('PRIVATE Day 2 cancellation reason',response.content.decode())
+
+    def test_hourly_duration_must_match_booking_times(self):
+        v=self.prepare();v.pop('team');v.update(phone_confirmed=True,duration='3')
+        self.assertEqual(self.confirm(v).status_code,400)
+        v['ends_at']=str(self.when)+'T12:00:00+02:00'
+        result=self.confirm(v);self.assertEqual(result.status_code,201,result.content)
 
     def test_confirm_booking_keeps_private_duration_separate_and_notifies_both(self):
         v=self.prepare();key=uuid.uuid4();r=self.confirm(v,key);self.assertEqual(r.status_code,201,r.content)
