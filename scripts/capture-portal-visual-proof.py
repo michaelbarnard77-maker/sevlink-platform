@@ -95,12 +95,21 @@ class VisualProof(StaticLiveServerTestCase):
         if os.environ.get('SEVLINK_NO_COVERAGE_PROOF')=='1':
             supplier.provinces.clear();supplier.cities.clear();supplier.suburbs.clear()
         existing_req=self.create('New repair needing review — visual test',category='Electrical',safety=True)
+        photo_empty=None
+        if os.environ.get('SEVLINK_TRIAGE_PHOTOS_PROOF')=='1':
+            picture=(ROOT/'public-site/dist/assets/hero-home.png').read_bytes()
+            self.post(self.tenant,reverse('maintenance_attachment_upload',args=[existing_req.pk]),{}, {'attachments':[SimpleUploadedFile('SYNTHETIC-tenant-repair-photo.png',picture,content_type='image/png'),document(name='SYNTHETIC-request-document.pdf')]})
+            self.post(self.pm,reverse('maintenance_attachment_upload',args=[existing_req.pk]),{}, {'attachments':SimpleUploadedFile('SYNTHETIC-PM-repair-photo.png',picture,content_type='image/png')})
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink',access_information='Synthetic access notes for preview.')
+            empty=self.create('No repair photos — synthetic test')
+            self.action(self.pm,empty,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink')
+            photo_empty=str(empty.pk)
         self.admin=User.objects.create_user(username='agency-admin-review',first_name='Agency Admin Review',email='agency-admin@example.test')
         Membership.objects.create(user=self.admin,agency=agency,role='admin')
         sessions={}
         for role,user in [('operations',self.ops),('pm',self.pm),('admin',self.admin),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
-        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
+        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),photo_empty=photo_empty,deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         from portal.account_mail import deliver
         from portal.models import CompletionPackage
