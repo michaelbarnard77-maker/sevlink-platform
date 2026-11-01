@@ -86,6 +86,11 @@ class VisualProof(StaticLiveServerTestCase):
         pending=self.create('Bathroom tap quotation — visual test');self.action(self.pm,pending,'review',job_type='quoted',urgency='high',access_responsibility='sevlink');self.quote(pending,'SQ-VISUAL-002')
         callout=self.create('Authorised call-out — visual test');self.action(self.pm,callout,'review',job_type='callout',urgency='normal',access_responsibility='pm',limit='1500.00')
         deposit_job=self.create('Full job invoice and deposit — visual test');self.action(self.pm,deposit_job,'review',job_type='quoted',urgency='normal',access_responsibility='pm');self.quote(deposit_job,'SQ-VISUAL-FULL',True)
+        if os.environ.get('SEVLINK_DOCUMENT_FOLDERS_PROOF')=='1':
+            old=pending.quotations.get()
+            changed=self.post(self.pm,reverse('maintenance_quote_decision',args=[pending.pk,old.pk]),dict(version=old.version,status='revision_requested',reason='Synthetic revised scope.'))
+            revision=self.post(self.ops,reverse('maintenance_quote_action',args=[pending.pk,old.pk,'revise']),dict(version=changed['version'],reference='SQ-VISUAL-002-R2',amount='3500',title='Synthetic revision 2',scope='Synthetic updated scope'),{'attachments':document(name='revision.pdf')})
+            self.post(self.ops,reverse('maintenance_quote_action',args=[pending.pk,revision['id'],'send']),dict(version=revision['version']))
         if os.environ.get('SEVLINK_MULTI_APPOINTMENT_PROOF')=='1':Subcontractor.objects.create(name='SECOND PHONE COMPANY',created_by=self.ops)
         if os.environ.get('SEVLINK_NO_COVERAGE_PROOF')=='1':
             supplier.provinces.clear();supplier.cities.clear();supplier.suburbs.clear()
