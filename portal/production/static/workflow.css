@@ -59,3 +59,23 @@ body>aside #nav{overflow-x:hidden;color:#d0e2f2}
 #userNotifications.has-unread:focus-visible,#notifications.has-unread:focus-visible{outline:2px solid #916400;outline-offset:3px}
 
 .attendance-card[data-appointment-status=on_site]{border-left:4px solid #1767bf}.attendance-card[data-appointment-status=completed]{border-left:4px solid #21844b}.attendance-card[data-appointment-status=cancelled]{border-left:4px solid #c92a36}.attendance-card .badge.OnSite{background:#dbeafe;color:#123e75}.attendance-card .badge.Cancelled{background:#fee2e2;color:#8f1420}
+
+/* Sevlink repair illustrations and matching navigation. */
+.categorygrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:14px;margin-top:22px}
+.categorygrid .category.illustrated{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:196px;padding:22px 12px 18px;border:1px solid #d7e3ee;border-radius:12px;background:#fff;color:#0b335c;box-shadow:0 2px 6px #0b335c04;transition:border-color .16s,background .16s,box-shadow .16s}
+.categorygrid .category.illustrated>span{display:grid;place-items:center;width:86px;height:86px;margin:0 0 14px;background:#f0f7fd;border-radius:24px;color:#0b335c}
+.categorygrid .category.illustrated svg{width:68px;height:68px;max-width:none}
+.repair-illustration .icon-accent{stroke:#0086c9}
+.categorygrid .category.illustrated b{font-size:13px;line-height:1.45;max-width:190px}
+.categorygrid .category.illustrated small{font-size:10px;color:#397398;margin-top:auto;padding-top:9px}
+.categorygrid .category.illustrated:hover{background:#f5faff;border-color:#0787ca;box-shadow:0 5px 18px #0b335c12}
+.categorygrid .category.illustrated:focus-visible{outline:3px solid #0086c9;outline-offset:3px}
+#nav button{display:flex;align-items:center;gap:12px;min-height:44px}
+#nav .nav-icon{display:grid;place-items:center;width:24px;height:24px;flex:0 0 24px;color:#8bcfff}
+#nav .nav-icon svg{width:21px;height:21px}
+#nav button.active .nav-icon,#nav button:hover .nav-icon{color:#fff}
+#phoneNav button{display:flex;align-items:center;gap:12px}
+#phoneNav button>span:first-child{display:grid;place-items:center;flex:0 0 24px;color:#087bb5}
+#phoneNav button.active>span:first-child{color:inherit}
+@media(max-width:600px){.categorygrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.categorygrid .category.illustrated{padding:18px 9px;min-height:184px}.categorygrid .category.illustrated>span{width:76px;height:76px;border-radius:20px}.categorygrid .category.illustrated svg{width:62px;height:62px}}
+@media(prefers-reduced-motion:reduce){.categorygrid .category.illustrated{transition:none}}

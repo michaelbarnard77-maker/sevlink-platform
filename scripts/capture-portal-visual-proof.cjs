@@ -15,6 +15,27 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
  async function openJob(p,id=job){await p.goto(url+'/maintenance/?job='+id);await p.locator('#modal[open] .workflow-tabs').waitFor();await p.locator('#modal .job-summary').waitFor();await p.evaluate(()=>document.querySelector('#modal').scrollTop=0);}
  async function panel(p,label){assert.equal(await p.locator('#jobUrgency').count(),0,'Standalone urgency panel is absent');assert.equal(await p.locator('#modal').getByText('Confirmed customer deposit:',{exact:false}).count(),0,'Legacy deposit footer is absent');await p.getByRole('tab',{name:label,exact:true}).click();await p.evaluate(()=>{const m=document.querySelector('#modal'),n=m.querySelector('.workflow-tabs');m.scrollTop=n.offsetTop-24;});if(label==='Attendance' && (await p.locator('#modal').getAttribute('data-job'))===job){assert.equal(await p.getByRole('heading',{name:'Attendance history',exact:true}).count(),1);}if(label==='Invoices' && (await p.locator('#modal').getAttribute('data-job'))===job)assert.equal(await p.locator('#verifyDeposit').count(),0);if(label==='Before & After Report')await p.locator('#modal [data-tab-panel=reports] img').evaluateAll(imgs=>Promise.all(imgs.map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=r;i.onerror=r;}))));}
  try{
+  if(process.env.SEVLINK_ICONS_PROOF_ONLY==='1'){
+    for(const role of ['operations','pm','tenant']){
+      const ctx=await browser.newContext({viewport:{width:1440,height:1000}});await ctx.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));
+      await p.goto(url+'/maintenance/');await p.locator('#nav button.active').waitFor();
+      assert.equal(await p.locator('#nav button').count(),await p.locator('#nav .nav-icon svg').count());
+      await shot(p,role+'-illustrated-sidebar',role,'Sevlink navy and blue sidebar icons',[],null,true);
+      if(role!=='operations'){
+        await p.locator('#nav [data-view=report]').click();await p.locator('.categorygrid .category').first().waitFor();
+        const tiles=p.locator('.categorygrid .category');assert.equal(await tiles.count(),19);assert.equal(await tiles.locator('svg').count(),19);
+        assert.equal(await tiles.evaluateAll(rows=>new Set(rows.map(r=>r.querySelector('svg').innerHTML)).size),19);
+        for(const category of ['Plumbing','Electrical','Roofing']){await p.locator(`[data-category="${category}"]`).click();await p.locator('#reportForm').waitFor();assert.equal(await p.locator('#modal .eyebrow').innerText(),category);await p.locator('#modal [data-close]').click();}
+        await shot(p,role+'-repair-category-illustrations',role,'Nineteen distinct, labelled repair-category illustrations',[],null,true);
+        await p.setViewportSize({width:390,height:844});await p.getByRole('button',{name:'Open navigation menu',exact:true}).click();await p.locator('#phoneNav').waitFor();assert.equal(await p.locator('#phoneNav button').count(),await p.locator('#phoneNav button svg').count());await shot(p,role+'-mobile-navigation-icons',role,'Matching mobile navigation icons');await p.getByRole('button',{name:'Open navigation menu',exact:true}).click();
+        assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await shot(p,role+'-mobile-category-illustrations',role,'Two-column repair tiles on phone',[],null,true);
+        await p.locator('[data-category=Plumbing]').focus();await p.keyboard.press('Enter');await p.locator('#reportForm').waitFor();await p.locator('#reportForm [name=title]').fill('SYNTHETIC icon tile reporting proof '+role);await p.locator('#reportForm [name=description]').fill('Synthetic browser proof: choosing the plumbing illustration retains the correct category.');await p.locator('#reportForm [type=submit]').click();await p.locator('#reportForm').waitFor({state:'hidden'});
+        const data=await(await p.request.get(url+'/api/maintenance/requests/')).json();const saved=data.results.find(j=>j.title==='SYNTHETIC icon tile reporting proof '+role);assert(saved);assert.equal(saved.category,'Plumbing');assert.equal(saved.workflow.stage,'new');assert.equal(saved.status,role==='pm'?'reviewed':'awaiting_review');
+      }
+      await ctx.close();
+    }
+    assert.deepEqual(errors,[]);fs.writeFileSync(path.join(output,'icon-proof.json'),JSON.stringify(captures,null,2));await browser.close();console.log('PASS: '+captures.length+' icon screenshots; desktop/mobile category selection, keyboard activation and real PM/tenant reporting.');return;
+  }
   // Capture and interact with the actual preserved source in a separate browser context.
   const ref=await browser.newContext({viewport:{width:1440,height:1000}}),rp=await ref.newPage();rp.setDefaultTimeout(12000);
   await rp.goto(url+'/static/maintenance-ui/index.html');await rp.getByRole('button',{name:'Create agency workspace →',exact:true}).click();
@@ -56,7 +77,7 @@ let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',async()
    await p.locator('#nav button.active').waitFor();
    const navStyle=await p.locator('#nav button.active').evaluate(b=>({background:getComputedStyle(b).backgroundColor,color:getComputedStyle(b).color,border:getComputedStyle(b).borderLeftWidth,aside:getComputedStyle(document.querySelector('aside')).backgroundColor}));
    assert.deepEqual(navStyle,{background:'rgb(18, 76, 126)',color:'rgb(255, 255, 255)',border:'0px',aside:'rgb(6, 47, 97)'});
-   assert.deepEqual(await p.locator('#nav button').first().evaluate(navigationMetrics),sourceNavigationMetrics,'All profiles use the published source navigation metrics');
+   assert.deepEqual(await p.locator('#nav button').first().evaluate(navigationMetrics),{...sourceNavigationMetrics,height:'44px'},'Navigation retains source typography with accessible icon rows');
    if(role!=='operations')assert.equal(await p.locator('#nav .nav-heading').count(),0);
    await shot(p,role+'-sidebar',role,'Left sidebar navigation',differences.sidebar,'aside');
    if(role!=='tenant'){
