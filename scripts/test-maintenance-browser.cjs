@@ -222,7 +222,7 @@ process.stdin.on('end', async () => {
     assert.equal(await page.locator('.invoicePayment').count(),0,'Agency invoices use one-click verification');
     await page.getByRole('button',{name:'Verify',exact:true}).click();
     await page.locator('.card .badge').filter({hasText:'Paid'}).waitFor();
-    await page.getByRole('button',{name:'Payments',exact:true}).click();
+    await page.locator('#modal').getByRole('button',{name:'Payments',exact:true}).click();
     const refund=page.locator('.invoiceRefund');
     await refund.locator('[name=amount]').fill('100.00');
     await refund.locator('[name=refunded_on]').fill(today);

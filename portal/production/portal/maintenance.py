@@ -376,7 +376,9 @@ def workspace(request):
     from django.templatetags.static import static
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+static('workflow.css')+'"></head>')
+    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+static('workflow.css')+'"><link rel="stylesheet" href="'+static('premium-portal.css')+'"></head>')
+    html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
+    html = html.replace('content="#101c31"', 'content="#102e46"')
     html = html.replace('</body>', '<script src="'+static('workflow-ui.js')+'"></script><script src="' + static('maintenance.js') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
