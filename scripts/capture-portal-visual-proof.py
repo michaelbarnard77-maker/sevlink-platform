@@ -104,6 +104,9 @@ class VisualProof(StaticLiveServerTestCase):
             empty=self.create('No repair photos — synthetic test')
             self.action(self.pm,empty,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink')
             photo_empty=str(empty.pk)
+        if os.environ.get('SEVLINK_QUOTE_UPLOAD_STAGE_PROOF')=='1':
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink')
+            self.action(self.ops,existing_req,'operations-triage',decision='desktop')
         self.admin=User.objects.create_user(username='agency-admin-review',first_name='Agency Admin Review',email='agency-admin@example.test')
         Membership.objects.create(user=self.admin,agency=agency,role='admin')
         sessions={}

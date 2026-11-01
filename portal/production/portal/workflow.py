@@ -20,7 +20,7 @@ from .quotations import digest
 from .events import record
 
 WINDOWS=('09:00–13:00','12:00–17:00')
-STAGES=(('new','New Requests'),('quoting','Quoting'),('approval','Awaiting Quotation Approval'),('declined','Declined'),
+STAGES=(('new','New Requests'),('quoting','Quote to upload'),('approval','Awaiting Quotation Approval'),('declined','Declined'),
         ('deposit','Awaiting Deposit'),('ready','Ready to Schedule'),('booked','Booked Appointments'),
         ('underway','Work Underway'),('invoice','Ready to Invoice'),('payment','Awaiting Final Payment'),('closed','Closed Jobs'))
 

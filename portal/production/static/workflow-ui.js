@@ -153,7 +153,7 @@ window.SevlinkWorkflowUI = (() => {
     const updateBadge=key=>{
       const b=nav.querySelector(`[data-tab="${key}"]`);if(!b)return;
       const count=attention.counts[key]||0;
-      b.innerHTML=esc(names[key])+(count?` <span class="job-tab-count" aria-hidden="true">(${count})</span>`:'');
+      b.innerHTML=`<span class="job-tab-label">${esc(names[key])}</span>`+(count?`<span class="job-tab-count" aria-hidden="true">${count}</span>`:'');
       b.setAttribute('aria-label',names[key]);
       b.setAttribute('aria-description',count+ (informational.has(key)?' unread updates':' items requiring attention'));
       b.title=names[key]+(count?` — ${count} ${informational.has(key)?'unread updates':'items requiring attention'}`:'');

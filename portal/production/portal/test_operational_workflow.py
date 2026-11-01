@@ -56,6 +56,22 @@ class OperationalWorkflowTests(TestCase):
         self.assertEqual(extra.linked_request.job_type,'quoted');self.assertNotEqual(extra.linked_request.request_number,self.job.request_number)
         self.job.refresh_from_db();self.assertEqual(self.job.job_number,number);self.assertEqual(self.job.spending_limit,1000)
         self.assertEqual(self.act('additional-decision',additional=extra.pk,decision='approved').status_code,409)
+    def test_quote_upload_pot_requires_pm_approval_before_deposit(self):
+        from .workflow import stage
+        self.review('quoted')
+        result=self.act('operations-triage',user=self.ops,decision='desktop')
+        self.assertEqual(result.status_code,200,result.content)
+        self.job.refresh_from_db();self.assertEqual(stage(self.job),'quoting')
+        stages=self.client.get(reverse('workflow_stages')).json()['stages']
+        self.assertEqual(next(s['label'] for s in stages if s['key']=='quoting'),'Quote to upload')
+        response=self.client.post(reverse('maintenance_quote_upload',args=[self.job.pk]),dict(reference='Q-UPLOAD-POT',title='Repair quote',scope='Repair and test',amount='1000.00',attachments=documents.document(name='quote.pdf')),HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertEqual(response.status_code,201,response.content);quote=response.json()
+        self.job.refresh_from_db();self.assertEqual(stage(self.job),'approval')
+        self.client.force_login(self.pm)
+        response=self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote['id']]),dict(version=quote['version'],status='approved',reason=''))
+        self.assertEqual(response.status_code,200,response.content)
+        self.job.refresh_from_db();self.assertEqual(stage(self.job),'deposit')
+
     def test_quotes_manual_and_scheduling_requires_explicit_superadmin_deposit_verification(self):
         self._exercise_deposit_verification()
 

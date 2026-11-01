@@ -72,7 +72,7 @@ process.stdin.on('end', async () => {
     await page.locator('#nav [data-view=requests]').click();
     await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
-    await page.locator('#job-tab-comments .job-tab-count').filter({hasText:'(1)'}).waitFor();
+    await page.locator('#job-tab-comments .job-tab-count').filter({hasText:'1'}).waitFor();
     await page.getByRole('tab',{name:'Comments',exact:true}).click();
     await page.locator('#job-tab-comments .job-tab-count').waitFor({state:'detached'});
     const persistedTabs=await (await page.request.get(url+'/api/maintenance/requests/'+(await page.locator('#modal').getAttribute('data-job'))+'/')).json();
