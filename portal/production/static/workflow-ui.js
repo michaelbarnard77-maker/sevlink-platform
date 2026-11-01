@@ -37,26 +37,28 @@ window.SevlinkWorkflowUI = (() => {
   const icon=i=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[i%paths.length]}"/></svg>`;
   // Original Sevlink line illustrations, keyed by category so filtering cannot change their meaning.
   const illustrations={
-    'Plumbing':'<path d="M14 24h25v8H14m8-8V14h13v6h10v12m-17 0v7H12v-7m33 5s-5 6-5 9a5 5 0 0 0 10 0c0-3-5-9-5-9"/><path class="icon-accent" d="M28 14V9m-6 0h12M11 51h23m-18-7h12"/>',
-    'Electrical':'<path d="M23 10v12m18-12v12M19 22h26v8a13 13 0 0 1-26 0Zm13 21v10"/><path class="icon-accent" d="m33 25-6 9h7l-3 6M11 27H7m50 0h-4M12 15l-3-3m43 3 3-3"/>',
+    'Plumbing':'<path class="icon-surface" d="M9 40h46v4a10 10 0 0 1-10 10H19A10 10 0 0 1 9 44Z"/><path d="M18 40V20a9 9 0 0 1 18 0v6h-7v-6a2 2 0 0 0-4 0v20M32 54v5"/><path class="icon-accent" d="M33 30v5m-19 9h36M12 34h5m-3-3v6"/>',
+    'Electrical':'<path class="icon-surface" d="M20 27a12 12 0 1 1 24 0c0 6-5 8-6 14H26c-1-6-6-8-6-14Z"/><path d="M26 45h12m-11 5h10m-8 4h6"/><path class="icon-accent" d="m33 20-6 9h7l-3 7M32 5v4M12 12l4 4m32-4-4 4M7 28h6m38 0h6"/>',
     'Doors & locks':'<path d="M13 54V10h29v44M19 54V16h23M27 34h4m13 3h12v14H44Zm3 0v-5a3 3 0 0 1 6 0v5"/><path class="icon-accent" d="M50 43v3M9 54h36"/>',
-    'Painting':'<path d="M11 12h32v14H11Zm32 4h8v18H28v8m-4 0h8v13h-8Z"/><path class="icon-accent" d="M17 16h20M16 20h8m13 23 5-5m0 14 7-7"/>',
-    'Tiling':'<path d="M10 10h44v44H10Zm0 22h44M32 10v44"/><path class="icon-accent" d="m16 25 9-9m-5 10 6-6m18 28 4-4m-10 4 10-10"/>',
+    'Painting':'<rect class="icon-surface" x="10" y="12" width="33" height="15" rx="3"/><path d="M43 17h9v17H29v9"/><rect class="icon-surface" x="25" y="43" width="8" height="14" rx="3"/><path class="icon-accent" d="M16 17h21m-21 5h13"/>',
+    'Tiling':'<path class="icon-surface" d="M9 11h46v42H9Z"/><path d="M9 25h46M9 39h46M25 11v14m15-14v14M17 25v14m16-14v14m15-14v14M25 39v14m15-14v14"/><path class="icon-accent" d="m14 19 4-4m17 18 4-4m6 18 4-4"/>',
     'General maintenance':'<path d="m11 16 7-7 10 10-4 4 26 26-6 6-26-26-4 4-8-8m31-8 8-8 10 3-8 8 5 5 8-8 2 10-9 8-8-1-8 8"/><path class="icon-accent" d="m11 48 8-8m-5 14 8-8"/>',
-    'Roofing':'<path d="m7 31 25-21 25 21M13 27v27h38V27M39 15V9h9v14M19 54V34h26v20"/><path class="icon-accent" d="m18 26 14-12 14 12M23 23h18m-26 7h34M24 39h16m-16 7h16"/>',
-    'Gutters & Downpipes':'<path d="M7 12h39v10H7Zm39 5h9v15H43v22h-9V28h12"/><path class="icon-accent" d="M12 17h28m-28 9v5m7-5v8m-5 8s-4 5-4 7a4 4 0 0 0 8 0c0-2-4-7-4-7"/>',
-    'Damp & Waterproofing':'<path d="M10 54V10h36v44M10 22h36M10 38h36m-24-28v12m10 0v16m-10 0v16m25-18s-8 10-8 15a8 8 0 0 0 16 0c0-5-8-15-8-15Z"/><path class="icon-accent" d="M17 29h6m-6 4h9m18 16 3 3 5-6"/>',
-    'Ceilings & Drywall':'<path d="M9 52V18l23-8 23 8v34M9 18l23 9 23-9M32 27v25M9 36h46"/><path class="icon-accent" d="M20 14v8m24-8v8M17 42h8m14 0h8"/>',
+    'Roofing':'<path class="icon-surface" d="m7 34 25-24 25 24H7Z"/><path d="M13 34v20h38V34M40 17V9h8v16M13 54h38"/><path class="icon-accent" d="M22 20h20M15 27h34M23 20l-7 14m18-20-9 20m17-12-8 12m13-6-4 6"/>',
+    'Gutters & Downpipes':'<path class="icon-surface" d="M8 12h40v10H8Zm34 10h8v29h-8Z"/><path d="M8 17h40m-6 26h8m-8-13h8M39 51h14"/><path class="icon-accent" d="M16 27s-6 8-6 11a6 6 0 0 0 12 0c0-3-6-11-6-11Zm15 7v8m0 5v2"/>',
+    'Damp & Waterproofing':'<path class="icon-surface" d="M10 10h35v44H10Z"/><path d="M10 24h35M10 39h25m-8-29v14m-9 0v15m9 0v15"/><path class="icon-accent" d="M47 30s-10 12-10 18a10 10 0 0 0 20 0c0-6-10-18-10-18Z"/><path d="m42 48 4 4 6-8"/>',
+    'Ceilings & Drywall':'<path class="icon-surface" d="M9 53V15h46v38"/><path d="m9 15 10 10h26l10-10M19 25v28m26-28v28M9 44h10m26 0h10"/><path class="icon-accent" d="M20 15v10m12-10v10m12-10v10M25 34h14m-14 6h14m-14 6h14"/>',
     'Carpentry & Cupboards':'<path d="M12 11h40v40H12Zm20 0v40M12 26h40m-27 8v9m14-9v9M16 51v5m32-5v5"/><path class="icon-accent" d="M18 18h8m12 0h8M8 56h48"/>',
     'Windows & Glass':'<path d="M10 10h44v44H10Zm5 5h34v34H15Zm17 0v34M15 32h34M7 54h50"/><path class="icon-accent" d="m20 25 7-7m-7 11 4-4m14 18 6-6"/>',
     'Gates & Garage Doors':'<path d="m7 23 25-13 25 13M12 23h40v31H12Zm5 5h30v26M17 35h30m-30 8h30m-30 7h30"/><path class="icon-accent" d="M28 46h8M8 54h48"/>',
     'Appliances':'<path d="M14 10h36v44H14Zm0 11h36m-30-6h2m5 0h2m11 0h4"/><circle cx="32" cy="37" r="12"/><path class="icon-accent" d="M23 37c5-6 11 6 18 0M20 56h6m12 0h6"/>',
     'Air Conditioning & Ventilation':'<rect x="8" y="12" width="48" height="22" rx="4"/><path d="M13 28h38M14 22h36m-3-5h2"/><path class="icon-accent" d="M20 40v8q0 5-5 5m17-13v15m12-15v8q0 5 5 5"/>',
-    'Gardens & Outdoor Areas':'<path d="M18 54V34m0 7C4 41 7 23 12 23c-3-9 13-12 14-2 9 0 10 20-8 20M42 54V39m-6 15 6-15 8 15M34 39h19"/><path class="icon-accent" d="M8 55h48m-27-5V39m0 6q-8 0-8-7 8 0 8 7m0 3q8 0 8-7-8 0-8 7"/>',
+    'Gardens & Outdoor Areas':'<path class="icon-surface" d="M25 12a9 9 0 0 0-17 4 10 10 0 0 0 2 19 10 10 0 0 0 19-2 11 11 0 0 0-4-21Z"/><path d="M19 26v28m0-17-5-6m5 11 6-6M37 35h18m-15 0v6h12v-6m-14 9h16m-13 0-3 10m13-10 3 10M7 55h50"/><path class="icon-accent" d="M30 54v-8m0 4 5-4m-5 1-4-4"/>',
     'Pest Control':'<ellipse cx="32" cy="34" rx="10" ry="16"/><path d="M25 21v-6q7-8 14 0v6m-11-9-4-6m12 6 4-6M22 29l-9-5m9 13H11m13 9-10 6m28-23 9-5m-9 13h11m-13 9 10 6"/><path class="icon-accent" d="M32 21v28m-5-19h10m-14 8h18"/>',
     'Cleaning & Waste Removal':'<path d="m20 29 15-20 5 4-15 20M16 29l15 10-11 17L5 46Zm22 1h17m-14 0 2 24h9l2-24m-10-5h8"/><path class="icon-accent" d="m11 43 13 8m-8-15 10 7M46 36v12m4-12v12"/>',
-    'Renovations & Refurbishments':'<path d="m8 30 24-20 24 20M14 25v29h36V25M25 54V38h14v16"/><path class="icon-accent" d="m39 11 6-6 8 3-6 6 4 4 6-6 2 8-7 7-7-1m-7-8-8 8M8 54h48"/>'
+    'Renovations & Refurbishments':'<path class="icon-surface" d="m8 29 24-20 24 20M14 25v29h36V25"/><path d="M25 54V38h14v16M8 54h48"/><path class="icon-accent" d="M37 15V7h17v8H37Zm17-4h4v12H46v5m-3 0h6v11h-6Z"/>'
   };
+  const categoryExamples={"Plumbing": "Taps, toilets and leaks", "Electrical": "Power, sockets and lighting", "Doors & locks": "Handles, hinges and locks", "Painting": "Walls, paint and finishes", "Tiling": "Tiles, grout and flooring", "General maintenance": "Small repairs and odd jobs", "Roofing": "Roof tiles, sheets and leaks", "Gutters & Downpipes": "Blocked gutters and drainage", "Damp & Waterproofing": "Damp walls and water damage", "Ceilings & Drywall": "Cracks, holes and ceiling damage", "Carpentry & Cupboards": "Cabinets, shelves and woodwork", "Windows & Glass": "Frames, panes and broken glass", "Gates & Garage Doors": "Gates, motors and garage doors", "Appliances": "Ovens, hobs and appliances", "Air Conditioning & Ventilation": "Cooling, airflow and extractor fans", "Gardens & Outdoor Areas": "Gardens, fences and outdoor repairs", "Pest Control": "Insects, rodents and infestations", "Cleaning & Waste Removal": "Cleaning, rubbish and waste", "Renovations & Refurbishments": "Room upgrades and larger projects"};
+  const categoryDescription=name=>categoryExamples[name]||'Repairs and maintenance';
   const categoryIcon=name=>`<svg class="repair-illustration" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${illustrations[name]||illustrations['General maintenance']}</svg>`;
   const navigationPaths={
     overview:'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z',
@@ -325,5 +327,5 @@ window.SevlinkWorkflowUI = (() => {
         }catch(e){toast(e.message);}
       });app.querySelectorAll('[data-agency-job]').forEach(b=>b.onclick=async()=>{try{showDetail(await api(`requests/${b.dataset.agencyJob}/`));}catch(e){toast(e.message);}});}catch(e){toast(e.message);}
   }
-  return {icon,categoryIcon,navIcon,decorate,stages,inbox,job,agencies,photoPicker};
+  return {icon,categoryIcon,categoryDescription,navIcon,decorate,stages,inbox,job,agencies,photoPicker};
 })();
