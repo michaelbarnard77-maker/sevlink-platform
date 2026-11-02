@@ -207,6 +207,7 @@
         try{
           await api(`requests/${job.id}/invoices/${invoice.id}/report-paid/`,{method:'POST',body:JSON.stringify({version:invoice.version}),headers:{'Idempotency-Key':key}});
           showDetail(await api(`requests/${job.id}/`));toast('Sevlink notified. Payment is awaiting verification.');
+          await loadJobs();render();
         }catch(error){toast(error.message);button.disabled=false;button.textContent='Paid';}
       };
     });
@@ -289,6 +290,7 @@
             panel.prepend(notice);notice.scrollIntoView({block:'center'});
           }
           toast('Saved.');
+          if(form.id==='invoiceForm'){await loadJobs();render();}
         } catch (error) {
           showError(error.message);
         } finally { if (button.isConnected){button.disabled = false;button.textContent=originalLabel;} }

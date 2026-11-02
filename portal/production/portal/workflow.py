@@ -21,7 +21,7 @@ from .events import record
 
 WINDOWS=('09:00–13:00','12:00–17:00')
 STAGES=(('new','New Requests'),('quoting','Quote to upload'),('approval','Awaiting Quotation Approval'),('declined','Declined'),
-        ('deposit','Awaiting Deposit'),('ready','Ready to Schedule'),('booked','Booked Appointments'),
+        ('deposit_invoice','Deposit to invoice'),('deposit','Awaiting Deposit'),('deposit_confirmation','Awaiting Confirmation'),('ready','Ready to Schedule'),('booked','Booked Appointments'),
         ('underway','Work Underway'),('invoice','Ready to Invoice'),('payment','Awaiting Final Payment'),('closed','Closed Jobs'))
 
 
@@ -122,7 +122,16 @@ def stage(job):
     if free_assessment(job):return 'ready'
     if job.job_type=='callout':return 'ready' if job.authorised_at else 'new'
     if job.quotations.filter(status='sent').exists():return 'approval'
-    if effective_quotes(job).exists():return 'ready' if eligible(job) else 'deposit'
+    if effective_quotes(job).exists():
+        if eligible(job):return 'ready'
+        from .customer_portal import deposit_state
+        from .invoices import pending_payment_report
+        state=deposit_state(job)
+        invoices=list(job.invoices.filter(visibility='shared',subcontractor=None,document_status='active',purpose__in=('deposit','legacy')))
+        if any(pending_payment_report(invoice) for invoice in invoices):return 'deposit_confirmation'
+        if Decimal(state['required'])>0 and Decimal(state['received'])>=Decimal(state['required']):return 'deposit_confirmation'
+        if not invoices or not any(invoice.amount-invoice.paid_amount+invoice.refunded_amount>0 for invoice in invoices):return 'deposit_invoice'
+        return 'deposit'
     latest=job.quotations.order_by('-created_at','-pk').first()
     if latest and latest.status=='rejected':return 'declined'
     return 'new' if job.status=='awaiting_review' else 'quoting'
@@ -266,7 +275,7 @@ def dashboard(request):
     summary=None
     if request.user.is_superuser:
         today=timezone.localdate()
-        summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','ready','underway','invoice')))]
+        summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','deposit_invoice','deposit_confirmation','ready','underway','invoice')))]
     return JsonResponse({'rescheduling':rescheduling,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
         'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
 
