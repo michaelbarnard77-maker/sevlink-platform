@@ -3,7 +3,7 @@ import uuid
 from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import get_connection
 from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -46,8 +46,11 @@ def deliver(limit=50, preview=False):
         try:
             backend='portal.mail.PrivatePreviewBackend' if preview else 'django.core.mail.backends.smtp.EmailBackend'
             provider=get_connection(backend)
-            message=EmailMessage(item.subject,item.body,to=[item.recipient],connection=provider,
+            from .email_branding import branded_bodies, BrandedEmail
+            plain,html=branded_bodies(item.body)
+            message=BrandedEmail(item.subject,plain,to=[item.recipient],connection=provider,
                                  headers={'Message-ID':f'<sevlink-account-{item.pk}@sevlink.co.za>'})
+            message.attach_alternative(html,'text/html')
             from .completion_delivery import attach_documents
             attach_documents(item,message)
             if message.send(fail_silently=False)!=1:

@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.core.mail import EmailMultiAlternatives, get_connection
+from django.core.mail import get_connection
 from django.utils.html import escape
 from django.db import connection, transaction
 from django.db.models import Q
@@ -75,14 +75,12 @@ def deliver(limit=50):
             headers={'Message-ID': f'<sevlink-event-{event.pk}@notifications.sevlink.co.za>', 'X-Sevlink-Event':str(event.pk)}
             if settings.OPERATIONS_SES_TAGGING_ENABLED:
                 headers['X-SES-MESSAGE-TAGS']='sevlink_event='+str(event.pk)
-            message = EmailMultiAlternatives(subject, body, settings.DEFAULT_FROM_EMAIL, [notification.recipient],
+            from .email_branding import branded_bodies, BrandedEmail
+            plain, html = branded_bodies(body)
+            message = BrandedEmail(subject, plain, settings.DEFAULT_FROM_EMAIL, [notification.recipient],
                 connection=get_connection(backend),
                 headers=headers)
-            message.attach_alternative('<html><body style="font-family:Arial;color:#102b46">'
-                '<div style="border-top:6px solid #f58220;padding:24px"><h1>SEVLINK</h1>'
-                '<p>PROPERTY MAINTENANCE · OPERATIONS</p><h2>' + escape(event.get_kind_display()) + '</h2>'
-                '<pre style="white-space:pre-wrap;font-family:Arial">' + escape(body) + '</pre>'
-                '<p>Confidential Operations notification. Sign in to review the saved job.</p></div></body></html>', 'text/html')
+            message.attach_alternative(html, 'text/html')
             if message.send(fail_silently=False) != 1:
                 raise RuntimeError('Delivery backend did not accept the message.')
         except Exception:
