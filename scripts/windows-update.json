@@ -1,5 +1,5 @@
 {
-  "version": "d65db61e1ea81022c5dad9bcc0350667e12d592c",
-  "url": "https://raw.githubusercontent.com/michaelbarnard77-maker/sevlink-platform/d65db61e1ea81022c5dad9bcc0350667e12d592c/scripts/update-windows-modern-portal.ps1",
-  "sha256": "6319483ba26168f7d65ec2e6f848c1f1340456aadf2c257fb9f0087ec4189e36"
+  "version": "dc9f8fe81b6a5283d6e34dfa39dd4567699de26a",
+  "url": "https://raw.githubusercontent.com/michaelbarnard77-maker/sevlink-platform/dc9f8fe81b6a5283d6e34dfa39dd4567699de26a/scripts/update-windows-email-signatures.ps1",
+  "sha256": "5f91f6c5f8bfc58bb0c5459331827521800f86b66f0a9c93e3873eab1a07380c"
 }
