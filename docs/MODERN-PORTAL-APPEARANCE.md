@@ -7,3 +7,5 @@ The sidebar uses the existing transparent brand asset with a white CSS treatment
 The cumulative Windows installer is scripts/update-windows-modern-portal.ps1. It verifies all 40 embedded file hashes, backs up the existing SQLite database and source, preserves user uploads and accounts, applies existing migrations through 0036, and rolls back on failure. Live email is not activated.
 
 Validation includes 77 maintenance/attachment/workflow tests (3 database-specific skips), an isolated browser test for PM renovation/photo/callback submission and tenant denial, and 45 screenshots covering landing/login, four portal roles, job tabs, accounts/documents, categories, calendar, and desktop/tablet/mobile layouts.
+
+Follow-up: Operations now uses the same illustrated full-size cards as PM, preserving its 13 stages in a responsive four-column desktop grid. Verified with 45 fresh real-browser screenshots.

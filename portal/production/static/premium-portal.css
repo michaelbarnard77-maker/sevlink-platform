@@ -81,3 +81,11 @@
 .sevlink-workspace .attention-card .secondary{background:#367b82;border-color:#367b82;color:#fff;font-weight:600}
 .sevlink-workspace .attention-card .secondary:hover{background:#2c6870}
 .sevlink-workspace .stage-card:not(.ops-pod) b{font-size:14px;line-height:1.4}
+/* Operations uses the same illustrated card treatment as the approved preview. */
+.sevlink-workspace .operations-stage-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.sevlink-workspace .operations-stage-grid .stage-card{min-height:174px}
+.sevlink-workspace .stat:before{background:#498b91}
+.sevlink-workspace #modal .job-tab-count{background:#367b82}
+@media(max-width:1100px){.sevlink-workspace .operations-stage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.sevlink-workspace .operations-stage-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sevlink-workspace .operations-stage-grid .stage-card{padding:17px;min-height:174px}}
+@media(max-width:350px){.sevlink-workspace .operations-stage-grid{grid-template-columns:1fr}}
