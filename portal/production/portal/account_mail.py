@@ -10,7 +10,7 @@ from django.utils import timezone
 from .models import MailQueue, AccountMailAttempt, OperationsWorkerHeartbeat
 
 
-def deliver(limit=50, preview=False):
+def deliver(limit=50, preview=False, *, message_id=None):
     if not preview:
         if connection.in_atomic_block:
             raise ImproperlyConfigured('Live delivery must run outside a database transaction.')
@@ -26,6 +26,8 @@ def deliver(limit=50, preview=False):
             rows=MailQueue.objects.filter(sent_at=None,retired_at=None).filter(
                 Q(attempts__lt=5,next_attempt_at__lte=now)|Q(expires_at__lte=now)).filter(
                 Q(lease_token=None)|Q(lease_expires_at__lt=now)).order_by('pk')
+            if message_id is not None:
+                rows=rows.filter(pk=message_id)
             if not preview and not settings.OPERATIONS_LIVE_DELIVERY_ENABLED:
                 rows=rows.filter(completion_package__isnull=True)
             rows=rows.select_for_update(skip_locked=True) if connection.features.has_select_for_update_skip_locked else rows.select_for_update()

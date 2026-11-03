@@ -66,3 +66,19 @@ class AccountMailConcurrencyTests(TransactionTestCase):
             self.assertEqual(provider.return_value.send_messages.call_count,1)
         item.refresh_from_db();self.assertEqual(item.attempts,1)
         self.assertEqual(AccountMailAttempt.objects.count(),1)
+
+@override_settings(SMTP_DELIVERY_ENABLED=True,EMAIL_HOST='test.invalid',EMAIL_HOST_USER='synthetic',EMAIL_HOST_PASSWORD='synthetic',EMAIL_USE_TLS=True,EMAIL_USE_SSL=False)
+class TargetedAccountMailTests(TransactionTestCase):
+    def test_selected_delivery_does_not_touch_backlog(self):
+        older=MailQueue.objects.create(recipient='other@example.test',subject='Unrelated',body='older secret')
+        selected=MailQueue.objects.create(recipient='selected@example.test',subject='Selected',body='selected link')
+        with patch('portal.account_mail.get_connection') as provider:
+            provider.return_value.send_messages.return_value=1
+            self.assertEqual(deliver(limit=1,message_id=selected.pk),1)
+            self.assertEqual(deliver(limit=1,message_id=selected.pk),0)
+            sent=provider.return_value.send_messages.call_args.args[0][0]
+            self.assertEqual(sent.to,['selected@example.test'])
+            self.assertEqual(provider.return_value.send_messages.call_count,1)
+        older.refresh_from_db();selected.refresh_from_db()
+        self.assertIsNone(older.sent_at);self.assertEqual(older.attempts,0);self.assertEqual(older.body,'older secret')
+        self.assertIsNotNone(selected.sent_at)
