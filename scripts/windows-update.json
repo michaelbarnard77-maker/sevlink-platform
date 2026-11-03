@@ -1,5 +1,5 @@
 {
-  "version": "9e84bd496291f7507b3c5150ebc833322f961dd5",
-  "url": "https://raw.githubusercontent.com/michaelbarnard77-maker/sevlink-platform/9e84bd496291f7507b3c5150ebc833322f961dd5/scripts/update-windows-email-signatures.ps1",
-  "sha256": "c2af9567eff8c14e00c8b89d4a7061f530871d8ed10e9d88890311a8ac4ca872"
+  "version": "ccb05cc8431a8c236c11e4cf0dde4bfb8edcea2f",
+  "url": "https://raw.githubusercontent.com/michaelbarnard77-maker/sevlink-platform/ccb05cc8431a8c236c11e4cf0dde4bfb8edcea2f/scripts/update-windows-local-account-mail.ps1",
+  "sha256": "062e8716552fbd926f94db8e18abce2e9c9cb1a8c1b0f5d9eef6170a8ec4131a"
 }
