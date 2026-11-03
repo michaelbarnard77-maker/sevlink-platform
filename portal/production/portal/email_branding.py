@@ -10,7 +10,7 @@ WATERMARK_CID = 'sevlink-signature-watermark'
 
 
 class BrandedEmail(EmailMultiAlternatives):
-    """Keep the embedded watermark related to HTML, separate from PDF attachments."""
+    """Keep the embedded signature related to HTML, separate from PDF attachments."""
     def _create_mime_attachment(self, content, mimetype):
         part = super()._create_mime_attachment(content, mimetype)
         if mimetype == 'text/html' and ('cid:' + WATERMARK_CID) in content:
@@ -26,20 +26,21 @@ class BrandedEmail(EmailMultiAlternatives):
 
 PLAIN_SIGNATURE = ('SEVLINK | Property Maintenance\n'
                    'Your Property. Our Priority.\n'
-                   'maintenance@sevlink.co.za\nhttps://www.sevlink.co.za')
+                   'maintenance@sevlink.co.za\nfinance@sevlink.co.za\ninfo@sevlink.co.za\n'
+                   '081 028 5034\nhttps://www.sevlink.co.za')
 
 
 def branded_bodies(body):
     """Keep a readable text alternative and safely render clickable message links."""
     text = str(body)
     html_body = urlize(text, autoescape=True).replace('\n', '<br>')
-    signature = '''<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:28px;background:#103249;border-radius:12px;color:#fff"><tr><td background="cid:sevlink-signature-watermark" bgcolor="#103249" style="padding:24px;font-family:Arial,sans-serif;background-color:#103249;background-image:url('cid:sevlink-signature-watermark');background-position:center;background-size:cover;background-repeat:no-repeat;border-radius:12px">
-<div style="font-size:25px;font-weight:bold;letter-spacing:1px;color:#fff">SEV<span style="color:#a1cfca">LINK</span></div>
-<div style="font-size:11px;letter-spacing:2px;color:#d7e7ef;margin-top:5px">PROPERTY MAINTENANCE</div>
-<div style="height:1px;background:#49868c;margin:17px 0"></div>
-<a href="mailto:maintenance@sevlink.co.za" style="font-size:13px;color:#fff;text-decoration:none">maintenance@sevlink.co.za</a><br>
-<a href="https://www.sevlink.co.za" style="font-size:13px;color:#fff;text-decoration:none;line-height:2">www.sevlink.co.za</a>
-<div style="font-size:13px;color:#b5dbd3;margin-top:13px">Your Property. Our Priority.</div>
+    signature = '''<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:28px"><tr><td>
+<a href="https://www.sevlink.co.za" style="text-decoration:none"><img src="cid:sevlink-signature-watermark" width="542" alt="SEVLINK | Property Maintenance. maintenance@sevlink.co.za | finance@sevlink.co.za | info@sevlink.co.za | 081 028 5034 | www.sevlink.co.za. Your Property. Our Priority." style="display:block;width:100%;max-width:542px;height:auto;border:0;border-radius:12px"></a>
+</td></tr><tr><td style="padding-top:12px;font:12px Arial,sans-serif;line-height:2;color:#28546b">
+<a href="mailto:maintenance@sevlink.co.za" style="color:#28546b">Maintenance</a> &nbsp;·&nbsp;
+<a href="mailto:finance@sevlink.co.za" style="color:#28546b">Finance</a> &nbsp;·&nbsp;
+<a href="mailto:info@sevlink.co.za" style="color:#28546b">Info</a> &nbsp;·&nbsp;
+<a href="tel:+27810285034" style="color:#28546b">Call 081 028 5034</a>
 </td></tr></table>'''
     html = ('<!doctype html><html><body style="margin:0;background:#eff6fc;color:#12344e;font-family:Arial,sans-serif">'
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:24px 12px">'

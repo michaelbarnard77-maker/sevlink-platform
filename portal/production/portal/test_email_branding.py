@@ -13,7 +13,13 @@ class EmailBrandingTests(SimpleTestCase):
         self.assertIn('href="https://portal.example.test/invitation/test-token/"',html)
         self.assertNotIn('<script>',html)
         self.assertIn('&lt;script&gt;',html)
-        self.assertNotIn('<img',html)
+        self.assertIn('<img src="cid:sevlink-signature-watermark"',html)
+        for address in ('finance@sevlink.co.za','info@sevlink.co.za'):
+            self.assertIn(address,plain)
+            self.assertIn('mailto:'+address,html)
+        self.assertIn('081 028 5034',plain)
+        self.assertIn('tel:+27810285034',html)
+        self.assertNotIn('background-image',html)
 
     def test_inline_watermark_and_pdf_remain_separate(self):
         from email import policy

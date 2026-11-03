@@ -1,8 +1,8 @@
 # Branded automatic emails
 
-Account invitations, password resets, operations notifications and completion packages now share the approved company footer: navy, muted teal, clickable maintenance email and website, tagline and a centred faded logo watermark. Personal names and Director titles are reserved for personal correspondence.
+Account invitations, password resets, operations notifications and completion packages now share the approved company footer: a light blue banner, navy and muted teal lettering, a centred faded logo, all three contact emails, 081 028 5034, website and tagline. Personal names and Director titles are reserved for personal correspondence.
 
-HTML is accompanied by readable plain text. The watermark is packaged as an inline MIME image within the HTML related part, requiring no public image host; completion PDFs remain separate attachments. Clients that suppress background images retain a navy background and readable contact text. Gmail and Outlook rendering should be checked with the explicit single-message test before enabling automated delivery.
+HTML is accompanied by readable plain text. The full signature banner is an inline MIME image within the HTML related part, requiring no public image host; completion PDFs remain separate attachments. Rendering the banner as one image prevents independent dark-mode recolouring of its text over the watermark. Clickable Maintenance, Finance, Info and Call links remain below the banner. Image alt text includes all contact details. Gmail and Outlook rendering should be checked with the explicit single-message test before enabling automated delivery.
 
 Queued content, recipients, invitation URLs, expiry, delivery gates, audit and document access checks are unchanged. Neither this update nor its test command starts workers or processes the backlog.
 
