@@ -24,7 +24,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
    const card=p.locator(`#stageJobs .job-card[data-stage-job="${item.job}"]`);
    assert((await card.locator('.job-attention-reasons').innerText()).includes(item.action));
   }
-  assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','profile','report','publicCalendar','updates','accounts','issues']);
+  assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','profile','report','renovations','publicCalendar','updates','accounts','issues']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
   await p.locator('#attention .attention-card').filter({hasText:'Approve, reject or request quotation revision'}).filter({hasText:'GP repair'}).getByRole('button',{name:/Open quotation/}).click();
   assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'1');

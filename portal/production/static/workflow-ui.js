@@ -75,7 +75,7 @@ window.SevlinkWorkflowUI = (() => {
     agencies:'M3 21V9h8v12m0-17h10v17M6 12h2m-2 4h2m6-9h4m-4 4h4m-4 4h4M1 21h22',
     regions:'M14 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0M2 21v-4a5 5 0 0 1 10 0v4m3-7 3-3 4 4-3 3-4-4m-3 7 4-4'
   };
-  const navIcon=key=>{key=({publicCalendar:'calendar',monday:'accounts',websiteIssues:'issues'})[key]||key;return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${navigationPaths[key]||navigationPaths.requests}"/></svg>`;};
+  const navIcon=key=>{key=({renovations:'properties',publicCalendar:'calendar',monday:'accounts',websiteIssues:'issues'})[key]||key;return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${navigationPaths[key]||navigationPaths.requests}"/></svg>`;};
   const dashboardIllustrations={
     "attention": "<path class=\"icon-surface\" d=\"M19 18h43v65H19Z\"/><path d=\"M26 26h29v48H26M31 18v-7h19v7m-14-7V7h9v4\"/><path class=\"icon-detail\" d=\"M32 34h17m-17 8h12m-12 8h10M32 66h9\"/><circle class=\"icon-surface\" cx=\"64\" cy=\"60\" r=\"20\"/><path class=\"icon-accent\" d=\"M64 48v14m0 7v1M72 29l5-6m-1 17h8M63 24v-7\"/>",
     "new": "<path class=\"icon-surface\" d=\"M14 48h66v34H14Z\"/><path d=\"m14 48 10-15h13m29 0h4l10 15M14 56h20l5 8h17l5-8h19M25 48V15h36l10 10v23M61 15v12h10\"/><path class=\"icon-detail\" d=\"M33 25h17m-17 8h27m-27 8h18M20 76h54\"/><circle class=\"icon-surface\" cx=\"70\" cy=\"29\" r=\"15\"/><path class=\"icon-accent\" d=\"M70 21v16m-8-8h16\"/>",

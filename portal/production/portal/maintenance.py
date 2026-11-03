@@ -166,7 +166,7 @@ def context(request):
         'can_schedule': can_schedule(request.user),
         'can_supplier_payments': can_pay(request.user),
         'properties': [property_data(p) for p in properties_for(request.user).select_related('agency', 'manager')],
-        'categories': list(CATEGORIES),
+        'categories': [c for c in CATEGORIES if c != 'Renovations & Refurbishments'],
     })
 
 
@@ -244,13 +244,30 @@ def collection(request):
             except ValueError:
                 raise ValueError('Idempotency-Key must be a UUID.')
         if request.content_type == 'multipart/form-data':
-            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information', 'job_type', 'access_responsibility', 'limit'))
+            data, uploads = attachments.multipart(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information', 'job_type', 'access_responsibility', 'limit', 'request_call', 'contact_name', 'contact_phone'))
         else:
-            data = payload(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information', 'job_type', 'access_responsibility', 'limit'))
+            data = payload(request, ('property', 'title', 'description', 'category', 'urgency', 'access_information', 'job_type', 'access_responsibility', 'limit', 'request_call', 'contact_name', 'contact_phone'))
             uploads = []
         if any(not isinstance(value, str) for value in data.values()):
             raise ValueError('Report fields must be text.')
         direct = access(request.user)[0] in (Membership.PM,Membership.ADMIN)
+        renovation = data.get('category') == 'Renovations & Refurbishments'
+        callback = {key: data.pop(key) for key in ('request_call', 'contact_name', 'contact_phone') if key in data}
+        if renovation and not direct:
+            return JsonResponse({'error': 'Only property managers and agency administrators can request renovations or refurbishments.'}, status=403)
+        if callback and not renovation:
+            raise ValueError('Callback details are only available for refurbishment and renovation requests.')
+        if renovation:
+            if callback.get('request_call', '0') not in ('0', '1'):
+                raise ValueError('Choose whether you would like a call.')
+            if callback.get('request_call') == '1':
+                name = callback.get('contact_name', '').strip()
+                phone = callback.get('contact_phone', '').strip()
+                if not name or len(name) > 120 or not re.fullmatch(r'[+()0-9 .-]{7,40}', phone):
+                    raise ValueError('Please enter the contact name and a valid callback phone number.')
+                data['description'] = 'CALL REQUESTED\nContact: ' + name + '\nPhone: ' + phone + '\n\n' + (data.get('description', '').strip() or 'Please call to discuss the proposed refurbishment or renovation.')
+            elif not data.get('description', '').strip():
+                raise ValueError('Describe the refurbishment or renovation you would like.')
         routing = {key:data.pop(key) for key in ('job_type','access_responsibility','limit') if key in data}
         if routing and not direct:
             raise ValueError('Only the property manager can authorise and route a repair.')
@@ -258,6 +275,8 @@ def collection(request):
         if not form.is_valid():
             return JsonResponse({'error': 'Please check the report fields.', 'fields': form.errors.get_json_data()}, status=400)
         prepared = attachments.prepare(uploads)
+        if renovation and any(not item['content_type'].startswith('image/') for item in prepared):
+            raise ValueError('Please attach photos only to refurbishment and renovation requests.')
         if access(request.user)[0]=='tenant' and data.get('urgency') not in (None,'','normal','safety'):
             raise ValueError('Tenants may flag a safety concern; only the property manager selects official urgency.')
         fingerprint = hashlib.sha256(json.dumps({
@@ -377,6 +396,7 @@ def workspace(request):
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)
     html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+static('workflow.css')+'"><link rel="stylesheet" href="'+static('premium-portal.css')+'"></head>')
+    html = html.replace('src="sevlink-logo.png"', 'src="'+static('landing/assets/sevlink-logo.png')+'"')
     html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
     html = html.replace('content="#101c31"', 'content="#102e46"')
     html = html.replace('</body>', '<script src="'+static('workflow-ui.js')+'"></script><script src="' + static('maintenance.js') + '"></script></body>')

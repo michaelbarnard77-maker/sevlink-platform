@@ -40,8 +40,8 @@ process.stdin.on('end', async () => {
     }
     let {context, page} = await signedIn('tenant', 390);
     await page.locator('#phoneNav [data-view=report]').click();
-    assert.equal(await page.locator('.categorygrid svg').count(),19);
-    assert.equal(new Set(await page.locator('.categorygrid svg').evaluateAll(nodes=>nodes.map(n=>n.innerHTML))).size,19);
+    assert.equal(await page.locator('.categorygrid svg').count(),18);
+    assert.equal(new Set(await page.locator('.categorygrid svg').evaluateAll(nodes=>nodes.map(n=>n.innerHTML))).size,18);
     if(process.env.SEVLINK_SCREENSHOT_DIR)await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/tenant-categories-390.png',fullPage:true});
     await page.locator('[data-category="Plumbing"]').click();
     await page.locator('[name=title]').fill('Kitchen tap leaking');

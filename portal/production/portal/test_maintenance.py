@@ -65,6 +65,31 @@ class MaintenanceTests(TestCase):
     def update(self, status, version=1, **extra):
         return self.client.patch(self.detail_url, json.dumps({'status': status, 'version': version, **extra}), content_type='application/json')
 
+    def test_renovation_permissions_and_direct_routing(self):
+        for user in (self.tenant, self.cotenant):
+            self.login(user)
+            self.assertNotIn('Renovations & Refurbishments', self.client.get(self.context_url).json()['categories'])
+            self.assertEqual(self.report(category='Renovations & Refurbishments').status_code, 403)
+        for user in (self.pm, self.admin):
+            self.login(user)
+            response = self.report(category='Renovations & Refurbishments', title='Kitchen refurbishment')
+            self.assertEqual(response.status_code, 201, response.content)
+            self.assertEqual(response.json()['status'], 'reviewed')
+        self.login(self.other_pm)
+        self.assertEqual(self.report(category='Renovations & Refurbishments').status_code, 400)
+        self.assertEqual(MaintenanceRequest.objects.count(), 2)
+
+    def test_renovation_callback_requires_contact_and_keeps_details(self):
+        self.login(self.pm)
+        fields = dict(category='Renovations & Refurbishments', request_call='1', description='')
+        self.assertEqual(self.report(**fields).status_code, 400)
+        result = self.report(**fields, contact_name='PM Contact', contact_phone='+27 82 123 4567')
+        self.assertEqual(result.status_code, 201, result.content)
+        self.assertIn('CALL REQUESTED', result.json()['description'])
+        self.assertIn('+27 82 123 4567', result.json()['description'])
+        self.assertEqual(self.report(category='Renovations & Refurbishments', description='', request_call='0').status_code, 400)
+        self.assertEqual(self.report(request_call='1', contact_name='PM Contact', contact_phone='0821234567').status_code, 400)
+
     def test_complete_workflow_survives_logout_and_new_session(self):
         submitted = self.create_report()
         self.assertEqual(submitted['status'], 'awaiting_review')
