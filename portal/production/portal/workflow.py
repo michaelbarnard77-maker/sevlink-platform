@@ -32,6 +32,7 @@ def notify(event,users):
 
 
 def managers(job):
+    if job.private_client_id:return [job.private_client.user] if job.private_client.portal_active and job.private_client.user.is_active else []
     users=list(User.objects.filter(membership__agency=job.property.agency,membership__role='admin',is_active=True))
     if job.property.manager_id:users.append(job.property.manager)
     return users
@@ -42,6 +43,7 @@ def operators():
 
 
 def access_tenants(job):
+    if job.private_client_id:return managers(job)
     from .models import Tenancy
     users=User.objects.filter(tenancy__property=job.property,tenancy__active=True,is_active=True,membership__role='tenant').distinct()
     if getattr(job.reported_by,'membership',None) and job.reported_by.membership.role=='tenant':
@@ -208,6 +210,9 @@ def data(job,user):
         operations_triage=(job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').values_list('snapshot',flat=True).first() or {}).get('decision'),
         jobs_payment_route=job.jobs_payment_route,jobs_intake_pending=intake_pending(job),pipeline=pipeline_for(job),
         can_triage=staff and pipeline_for(job)=='quotes' and job.job_type!='unclassified' and not job.quotations.exists() and not job.closed_at and job.status not in ('completed','cancelled','closed'),
+        **({'access_contacts':[dict(name=t.name,phone=t.phone,email=t.email,address=t.property.address)
+             for t in job.property.tenancy_set.filter(active=True).select_related('property')] if not job.private_client_id else [dict(name=job.private_client.name,phone=job.private_client.phone,email=job.private_client.email,address=job.property.address)]}
+           if role in ('superadmin','operations') and job.access_responsibility=='sevlink' and job.job_type in ('quoted','callout') else {}),
         **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
         **({} if tenant else {'access_responsibility':job.access_responsibility}),access_information=job.access_information,
         spending_limit=None if tenant else str(job.spending_limit) if job.spending_limit is not None else None,
@@ -215,7 +220,7 @@ def data(job,user):
         stage=stage(job),attendance_ready=eligible(job),arrival_windows=WINDOWS,attendance=arrivals,
         additional=[] if tenant else [dict(id=a.pk,amount=str(a.amount),reason=a.reason,status=a.status,linked_request=str(a.linked_request_id) if a.linked_request_id else None,decided_at=a.decided_at) for a in job.additional_authorisations.all()],
         completion=[dict(report=c.report,before_unavailable=c.before_unavailable,exception_reason=c.exception_reason,created_at=c.created_at) for c in job.completion_records.all()],
-        history=[] if tenant else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot if staff else {k:v for k,v in d.snapshot.items() if k!='duration'}) for d in job.workflow_decisions.select_related('actor').all() if staff or d.operation not in ('manual-stage','appointment-progress')])
+        history=[] if tenant or role==Membership.CLIENT else [dict(action=d.operation,at=d.created_at,actor='Sevlink Operations' if d.actor.is_staff else d.actor.get_full_name() or 'Agency user',details=d.snapshot if staff else {k:v for k,v in d.snapshot.items() if k!='duration'}) for d in job.workflow_decisions.select_related('actor').all() if staff or d.operation not in ('manual-stage','appointment-progress')])
 
 
 def tab_attention(job,user,visible):
@@ -318,7 +323,7 @@ def dashboard(request):
         today=timezone.localdate()
         summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','deposit_invoice','deposit_confirmation','ready','underway','invoice')))]
     return JsonResponse({'pipeline':pipeline,'rescheduling':rescheduling,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
-        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,received_at=j.created_at.isoformat(),job_type=j.job_type,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
+        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,received_at=j.created_at.isoformat(),job_type=j.job_type,client_type='private' if j.private_client_id else 'agency',category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
 
 
 @api_access
@@ -388,7 +393,7 @@ def action(request,job_id,operation):
             if values.get('version')!=job.version or type(values.get('version'))is not int:return JsonResponse({'error':'Job changed. Refresh before deciding.'},status=409)
             if job.closed_at or job.status=='cancelled':return JsonResponse({'error':'The job is closed.'},status=409)
             role,_=access(request.user);pm=role in ('pm','admin');staff=request.user.is_superuser
-            if operation in ('review','additional-decision') and not pm:return JsonResponse({'error':'Authorised property manager or agency administrator required.'},status=403)
+            if (operation=='review' and not pm) or (operation=='additional-decision' and not (pm or role==Membership.CLIENT)):return JsonResponse({'error':'Authorised property manager or agency administrator required.'},status=403)
             if operation=='attendance-request' and not (can_arrange(job,request.user) or (staff and free_assessment(job))):return JsonResponse({'error':'This attendance request belongs to the designated access contact.'},status=403)
             if operation not in ('review','additional-decision','attendance-request') and not staff:return JsonResponse({'error':'Sevlink Super Admin access required.'},status=403)
             if operation in ('additional-decision','attendance-decline') and (type(values.get('additional'))is not int or values['additional']<1):raise ValueError('A valid saved decision reference is required.')
@@ -430,7 +435,7 @@ def action(request,job_id,operation):
                     if item.amount<=job.spending_limit:raise ValueError('This authorisation is stale; a higher limit is already active.')
                     job.spending_limit=item.amount
                 if decision=='quotation':
-                    item.linked_request=MaintenanceRequest.objects.create(property=job.property,reported_by=request.user,parent_request=job,jobs_payment_route='pending',
+                    item.linked_request=MaintenanceRequest.objects.create(property=job.property,reported_by=request.user,parent_request=job,private_client=job.private_client,jobs_payment_route='pending',
                         title='Additional work: '+job.title[:160],description=item.reason,category=job.category,job_type='quoted',workflow_version=1,status='reviewed',access_responsibility=job.access_responsibility)
                     record(item.linked_request,request.user,'job_submitted','linked:'+str(key),{'status':'reviewed'})
                 item.save()
@@ -474,7 +479,7 @@ def action(request,job_id,operation):
             decision=WorkflowDecision.objects.create(request=job,actor=request.user,operation=operation,key=key,fingerprint=fingerprint,snapshot=snapshot)
             labels={'jobs-intake':'Sevlink selected job payment terms','operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Deposit verified','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
             event=record(job,request.user,'workflow_event','workflow:'+str(key),{'action':labels[operation],'decision_id':str(decision.pk)},private=operation in ('additional-request','additional-decision','review','verify-deposit'))
-            notify(event,operators() if operation=='attendance-request' or pm else participants(job,operation=='completion'))
+            notify(event,operators() if operation=='attendance-request' or pm or role==Membership.CLIENT else participants(job,operation=='completion'))
             if (operation=='review' and job.job_type=='callout' and job.jobs_payment_route!='pending') or operation=='verify-deposit' or (operation=='operations-triage' and values.get('decision')=='attendance') or (operation=='jobs-intake' and values.get('decision')=='without_deposit'):
                 attendance_invitation(job,request.user,'ready:'+str(key))
         return JsonResponse(data(job,request.user))
@@ -618,6 +623,6 @@ def refresh_overdue(actor):
 def agencies(request):
     from .models import Agency,Property,Tenancy,RemovalReceipt
     if not request.user.is_superuser:return JsonResponse({'error':'Super Admin access required.'},status=403)
-    qs=Agency.objects.all()
+    qs=Agency.objects.filter(kind='agency')
     if request.GET.get('agency'):qs=qs.filter(pk=uuid.UUID(request.GET['agency']))
     return JsonResponse({'pending_cleanups':[dict(id=str(r.pk),kind=r.kind,files=len(r.pending_files)) for r in RemovalReceipt.objects.exclude(pending_files=[])], 'agencies':[dict(id=str(a.pk),name=a.name,properties=[dict(id=str(p.pk),address=p.address,manager=p.manager.get_full_name() if p.manager_id else None,tenants=[dict(id=str(t.pk),name=t.name,linked=bool(t.user_id)) for t in p.tenancy_set.filter(active=True)],jobs=[dict(id=str(j.pk),reference=j.reference,title=j.title,status=j.get_status_display()) for j in p.maintenance_requests.all()]) for p in Property.objects.filter(agency=a).select_related('manager')]) for a in qs]})

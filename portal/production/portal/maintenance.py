@@ -47,7 +47,9 @@ def access(user):
     from .staff_access import can_schedule,can_pay
     if can_schedule(user) or can_pay(user): return 'operations',None
     membership = Membership.objects.filter(user=user).first()
-    if user.is_active and membership and membership.role in (Membership.ADMIN, Membership.PM, Membership.TENANT):
+    if user.is_active and membership and membership.role in (Membership.ADMIN, Membership.PM, Membership.TENANT, Membership.CLIENT):
+        if membership.role==Membership.CLIENT and not hasattr(user,'private_client'):return None,None
+        if membership.role==Membership.CLIENT and not user.private_client.portal_active:return None,None
         return membership.role, membership
     return None, None
 
@@ -59,7 +61,7 @@ def properties_for(user):
     if not membership:
         return Property.objects.none()
     qs = Property.objects.filter(agency=membership.agency)
-    if role == Membership.ADMIN:
+    if role in (Membership.ADMIN, Membership.CLIENT):
         return qs
     if role == Membership.PM:
         return qs.filter(manager=user)
@@ -69,6 +71,8 @@ def properties_for(user):
 def requests_for(user):
     role, _ = access(user)
     qs = MaintenanceRequest.objects.filter(property__in=properties_for(user))
+    if role == Membership.CLIENT:
+        qs=qs.filter(private_client__user=user,private_client__portal_active=True)
     if role == Membership.TENANT:
         qs = qs.filter(Q(reported_by=user)|Q(activities__recipient_notifications__user=user,activities__details__action='Please confirm attendance date')).distinct()
     return qs.select_related('property__agency', 'property__manager').prefetch_related('status_events', 'attachments', 'activities', 'comments', 'quotations')
@@ -119,6 +123,7 @@ def serialize(job, user):
     result = {
         'workflow': workflow_data(job,user),
         'id': str(job.pk), 'reference': job.reference, 'legacy_reference': 'SV-' + str(job.pk).upper(), 'request_reference': job.request_reference, 'official_job_reference': job.reference if job.job_number else None, 'historical_reference': job.legacy_job_reference, 'urgency': job.urgency,
+        'client_type':'private' if job.private_client_id else 'agency',
         'property': property_data(job.property), 'title': job.title,
         'description': job.description, 'category': job.category,
         'status': job.status, 'status_label': job.get_status_display(),
@@ -135,6 +140,11 @@ def serialize(job, user):
         'history': [{'status': event.status, 'label': S(event.status).label, 'at': event.at.isoformat()}
                     for event in job.status_events.all()],
     }
+    if role==Membership.CLIENT:
+        from .models import PrivateClientLink
+        latest=PrivateClientLink.objects.filter(request=job,purpose='quote').order_by('-created_at','-pk').first()
+        for quote in result['quotations']:
+            quote['can_decide']=bool(latest and not latest.revoked_at and str(latest.quotation_id)==quote['id'] and latest.quote_version==quote['version'] and quote['status']=='sent')
     result['tab_attention']=tab_attention(job,user,result)
     return result
 
@@ -389,6 +399,9 @@ def update_status(user,job,data,operations=False):
 def workspace(request):
     if not access(request.user)[0]:
         return HttpResponse('No maintenance workspace access.', status=403)
+    if access(request.user)[0]==Membership.CLIENT:
+        from django.shortcuts import redirect
+        return redirect('private_client_portal')
     # Reuse the existing portal shell and all its CSS, without running demo scripts
     # or embedding demo identities/private browser data in the authenticated UI.
     html = (settings.PORTAL_UI_DIR / 'index.html').read_text(encoding='utf-8')

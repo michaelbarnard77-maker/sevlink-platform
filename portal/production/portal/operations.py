@@ -28,6 +28,9 @@ def feed(request):
         return JsonResponse({'error': 'Invalid page cursor.'}, status=400)
     qs = items(request.user)
     unread = qs.filter(read=False).count()
+    unread_only=request.GET.get('unread','0')
+    if unread_only not in ('0','1'):return JsonResponse({'error':'Invalid unread filter.'},status=400)
+    if unread_only=='1':qs=qs.filter(read=False)
     if before:
         cursor = get_object_or_404(OperationsInboxItem, pk=before)
         qs = qs.filter(Q(created_at__lt=cursor.created_at) | Q(created_at=cursor.created_at, pk__lt=cursor.pk))

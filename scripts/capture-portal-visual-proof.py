@@ -2,7 +2,7 @@
 Run with the existing Django Python environment; requires Node Playwright/Chromium.
 Set SEVLINK_VISUAL_PROOF_DIR to choose the output directory. No production services.
 """
-import os,sys,tempfile,secrets,json,uuid,subprocess,base64
+import os,sys,tempfile,secrets,json,uuid,subprocess,base64,re
 from pathlib import Path
 from datetime import timedelta
 ROOT=Path(__file__).resolve().parents[1]
@@ -66,7 +66,7 @@ class VisualProof(StaticLiveServerTestCase):
         self.tenant=User.objects.create_user(username='tenant-review',first_name='Tenant Review',email='tenant@example.test');Membership.objects.create(user=self.tenant,agency=agency,role='tenant')
         gp,_=Province.objects.get_or_create(code='GP',defaults={'name':'Gauteng'});city,_=City.objects.get_or_create(province=gp,name='Johannesburg')
         self.home=Property.objects.create(agency=agency,manager=self.pm,name='Visual test home',address='12 Example Road — test property',city=city)
-        Tenancy.objects.create(property=self.home,user=self.tenant,name='Tenant Review',email='tenant@example.test',phone='Test only')
+        Tenancy.objects.create(property=self.home,user=self.tenant,name='Tenant Review',email='tenant@example.test',phone='082 000 0000')
         supplier=Subcontractor.objects.create(name='PRIVATE TEST SUPPLIER',created_by=self.ops,internal_notes='PRIVATE TEST INFORMATION')
         supplier.cities.add(city);trade,_=TradeCategory.objects.get_or_create(name='Plumbing');supplier.trades.add(trade)
         team=SubcontractorTeam.objects.create(subcontractor=supplier,name='Private test team',working_days=list(range(7)))
@@ -141,6 +141,7 @@ class VisualProof(StaticLiveServerTestCase):
             from portal.workflow import STAGES
             self.assertEqual(seen,{key for key,label in STAGES})
         split_ids={}
+        private_ids={}
         if os.environ.get('SEVLINK_SPLIT_PIPELINES_PROOF')=='1':
             def fresh(title,kind):
                 response=self.post(self.pm,reverse('maintenance_collection'),dict(property=str(self.home.pk),title=title,description='Synthetic preview only.',category='Plumbing',job_type=kind,**({'limit':'2000'} if kind=='callout' else {})))
@@ -149,6 +150,41 @@ class VisualProof(StaticLiveServerTestCase):
             approved_job=fresh('Approved kitchen pipe repair','quoted');self.quote(approved_job,'SQ-PIPELINE-APPROVED',True)
             callout_job=fresh('PM-authorised leaking pipe call-out','callout')
             split_ids=dict(new_quote=str(new_quote.pk),approved_job=str(approved_job.pk),callout_job=str(callout_job.pk))
+            booked_preview=fresh('Booked maintenance visit — sample','callout')
+            self.action(self.ops,booked_preview,'jobs-intake',decision='without_deposit')
+            visit_day=timezone.localdate()+timedelta(days=3)
+            self.action(self.tenant,booked_preview,'attendance-request',preference='date',date=str(visit_day),window='12:00–17:00')
+            arrival=AttendanceRequest.objects.get(request=booked_preview);booked_preview.refresh_from_db()
+            self.post(self.ops,reverse('workflow_confirm_attendance',args=[booked_preview.pk]),dict(version=booked_preview.version,attendance=arrival.pk,date=str(visit_day),window='12:00–17:00',subcontractor=str(supplier.pk),team=str(team.pk),starts_at=f'{visit_day}T14:00:00+02:00',ends_at=f'{visit_day}T15:00:00+02:00'))
+
+        if os.environ.get('SEVLINK_PRIVATE_CLIENTS_PROOF')=='1':
+            from portal.models import PrivateClientLink
+            def make_private(title,kind='quoted',email='private-preview@example.test'):
+                data=self.post(self.ops,reverse('private_client_create'),dict(name='Avery Morgan',email=email,phone='082 000 1234',address='24 Sample Avenue',title=title,description='Synthetic private-client preview only.',job_type=kind,**({'limit':'2000','authorisation':'Sample phone authorisation: maximum R2000.'} if kind=='callout' else {})))
+                return MaintenanceRequest.objects.get(pk=data['id'])
+            def link_token(item,purpose):
+                link=PrivateClientLink.objects.filter(request=item,purpose=purpose,revoked_at=None).latest('created_at')
+                return re.search(r'/client/link/([^/]+)/',link.message.body).group(1)
+            def readable_quote(item,reference):
+                from PIL import Image,ImageDraw,ImageFont
+                from io import BytesIO
+                page=Image.new('RGB',(1240,1754),'white');draw=ImageDraw.Draw(page);font=ImageFont.load_default(size=30)
+                for y,text in [(80,'SEVLINK | PROPERTY MAINTENANCE'),(160,'QUOTATION '+reference),(260,'Avery Morgan | 24 Sample Avenue'),(350,item.title),(470,'Scope: Repair, replace and test the affected fitting.'),(610,'Total VAT-inclusive: ZAR 4 000.00'),(760,'SYNTHETIC PREVIEW ONLY — no actual client work.')]:draw.text((70,y),text,font=font,fill='#12344e')
+                output=BytesIO();page.save(output,format='PDF');page.close()
+                q=self.post(self.ops,reverse('maintenance_quote',args=[item.pk]),dict(reference=reference,title=item.title,scope='Repair, replace and test the affected fitting.',amount='4000'),{'attachments':SimpleUploadedFile(reference+'.pdf',output.getvalue(),content_type='application/pdf')})
+                self.post(self.ops,reverse('maintenance_quote_action',args=[item.pk,q['id'],'send']),dict(version=q['version']))
+                return q
+            public_quote=make_private('Bathroom tap replacement')
+            readable_quote(public_quote,'PC-PREVIEW-001')
+            private_job=make_private('Kitchen pipe replacement')
+            readable_quote(private_job,'PC-PREVIEW-002')
+            accepted=Client().post(reverse('private_client_link',args=[link_token(private_job,'quote')]),{'decision':'approved'})
+            self.assertEqual(accepted.status_code,200)
+            activation=link_token(private_job,'activate')
+            self.action(self.ops,private_job,'jobs-intake',decision='deposit')
+            inv=self.invoice(private_job,'PC-INV-DEPOSIT','deposit','2000.00')
+            private_callout=make_private('Urgent bathroom leak call-out','callout','callout-preview@example.test')
+            private_ids=dict(public_quote=str(public_quote.pk),quote_token=link_token(public_quote,'quote'),private_job=str(private_job.pk),activation_token=activation,invoice=inv['id'],callout_job=str(private_callout.pk),callout_activation=link_token(private_callout,'activate'))
         photo_empty=None
         if os.environ.get('SEVLINK_TRIAGE_PHOTOS_PROOF')=='1':
             picture=(ROOT/'public-site/dist/assets/hero-home.png').read_bytes()
@@ -169,7 +205,7 @@ class VisualProof(StaticLiveServerTestCase):
         sessions={}
         for role,user in [('operations',self.ops),('pm',self.pm),('admin',self.admin),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
-        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,split_ids=split_ids,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),photo_empty=photo_empty,deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
+        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,split_ids=split_ids,private_ids=private_ids,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),photo_empty=photo_empty,deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         from portal.account_mail import deliver
         from portal.models import CompletionPackage

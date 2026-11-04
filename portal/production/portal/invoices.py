@@ -246,7 +246,7 @@ def pending_payment_report(invoice):
 @require_POST
 def report_paid(request, job_id, invoice_id):
     get_object_or_404(requests_for(request.user), pk=job_id)
-    if request.user.is_superuser or access(request.user)[0] not in (Membership.PM, Membership.ADMIN):
+    if request.user.is_superuser or access(request.user)[0] not in (Membership.PM, Membership.ADMIN, Membership.CLIENT):
         return JsonResponse({'error':'Only an authorised property manager or agency administrator can report payment.'}, status=403)
     try:
         key = request_key(request)

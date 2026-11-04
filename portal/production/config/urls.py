@@ -1,9 +1,13 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
 from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers, scheduling, lifecycle, mfa, customer_portal
-from portal import workflow, completion_delivery, admin_controls
+from portal import workflow, completion_delivery, admin_controls, private_clients
 
 urlpatterns = [
+    path('api/maintenance/private-clients/requests/',private_clients.create_request,name='private_client_create'),
+    path('client/link/<str:token>/',private_clients.client_link,name='private_client_link'),
+    path('client/link/<str:token>/pdf/',private_clients.client_pdf,name='private_client_pdf'),
+    path('client/portal/',private_clients.portal,name='private_client_portal'),
     path('api/maintenance/requests/<uuid:job_id>/manual-move/',admin_controls.move_job,name='manual_job_move'),
     path('api/maintenance/admin/remove/<str:kind>/<uuid:identifier>/',admin_controls.remove,name='admin_remove'),
     path('api/maintenance/admin/removals/<uuid:receipt_id>/cleanup/',admin_controls.retry_cleanup,name='removal_cleanup'),

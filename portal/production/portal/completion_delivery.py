@@ -22,6 +22,7 @@ class DeliveryBlocked(ValueError):
 
 
 def eligible_recipient(job):
+    if job.private_client_id:return job.private_client.user if job.private_client.user.email.casefold()==job.private_client.email.casefold() else None
     pm=job.property.manager
     if not pm or not pm.is_active or not pm.email:return None
     if not Membership.objects.filter(user=pm,agency=job.property.agency,role__in=['pm','admin']).exists():return None

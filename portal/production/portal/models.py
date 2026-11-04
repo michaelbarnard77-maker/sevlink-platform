@@ -67,16 +67,17 @@ class AccountLifecycleEvent(AppendOnlyModel):
     reason = models.CharField(max_length=500)
     created_at = models.DateTimeField(auto_now_add=True)
 class Agency(models.Model):
+    kind = models.CharField(max_length=10,default='agency',choices=[('agency','Agency'),('private','Private client')])
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=180)
     phone = models.CharField(max_length=40)
     area = models.CharField(max_length=180)
     created_at = models.DateTimeField(auto_now_add=True)
 class Membership(models.Model):
-    ADMIN, PM, TENANT = 'admin', 'pm', 'tenant'
+    ADMIN, PM, TENANT, CLIENT = 'admin', 'pm', 'tenant', 'client'
     user = models.OneToOneField(User,on_delete=models.PROTECT,related_name='membership')
     agency = models.ForeignKey(Agency,on_delete=models.PROTECT)
-    role = models.CharField(max_length=12,choices=[(ADMIN,'Agency administrator'),(PM,'Property manager'),(TENANT,'Tenant')])
+    role = models.CharField(max_length=12,choices=[(ADMIN,'Agency administrator'),(PM,'Property manager'),(TENANT,'Tenant'),(CLIENT,'Private client')])
 class Property(models.Model):
     id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     agency = models.ForeignKey(Agency,on_delete=models.PROTECT)
@@ -121,6 +122,7 @@ class Invitation(models.Model):
     revoked_at = models.DateTimeField(null=True,blank=True)
     invited_by = models.ForeignKey(User,on_delete=models.PROTECT)
 class MailQueue(models.Model):
+    private_job = models.ForeignKey('MaintenanceRequest',null=True,blank=True,on_delete=models.PROTECT,related_name='private_client_mail')
     recipient = models.EmailField()
     subject = models.CharField(max_length=200)
     body = models.TextField()
@@ -167,6 +169,7 @@ class MaintenanceRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name='maintenance_requests')
     reported_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='maintenance_requests')
+    private_client = models.ForeignKey('PrivateClient',null=True,blank=True,on_delete=models.PROTECT,related_name='jobs')
     job_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
     request_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
     legacy_job_reference = models.CharField(max_length=80, blank=True, editable=False)
@@ -984,4 +987,35 @@ class RemovalReceipt(models.Model):
     kind = models.CharField(max_length=16)
     counts = models.JSONField(default=dict)
     pending_files = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class PrivateClient(models.Model):
+    id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    agency = models.OneToOneField(Agency,on_delete=models.PROTECT,related_name='private_client')
+    user = models.OneToOneField(User,on_delete=models.PROTECT,related_name='private_client')
+    name = models.CharField(max_length=180)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=40)
+    portal_active = models.BooleanField(default=False)
+    created_by = models.ForeignKey(User,on_delete=models.PROTECT,related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(Lower('email'),name='unique_private_client_email_casefold')]
+
+
+class PrivateClientLink(models.Model):
+    QUOTE, ACTIVATE = 'quote', 'activate'
+    client = models.ForeignKey(PrivateClient,on_delete=models.PROTECT,related_name='links')
+    request = models.ForeignKey(MaintenanceRequest,on_delete=models.PROTECT,related_name='client_links')
+    quotation = models.ForeignKey(JobQuotation,null=True,blank=True,on_delete=models.PROTECT)
+    quote_version = models.PositiveIntegerField(default=0)
+    purpose = models.CharField(max_length=10,choices=[('quote','Review quotation'),('activate','Activate portal')])
+    token_hash = models.CharField(max_length=64,unique=True)
+    email = models.EmailField()
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True,blank=True)
+    revoked_at = models.DateTimeField(null=True,blank=True)
+    message = models.OneToOneField(MailQueue,null=True,blank=True,on_delete=models.PROTECT,related_name='private_client_link')
     created_at = models.DateTimeField(auto_now_add=True)

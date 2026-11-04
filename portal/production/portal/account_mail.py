@@ -53,6 +53,8 @@ def deliver(limit=50, preview=False, *, message_id=None):
             message=BrandedEmail(item.subject,plain,to=[item.recipient],connection=provider,
                                  headers={'Message-ID':f'<sevlink-account-{item.pk}@sevlink.co.za>'})
             message.attach_alternative(html,'text/html')
+            from .private_clients import validate_delivery
+            validate_delivery(item)
             from .completion_delivery import attach_documents
             attach_documents(item,message)
             if message.send(fail_silently=False)!=1:

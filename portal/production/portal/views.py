@@ -86,6 +86,7 @@ def dashboard(request):
         if request.user.is_superuser:
             return redirect('maintenance_workspace')
         return HttpResponseForbidden('No workspace access. Contact Sevlink.')
+    if m.role==Membership.CLIENT:return redirect('private_client_portal')
     if m.role not in (Membership.ADMIN, Membership.PM, Membership.TENANT):
         return HttpResponseForbidden('No workspace access. Contact Sevlink.')
     if m.role in (Membership.PM,Membership.ADMIN) and request.GET.get('setup')!='1':

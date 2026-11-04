@@ -29,7 +29,7 @@ def comment_data(comment, user):
     from .attachments import attachment_data, visible_attachments
     role, name = comment.author_role, comment.author_name
     return {'id': str(comment.pk), 'text': comment.text,
-            'actor': 'Sevlink Operations' if role == 'superadmin' and not user.is_superuser else name,
+            'actor': 'Sevlink Operations' if role in ('superadmin','operations') and not user.is_superuser else name,
             'at': comment.created_at.isoformat(), 'visibility': comment.visibility,
             'attachments': [attachment_data(a) for a in visible_attachments(comment.request, user).filter(comment=comment)]}
 

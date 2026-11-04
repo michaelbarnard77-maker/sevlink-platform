@@ -18,7 +18,7 @@ def actor_identity(user):
     else:
         membership = getattr(user, 'membership', None)
         role = membership.role if membership else 'unknown'
-    label = {'superadmin': 'Sevlink Operations', 'operations':'Sevlink Operations', 'tenant': 'Tenant', 'pm': 'Property manager', 'admin': 'Agency administrator'}.get(role, 'User')
+    label = {'superadmin': 'Sevlink Operations', 'operations':'Sevlink Operations', 'tenant': 'Tenant', 'client':'Private client', 'pm': 'Property manager', 'admin': 'Agency administrator'}.get(role, 'User')
     return role, user.get_full_name()[:300] or label
 
 
@@ -61,6 +61,9 @@ def record(job, actor, kind, dedup_key, details=None, *, private=False):
         if kind=='job_submitted':notify(event,operators() if role in ('pm','admin') else participants(job))
         elif kind in ('quote_sent','invoice_uploaded') and not private:notify(event,participants(job))
         elif kind in ('quote_approved','quote_rejected','quote_revision_requested'):notify(event,operators())
+    if created and job.private_client_id:
+        from .private_clients import handle_event
+        handle_event(event)
     return event
 
 

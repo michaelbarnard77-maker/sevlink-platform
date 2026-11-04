@@ -142,7 +142,7 @@ def mutate(request, job_id, quote_id, operation):
     publish_revision=operation=='revise-and-send'
     if publish_revision:operation='revise'
     decision = operation == 'decision'
-    if (decision and access(request.user)[0] not in (Membership.PM, Membership.ADMIN)) or (not decision and not request.user.is_superuser):
+    if (decision and access(request.user)[0] not in (Membership.PM, Membership.ADMIN, Membership.CLIENT)) or (not decision and not request.user.is_superuser):
         return JsonResponse({'error': 'You cannot perform this quotation action.'}, status=403)
     keys = []
     try:
@@ -164,7 +164,7 @@ def mutate(request, job_id, quote_id, operation):
         if decision:
             if data.get('status') not in ('approved', 'rejected', 'revision_requested'):
                 raise ValueError('Invalid decision.')
-            reason = text(data.get('reason', ''), 1000, required=data['status'] != 'approved')
+            reason = text(data.get('reason', ''), 1000, required=data['status'] != 'approved' and access(request.user)[0]!=Membership.CLIENT)
         fingerprint = digest(dict(data, operation=operation, quote_id=str(quote_id),
                                   file=file_fingerprint(prepared) if prepared else None,**({'publish':True} if publish_revision else {})))
         with transaction.atomic():
@@ -184,6 +184,11 @@ def mutate(request, job_id, quote_id, operation):
             if quote.version != data['version'] or job.status in ('completed', 'cancelled', 'closed'):
                 return JsonResponse({'error': 'The quotation or job changed. Refresh before continuing.'}, status=409)
             if decision:
+                if access(request.user)[0]==Membership.CLIENT:
+                    from .models import PrivateClientLink
+                    latest=PrivateClientLink.objects.filter(request=job,purpose='quote').order_by('-created_at','-pk').first()
+                    if not latest or latest.revoked_at or latest.quotation_id!=quote.pk or latest.quote_version!=quote.version:
+                        return JsonResponse({'error':'This quotation link has been replaced. Review the latest quotation.'},status=409)
                 if quote.status != 'sent' or not quote.document_id:
                     return JsonResponse({'error': 'Only a current sent quotation with an uploaded PDF can be decided.'}, status=409)
                 if quote.amends_id and QuoteApprovalReplacement.objects.filter(original_id=quote.amends_id).exists():
