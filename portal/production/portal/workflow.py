@@ -85,9 +85,44 @@ def needs_rescheduling(job):
     return TeamAppointment.objects.filter(assignment__request=job,cancelled_at__isnull=False,customer_visible=True,public_arrival__isnull=False,rescheduled_to__isnull=True).exists()
 
 
+QUOTE_STAGES=(('new','New Requests'),('quoting','Quote to upload'),('ready','Ready to Schedule Assessment'),('booked','Booked Assessments'),('underway','Assessment Underway'),('approval','Awaiting Quotation Approval'),('declined','Declined'))
+JOB_STAGES=(('new','New Requests'),)+tuple((k,v) for k,v in STAGES if k in ('deposit_invoice','deposit','deposit_confirmation','ready','booked','underway','invoice','payment','closed'))
+
+
+def pipeline_for(job):
+    manual=job.workflow_decisions.filter(operation='manual-stage').order_by('-created_at','-pk').first()
+    if manual and manual.snapshot.get('version')==job.version:
+        key=manual.snapshot.get('stage')
+        if key in ('deposit_invoice','deposit','deposit_confirmation','invoice','payment','closed'):return 'jobs'
+        if key in ('quoting','approval','declined'):return 'quotes'
+        if key in ('ready','booked','underway') and not free_assessment(job):return 'jobs'
+    if job.workflow_version and job.job_type=='unclassified':return 'pending_pm'
+    if job.job_type=='callout' or effective_quotes(job).exists():
+        return 'jobs'
+    # Preserve existing work/history under Jobs, including historical unquoted records.
+    if not free_assessment(job) and (job.status in ('completed','closed','cancelled','scheduled','attended','in_progress','on_site') or job.closed_at):
+        return 'jobs'
+    if job.jobs_payment_route=='legacy' and job.invoices.filter(visibility='shared').exists():
+        return 'jobs'
+    return 'quotes'
+
+
+def intake_pending(job):
+    work_booked=job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exclude(pk__in=assessment_ids(job)).exists()
+    return bool(job.workflow_version and job.jobs_payment_route=='pending' and (job.job_type=='callout' or effective_quotes(job).exists()) and pipeline_for(job)=='jobs'
+                and not work_booked and not job.closed_at and job.status not in ('completed','closed','cancelled','on_site','in_progress','attended'))
+
+
+def pipeline_stage(job, pipeline):
+    if pipeline=='jobs' and intake_pending(job):return 'new'
+    current=stage(job)
+    if pipeline=='jobs' and current=='new' and job.job_type=='callout' and eligible(job):return 'ready'
+    return current
+
+
 def eligible(job):
     from .customer_portal import deposit_state
-    return (free_assessment(job) or deposit_state(job)['ready']) and not job.closed_at and job.status not in ('completed','cancelled','closed')
+    return (free_assessment(job) or (not intake_pending(job) and deposit_state(job)['ready'])) and not job.closed_at and job.status not in ('completed','cancelled','closed')
 
 
 def completion_valid(job):
@@ -115,14 +150,14 @@ def stage(job):
     if job.status=='completed':
         return 'payment' if job.invoices.filter(purpose='final',visibility='shared',document_status='active').exists() else 'invoice'
     if job.status in ('on_site','attended','in_progress'):return 'underway'
-    if job.status=='scheduled' or job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exclude(pk__in=assessment_ids(job) if not free_assessment(job) else []).exists():return 'booked'
+    if not intake_pending(job) and (job.status=='scheduled' or job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exclude(pk__in=assessment_ids(job) if not free_assessment(job) else []).exists()):return 'booked'
     if job.job_type=='unclassified' and job.workflow_version:return 'new'
     triage=job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').first()
-    if not job.quotations.exists() and not triage:return 'new'
+    if not job.quotations.exists() and not triage and job.jobs_payment_route not in ('deposit','without_deposit'):return 'new'
     if free_assessment(job):return 'ready'
-    if job.job_type=='callout':return 'ready' if job.authorised_at else 'new'
+    if job.job_type=='callout' and job.jobs_payment_route!='deposit':return 'ready' if job.authorised_at and not intake_pending(job) else 'new'
     if job.quotations.filter(status='sent').exists():return 'approval'
-    if effective_quotes(job).exists():
+    if effective_quotes(job).exists() or (job.job_type=='callout' and job.jobs_payment_route=='deposit'):
         if eligible(job):return 'ready'
         from .customer_portal import deposit_state
         from .invoices import pending_payment_report
@@ -171,7 +206,8 @@ def data(job,user):
         manual_move_options=[dict(value=k,label=v) for k,v in STAGES] if staff else [],
         needs_rescheduling=needs_rescheduling(job),free_assessment=free_assessment(job),can_arrange_attendance=can_arrange(job,user),
         operations_triage=(job.workflow_decisions.filter(operation='operations-triage').order_by('-created_at','-pk').values_list('snapshot',flat=True).first() or {}).get('decision'),
-        can_triage=staff and job.job_type!='unclassified' and not job.quotations.exists() and not job.closed_at and job.status not in ('completed','cancelled','closed'),
+        jobs_payment_route=job.jobs_payment_route,jobs_intake_pending=intake_pending(job),pipeline=pipeline_for(job),
+        can_triage=staff and pipeline_for(job)=='quotes' and job.job_type!='unclassified' and not job.quotations.exists() and not job.closed_at and job.status not in ('completed','cancelled','closed'),
         **({} if tenant else {'deposit':deposit_state(job)}),compatibility=not bool(job.workflow_version),job_type=job.job_type,safety_concern=job.safety_concern,
         **({} if tenant else {'access_responsibility':job.access_responsibility}),access_information=job.access_information,
         spending_limit=None if tenant else str(job.spending_limit) if job.spending_limit is not None else None,
@@ -248,9 +284,14 @@ def checked(view):
 @require_GET
 def dashboard(request):
     rows=list(requests_for(request.user))
+    pipeline=request.GET.get('pipeline','')
+    if pipeline:
+        if access(request.user)[0] not in ('superadmin','operations'):return JsonResponse({'error':'Sevlink pipeline access required.'},status=403)
+        if pipeline not in ('quotes','jobs'):return JsonResponse({'error':'Unknown pipeline.'},status=400)
+        rows=[job for job in rows if pipeline_for(job)==pipeline]
     grouped={key:[] for key,label in STAGES}
-    for job in rows:grouped[stage(job)].append(job)
-    definitions=STAGES
+    for job in rows:grouped[pipeline_stage(job,pipeline) if pipeline else stage(job)].append(job)
+    definitions=QUOTE_STAGES if pipeline=='quotes' else JOB_STAGES if pipeline=='jobs' else STAGES
     attention=[]
     if access(request.user)[0] in ('pm','admin'):
         from .customer_portal import attention_rows,public_appointments
@@ -276,8 +317,8 @@ def dashboard(request):
     if request.user.is_superuser:
         today=timezone.localdate()
         summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','deposit_invoice','deposit_confirmation','ready','underway','invoice')))]
-    return JsonResponse({'rescheduling':rescheduling,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
-        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
+    return JsonResponse({'pipeline':pipeline,'rescheduling':rescheduling,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
+        'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,received_at=j.created_at.isoformat(),job_type=j.job_type,category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[])) for j in result]})
 
 
 @api_access
@@ -335,7 +376,7 @@ def action(request,job_id,operation):
             values['version']=int(values['version']);prepared=attachments.prepare(files)
         else:
             values=payload(request,('version','job_type','urgency','access_responsibility','access_information','limit','reason','additional','decision','date','window','preference','confirmation','report','before_unavailable','exception_reason'))
-        allowed={'operations-triage':{'decision'},'review':{'job_type','urgency','access_responsibility','access_information','limit','reason'},'additional-request':{'limit','reason'},'additional-decision':{'additional','decision'},'verify-deposit':{'confirmation'},'attendance-request':{'preference','date','window'},'attendance-decline':{'additional','reason'},'completion':{'report','before_unavailable','exception_reason'}}
+        allowed={'jobs-intake':{'decision'},'operations-triage':{'decision'},'review':{'job_type','urgency','access_responsibility','access_information','limit','reason'},'additional-request':{'limit','reason'},'additional-decision':{'additional','decision'},'verify-deposit':{'confirmation'},'attendance-request':{'preference','date','window'},'attendance-decline':{'additional','reason'},'completion':{'report','before_unavailable','exception_reason'}}
         if operation not in allowed or set(values)-{'version'}-allowed[operation]:raise ValueError('Unexpected fields for this workflow action.')
         fingerprint=digest(dict(values,operation=operation,job=str(job_id),**({'photos':[(p['filename'],hashlib.sha256(p['data']).hexdigest()) for p in prepared]} if prepared else {})))
         with transaction.atomic():
@@ -355,6 +396,15 @@ def action(request,job_id,operation):
             if operation=='review':
                 review_request(job,request.user,values)
                 if prepared:attachments.save_files(job,request.user,prepared,keys,visibility='shared',purpose='general')
+            elif operation=='jobs-intake':
+                if not intake_pending(job):raise ValueError('This job is not awaiting its initial payment decision.')
+                if values.get('decision') not in ('deposit','without_deposit'):raise ValueError('Choose a 50% deposit invoice or start without deposit.')
+                if job.job_type=='callout' and (not job.authorised_at or not job.spending_limit):raise ValueError('PM call-out authorisation is required.')
+                if job.invoices.filter(visibility='shared',document_status='active').exists():raise ValueError('Review existing invoices before selecting payment terms.')
+                job.jobs_payment_route=values['decision']
+                if values['decision']=='without_deposit':
+                    from .models import SchedulingArrangement
+                    SchedulingArrangement.objects.create(request=job,actor=request.user,reason='Sevlink authorised work to start without a deposit; final invoicing remains due.')
             elif operation=='operations-triage':
                 if job.job_type=='unclassified' or job.quotations.exists():raise ValueError('Only a forwarded request without a quotation can be assessed.')
                 if values.get('decision') not in ('desktop','attendance'):raise ValueError('Choose attendance needed or desktop quote.')
@@ -380,7 +430,7 @@ def action(request,job_id,operation):
                     if item.amount<=job.spending_limit:raise ValueError('This authorisation is stale; a higher limit is already active.')
                     job.spending_limit=item.amount
                 if decision=='quotation':
-                    item.linked_request=MaintenanceRequest.objects.create(property=job.property,reported_by=request.user,parent_request=job,
+                    item.linked_request=MaintenanceRequest.objects.create(property=job.property,reported_by=request.user,parent_request=job,jobs_payment_route='pending',
                         title='Additional work: '+job.title[:160],description=item.reason,category=job.category,job_type='quoted',workflow_version=1,status='reviewed',access_responsibility=job.access_responsibility)
                     record(item.linked_request,request.user,'job_submitted','linked:'+str(key),{'status':'reviewed'})
                 item.save()
@@ -388,7 +438,7 @@ def action(request,job_id,operation):
                 if values.get('confirmation')!='VERIFY':raise ValueError('Confirm the received and allocated deposit explicitly.')
                 from .customer_portal import deposit_state
                 state=deposit_state(job)
-                if (job.job_type!='quoted' and job.workflow_version) or not effective_quotes(job).exists() or Decimal(state['received'])<Decimal(state['required']) or Decimal(state['required'])<=0:raise ValueError('Approved quotation and sufficient staff-recorded, confirmed receipts are required.')
+                if (not effective_quotes(job).exists() and not (job.job_type=='callout' and job.jobs_payment_route=='deposit' and job.authorised_at)) or Decimal(state['received'])<Decimal(state['required']) or Decimal(state['required'])<=0:raise ValueError('Approved quotation and sufficient staff-recorded, confirmed receipts are required.')
                 if job.invoices.filter(visibility='shared',reconciliation_required=True,document_status='active').exists():raise ValueError('Resolve the financial reconciliation hold first.')
                 DepositVerification.objects.create(request=job,verified_by=request.user,amount=Decimal(state['received']))
             elif operation=='attendance-request':
@@ -422,10 +472,10 @@ def action(request,job_id,operation):
             job.version+=1;job.save()
             snapshot={k:v for k,v in values.items() if k!='version'}
             decision=WorkflowDecision.objects.create(request=job,actor=request.user,operation=operation,key=key,fingerprint=fingerprint,snapshot=snapshot)
-            labels={'operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Deposit verified','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
+            labels={'jobs-intake':'Sevlink selected job payment terms','operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Deposit verified','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
             event=record(job,request.user,'workflow_event','workflow:'+str(key),{'action':labels[operation],'decision_id':str(decision.pk)},private=operation in ('additional-request','additional-decision','review','verify-deposit'))
             notify(event,operators() if operation=='attendance-request' or pm else participants(job,operation=='completion'))
-            if (operation=='review' and job.job_type=='callout') or operation=='verify-deposit' or (operation=='operations-triage' and values.get('decision')=='attendance'):
+            if (operation=='review' and job.job_type=='callout' and job.jobs_payment_route!='pending') or operation=='verify-deposit' or (operation=='operations-triage' and values.get('decision')=='attendance') or (operation=='jobs-intake' and values.get('decision')=='without_deposit'):
                 attendance_invitation(job,request.user,'ready:'+str(key))
         return JsonResponse(data(job,request.user))
     except Exception as error:

@@ -291,7 +291,7 @@ def collection(request):
                     if existing.reported_by_id != request.user.pk or existing.submission_fingerprint != fingerprint:
                         return JsonResponse({'error': 'Idempotency key conflicts with an earlier report.'}, status=409)
                     return JsonResponse(serialize(get_object_or_404(requests_for(request.user), pk=existing.pk), request.user))
-            job = MaintenanceRequest.objects.create(reported_by=request.user,workflow_version=1,safety_concern=form.cleaned_data.get('urgency')=='safety', submission_key=submission_key,
+            job = MaintenanceRequest.objects.create(reported_by=request.user,workflow_version=1,jobs_payment_route='pending',safety_concern=form.cleaned_data.get('urgency')=='safety', submission_key=submission_key,
                                                      submission_fingerprint=fingerprint, **{**form.cleaned_data,'urgency':'normal'})
             if direct:
                 from .workflow import review_request

@@ -243,6 +243,12 @@ def mutate(request, job_id, quote_id, operation):
             quote.save()
             if decision and quote.status == 'approved':
                 approve_job_number(job)
+                # A first approval after an existing free assessment still starts a new work intake.
+                if job.workflow_version and job.jobs_payment_route=='legacy' and not job.invoices.filter(visibility='shared').exists() and not job.scheduling_arrangements.exists() and not job.quotations.filter(status='approved').exclude(pk=quote.pk).exists():
+                    from .workflow import assessment_ids
+                    if not job.attendance_requests.filter(status='confirmed',appointment__cancelled_at__isnull=True).exclude(pk__in=assessment_ids(job)).exists():
+                        job.jobs_payment_route='pending';job.version+=1
+                        job.save(update_fields=['jobs_payment_route','version'])
             if decision and quote.status == 'approved' and quote.amends_id:
                 QuoteApprovalReplacement.objects.create(original_id=quote.amends_id,replacement=quote,actor=request.user)
                 action(quote,request.user,'effective',uuid.uuid4(),fingerprint,'Replacement approval now effective; original PDF/decision retained.')

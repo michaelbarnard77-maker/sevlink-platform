@@ -48,14 +48,17 @@ def deposit_state(job):
     # Preserve the effective approved amount while an amendment awaits a decision.
     from .models import QuoteApprovalReplacement
     approved=job.quotations.filter(status='approved').exclude(pk__in=QuoteApprovalReplacement.objects.values('original_id')).aggregate(value=Sum('amount'))['value']
-    basis=approved if approved is not None else amount
+    basis=approved if approved is not None else job.spending_limit if job.job_type=='callout' and job.jobs_payment_route=='deposit' and job.spending_limit else amount
     required=(basis*Decimal('0.50')).quantize(Decimal('.01'),rounding=ROUND_UP)
     net=paid-refunded
     arranged=job.scheduling_arrangements.exists()
     held=invoices.filter(reconciliation_required=True).exists()
     verified=job.deposit_verifications.order_by('-created_at').first()
+    deposit_callout=job.job_type=='callout' and job.jobs_payment_route=='deposit'
     if job.workflow_version:
-        if job.job_type=='callout':ready=bool(job.authorised_at and job.spending_limit)
+        if job.jobs_payment_route=='pending':ready=False
+        elif job.job_type=='callout' and not deposit_callout:ready=bool(job.authorised_at and job.spending_limit and (job.jobs_payment_route=='legacy' or not held))
+        elif deposit_callout:ready=bool(job.authorised_at and job.job_number and not held and verified and verified.amount>=required and net>=required and required>ZERO)
         else:ready=bool(approved is not None and job.job_number and not held and (arranged or (verified and verified.amount>=required and net>=required and required>ZERO)))
     elif invoices.filter(purpose='deposit').exists():
         # New deposit invoices on historical jobs follow the explicit verification
@@ -63,13 +66,15 @@ def deposit_state(job):
         ready=bool(approved is not None and job.job_number and not held and (arranged or (verified and verified.amount>=required and net>=required and required>ZERO)))
     else:ready=arranged or (basis>ZERO and net>=required and not held)
     blockers=[]
-    verification_required=bool(job.workflow_version or invoices.filter(purpose='deposit').exists()) and job.job_type!='callout'
+    verification_required=bool(job.workflow_version or invoices.filter(purpose='deposit').exists()) and (job.job_type!='callout' or deposit_callout)
     if verification_required:
-        if approved is None:blockers.append('The quotation must be approved.')
+        if approved is None and not deposit_callout:blockers.append('The quotation must be approved.')
         if net<required or required<=ZERO:blockers.append('The required deposit has not been received.')
         if held:blockers.append('The invoice has a reconciliation hold.')
         if not arranged and (not verified or verified.amount<required):blockers.append('The recorded payment still needs explicit Sevlink deposit verification.')
         if not job.job_number:blockers.append('The approved request needs its official job number allocated.')
+    if job.jobs_payment_route=='without_deposit' and ready:blockers=[]
+    if job.jobs_payment_route=='pending' and job.workflow_version:blockers=['Sevlink must select the job payment terms.']
     return dict(basis=str(basis),required=str(required),received=str(net),
                 outstanding=str(max(ZERO,required-net)),arrangement=arranged,
                 ready=ready,verification_recorded=bool(verified and verified.amount>=required and required>ZERO),blockers=blockers)

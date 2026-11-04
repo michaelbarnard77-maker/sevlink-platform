@@ -89,3 +89,27 @@
 @media(max-width:1100px){.sevlink-workspace .operations-stage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.sevlink-workspace .operations-stage-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sevlink-workspace .operations-stage-grid .stage-card{padding:17px;min-height:174px}}
 @media(max-width:350px){.sevlink-workspace .operations-stage-grid{grid-template-columns:1fr}}
+/* Compact stage job register: each row opens the existing job dialog. */
+.sevlink-workspace .stage-register{padding:22px;margin-top:22px}
+.sevlink-workspace .stage-register .panelhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:17px}
+.sevlink-workspace .stage-register h2{margin:0;font-size:19px}
+.sevlink-workspace .stage-register-scroll{border:1px solid #d6e4eb;border-radius:9px;overflow:auto;max-width:100%}
+.sevlink-workspace .stage-register-table{width:100%;min-width:1040px;border-collapse:collapse;font-size:12px}
+.sevlink-workspace .stage-register-table th{padding:13px 12px;background:#e9f1f5;color:#315266;text-align:left;font-size:10px;font-weight:650;letter-spacing:.35px;white-space:nowrap;border-bottom:1px solid #cddfe8}
+.sevlink-workspace .stage-register-table td{padding:14px 12px;border-bottom:1px solid #e1eaf0;vertical-align:top;line-height:1.5;color:#24465b}
+.sevlink-workspace .stage-register-table tbody tr:last-child td{border-bottom:0}
+.sevlink-workspace .stage-register-row{cursor:pointer;background:#fff;transition:background .12s}
+.sevlink-workspace .stage-register-row:nth-child(even){background:#f8fbfd}
+.sevlink-workspace .stage-register-row:hover,.sevlink-workspace .stage-register-row.selected{background:#e0eff2}
+.sevlink-workspace .stage-register-row:focus-visible{outline:2px solid #367b82;outline-offset:-2px;background:#e0eff2}
+.sevlink-workspace .stage-register-table td small{display:block;color:#617b8b;font-size:10px;margin-top:4px}
+.sevlink-workspace .stage-reference{display:inline-block;border:1px solid #bdcfd9;border-radius:20px;padding:3px 8px;white-space:nowrap;color:#173e55;font-size:11px;font-weight:650;background:#fff}
+.sevlink-workspace .stage-register-table td:nth-child(3){min-width:180px;max-width:260px}
+.sevlink-workspace .stage-register-table td:nth-child(4){min-width:210px;max-width:300px}
+.sevlink-workspace .stage-register-table .badge{font-size:10px;padding:4px 7px;white-space:nowrap}
+.sevlink-workspace .stage-register-table .stage-actions{min-width:240px}
+.sevlink-workspace .stage-register-table .stage-actions p{font-size:11px;margin:0 0 9px}
+.sevlink-workspace .stage-register-table small.stage-safety{color:#99542b;font-weight:650}
+@media(max-width:760px){.sevlink-workspace .stage-register{padding:16px}.sevlink-workspace .stage-register-table{font-size:11px}}
+.sevlink-workspace tr.stage-register-row{border-top:0;border-radius:0;box-shadow:none}
+.sevlink-workspace .stage-request-type{display:inline-block;padding:4px 8px;background:#eaf3f5;color:#285c67;border-radius:6px;white-space:nowrap;font-size:11px;font-weight:650}

@@ -171,6 +171,7 @@ class MaintenanceRequest(models.Model):
     request_number = models.PositiveBigIntegerField(unique=True, null=True, blank=True, editable=False)
     legacy_job_reference = models.CharField(max_length=80, blank=True, editable=False)
     workflow_version = models.PositiveSmallIntegerField(default=0, editable=False)
+    jobs_payment_route = models.CharField(max_length=16, default='legacy', editable=False, choices=[('legacy','Existing terms'),('pending','Sevlink decision required'),('deposit','50% deposit required'),('without_deposit','Start without deposit')])
     job_type = models.CharField(max_length=16, default='unclassified', choices=[('unclassified','Needs review'),('callout','Call-Out'),('quoted','Quotation Required')])
     safety_concern = models.BooleanField(default=False)
     access_information = models.TextField(max_length=2500, blank=True)

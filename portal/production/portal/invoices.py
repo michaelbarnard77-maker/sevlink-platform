@@ -110,7 +110,8 @@ def create(request, job_id):
                 from .workflow import completion_valid,check_ceiling
                 if purpose=='final' and (job.status!='completed' or not completion_valid(job)):
                     raise ValueError('Accepted completion report, after photos, before photos or audited exception, and completed work are required before the final invoice.')
-                if purpose=='deposit' and job.job_type!='quoted':raise ValueError('Call-outs do not require deposit invoices.')
+                if purpose=='deposit' and (job.jobs_payment_route=='without_deposit' or (job.workflow_version and job.jobs_payment_route=='pending')):raise ValueError('Select the 50% deposit route in Jobs before uploading a deposit invoice.')
+                if purpose=='deposit' and job.job_type!='quoted' and job.jobs_payment_route!='deposit':raise ValueError('Call-outs do not require deposit invoices.')
                 check_ceiling(job,values['amount'])
             if supplier:
                 from datetime import timedelta
@@ -209,7 +210,7 @@ def _pay(request,job_id,invoice_id,verify=False):
             from .customer_portal import deposit_state
             from .models import DepositVerification
             state=deposit_state(job)
-            if job.job_type=='quoted' and Decimal(state['required'])>0 and Decimal(state['received'])>=Decimal(state['required']) and not job.invoices.filter(visibility='shared',document_status='active',reconciliation_required=True).exists():
+            if (job.job_type=='quoted' or job.jobs_payment_route=='deposit') and Decimal(state['required'])>0 and Decimal(state['received'])>=Decimal(state['required']) and not job.invoices.filter(visibility='shared',document_status='active',reconciliation_required=True).exists():
                 DepositVerification.objects.create(request=job,verified_by=request.user,amount=Decimal(state['received']))
                 from .workflow import attendance_invitation
                 attendance_invitation(job,request.user,'ready-invoice:'+str(key))

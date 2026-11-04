@@ -14,7 +14,11 @@ class OperationalWorkflowTests(TestCase):
     setUpTestData=classmethod(fixtures.EventWorkflowTests.setUpTestData.__func__)
     post=fixtures.EventWorkflowTests.post
     quote=documents.ManualDocumentTests.quote
-    invoice=documents.ManualDocumentTests.invoice
+    def invoice(self,*args,**kwargs):
+        self.job.refresh_from_db()
+        if self.job.workflow_version and self.job.jobs_payment_route=='pending' and self.job.quotations.filter(status='approved').exists():
+            self.assertEqual(self.act('jobs-intake',user=self.ops,decision='deposit').status_code,200)
+        return documents.ManualDocumentTests.invoice(self,*args,**kwargs)
     payment=documents.ManualDocumentTests.payment
     def setUp(self):
         fixtures.EventWorkflowTests.setUp(self)
@@ -28,7 +32,11 @@ class OperationalWorkflowTests(TestCase):
         return self.post(reverse('workflow_action',args=[self.job.pk,operation]),dict(version=self.job.version,**v),key)
     def review(self,kind='callout'):
         r=self.act('review',job_type=kind,urgency='high',access_responsibility='pm',access_information='Synthetic access',limit='1000')
-        self.assertEqual(r.status_code,200,r.content);self.job.refresh_from_db();return r
+        self.assertEqual(r.status_code,200,r.content);self.job.refresh_from_db()
+        if kind=='callout':
+            self.assertEqual(self.act('jobs-intake',user=self.ops,decision='without_deposit').status_code,200)
+            self.client.force_login(self.pm);self.job.refresh_from_db()
+        return r
     def doc(self,kind):
         self.client.force_login(self.ops)
         r=self.client.post(reverse('workflow_documents',args=[self.job.pk]),{'kind':kind,'attachments':photo()})

@@ -42,11 +42,16 @@ class VisualProof(StaticLiveServerTestCase):
         return self.post(user,reverse('workflow_action',args=[job.pk,op]),dict(version=job.version,**v))
     def create(self,title,category='Plumbing',safety=False):
         d=self.post(self.tenant,reverse('maintenance_collection'),dict(property=str(self.home.pk),title=title,description='Synthetic visual-review record. No actual customer job or service is represented.',category=category,urgency='safety' if safety else 'normal'))
+        MaintenanceRequest.objects.filter(pk=d['id']).update(jobs_payment_route='legacy')
         return MaintenanceRequest.objects.get(pk=d['id'])
     def quote(self,job,ref,approve=False):
+        existing_terms=job.jobs_payment_route=='legacy'
         d=self.post(self.ops,reverse('maintenance_quote',args=[job.pk]),dict(reference=ref,amount='4000.00',title='Tap repair and testing — visual test',scope='Synthetic uploaded PDF for visual acceptance only.'),{'attachments':document(name=ref+'.pdf')})
         d=self.post(self.ops,reverse('maintenance_quote_action',args=[job.pk,d['id'],'send']),dict(version=d['version']))
         if approve:d=self.post(self.pm,reverse('maintenance_quote_decision',args=[job.pk,d['id']]),dict(version=d['version'],status='approved',reason='Synthetic visual-review approval only.'))
+        if approve and existing_terms:
+            job.refresh_from_db()
+            if job.jobs_payment_route=='pending':self.action(self.ops,job,'jobs-intake',decision='deposit')
         return d
     def invoice(self,job,ref,purpose,amount,pay=False):
         d=self.post(self.ops,reverse('maintenance_invoice',args=[job.pk]),dict(number=ref,amount=amount,due_date=str(timezone.localdate()+timedelta(days=7)),visibility='shared',purpose=purpose),{'attachments':document(name=ref+'.pdf')})
@@ -95,6 +100,55 @@ class VisualProof(StaticLiveServerTestCase):
         if os.environ.get('SEVLINK_NO_COVERAGE_PROOF')=='1':
             supplier.provinces.clear();supplier.cities.clear();supplier.suburbs.clear()
         existing_req=self.create('New repair needing review — visual test',category='Electrical',safety=True)
+        if os.environ.get('SEVLINK_STAGE_TABLE_PROOF')=='1':
+            # Illustrate fresh PM-forwarded intake only, with no Sevlink decisions or documents.
+            self.action(self.ops,callout,'operations-triage',decision='attendance')
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='pm')
+            existing_req.title='Bedroom light not switching on';existing_req.safety_concern=False;existing_req.save(update_fields=['title','safety_concern'])
+            for title,category in [('Kitchen tap leaking','Plumbing'),('Bathroom pipe leaking','Plumbing')]:
+                incoming=self.create(title,category=category)
+                self.action(self.pm,incoming,'review',job_type='callout' if title=='Bathroom pipe leaking' else 'quoted',urgency='normal',access_responsibility='pm',**({'limit':'1500.00'} if title=='Bathroom pipe leaking' else {}))
+            from portal.workflow import stage
+            for incoming in MaintenanceRequest.objects.all():
+                if stage(incoming)=='new':
+                    self.assertFalse(incoming.quotations.exists())
+                    self.assertFalse(incoming.invoices.exists())
+                    self.assertFalse(incoming.workflow_decisions.filter(operation='operations-triage').exists())
+        if os.environ.get('SEVLINK_ALL_STAGE_TABLES_PROOF')=='1':
+            # Synthetic records only: seed examples for each table, never owner records.
+            from portal.workflow import stage
+            def intake(title):
+                item=self.create(title)
+                self.action(self.pm,item,'review',job_type='quoted',urgency='normal',access_responsibility='pm')
+                return item
+            quote_needed=intake('Replace leaking kitchen mixer')
+            self.action(self.ops,quote_needed,'operations-triage',decision='desktop')
+            rejected=intake('Bathroom cupboard replacement')
+            sent=self.quote(rejected,'SQ-TABLE-DECLINED')
+            self.post(self.pm,reverse('maintenance_quote_decision',args=[rejected.pk,sent['id']]),dict(version=sent['version'],status='rejected',reason='Sample: agency declined the proposed work.'))
+            for target,title in [('deposit','Bathroom tap replacement'),('deposit_confirmation','Kitchen pipe repair')]:
+                item=intake(title);self.quote(item,'SQ-TABLE-'+target,True)
+                inv=self.invoice(item,'INV-TABLE-'+target,'deposit','2000.00')
+                if target=='deposit_confirmation':self.post(self.pm,reverse('maintenance_invoice_report_paid',args=[item.pk,inv['id']]),dict(version=inv['version']))
+            for target,title,status in [('booked','Bathroom leak inspection','scheduled'),('underway','Kitchen plumbing repairs','in_progress'),('invoice','Completed kitchen tap replacement','completed'),('closed','Completed and settled pipe repair','reviewed')]:
+                item=intake(title)
+                # Isolated fixtures illustrate existing saved statuses, not a workflow mutation feature.
+                item.refresh_from_db();item.status=status
+                if target=='closed':item.closed_at=timezone.now()
+                item.save(update_fields=['status','closed_at'])
+                self.assertEqual(stage(item),target)
+            seen={stage(item) for item in MaintenanceRequest.objects.all()}
+            from portal.workflow import STAGES
+            self.assertEqual(seen,{key for key,label in STAGES})
+        split_ids={}
+        if os.environ.get('SEVLINK_SPLIT_PIPELINES_PROOF')=='1':
+            def fresh(title,kind):
+                response=self.post(self.pm,reverse('maintenance_collection'),dict(property=str(self.home.pk),title=title,description='Synthetic preview only.',category='Plumbing',job_type=kind,**({'limit':'2000'} if kind=='callout' else {})))
+                item=MaintenanceRequest.objects.get(pk=response['id']);self.assertEqual(item.jobs_payment_route,'pending');return item
+            new_quote=fresh('Bathroom mixer replacement','quoted')
+            approved_job=fresh('Approved kitchen pipe repair','quoted');self.quote(approved_job,'SQ-PIPELINE-APPROVED',True)
+            callout_job=fresh('PM-authorised leaking pipe call-out','callout')
+            split_ids=dict(new_quote=str(new_quote.pk),approved_job=str(approved_job.pk),callout_job=str(callout_job.pk))
         photo_empty=None
         if os.environ.get('SEVLINK_TRIAGE_PHOTOS_PROOF')=='1':
             picture=(ROOT/'public-site/dist/assets/hero-home.png').read_bytes()
@@ -115,7 +169,7 @@ class VisualProof(StaticLiveServerTestCase):
         sessions={}
         for role,user in [('operations',self.ops),('pm',self.pm),('admin',self.admin),('tenant',self.tenant)]:
             c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
-        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),photo_empty=photo_empty,deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
+        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,split_ids=split_ids,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),photo_empty=photo_empty,deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         from portal.account_mail import deliver
         from portal.models import CompletionPackage
