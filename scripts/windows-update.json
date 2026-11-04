@@ -1,5 +1,5 @@
 {
-  "version": "82081d61baa46a0d79f0e0ab4d9703715eb48a6a",
-  "url": "https://raw.githubusercontent.com/michaelbarnard77-maker/sevlink-platform/82081d61baa46a0d79f0e0ab4d9703715eb48a6a/scripts/update-windows-split-pipelines.ps1",
-  "sha256": "d6c8db76f626fe5839f35a282e474c6151d39ad855511fc573d82d4135055fed"
+  "version": "64f68b2ee9f8178696f58674853dbf3729d1adae",
+  "url": "https://raw.githubusercontent.com/michaelbarnard77-maker/sevlink-platform/64f68b2ee9f8178696f58674853dbf3729d1adae/scripts/update-windows-private-clients.ps1",
+  "sha256": "84d880476c32f53109cb62d22b13bfe4794240d9d67f677d1b9c8b714a1d8477"
 }
