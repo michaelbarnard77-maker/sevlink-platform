@@ -200,7 +200,15 @@ def section(request,section):
         if section=='tenants':
             if not finance:return JsonResponse({'error':'Agency tenant management required.'},status=403)
             return JsonResponse({'tenants':[dict(id=str(t.pk),name=t.name,email=t.email,phone=t.phone,property=t.property.address,linked=bool(t.user_id)) for t in Tenancy.objects.filter(property__in=props,active=True).select_related('property')]})
-        return JsonResponse({'name':m.agency.name,'phone':m.agency.phone,'area':m.agency.area,'account_access_url':f'/accounts/{m.agency_id}/' if role=='admin' else None})
+        data={'name':m.agency.name,'phone':m.agency.phone,'area':m.agency.area,'account_access_url':f'/accounts/{m.agency_id}/' if role=='admin' else None}
+        if role=='admin':
+            from .models import Invitation
+            from django.urls import reverse
+            from django.db.models import Count
+            team=Membership.objects.filter(agency=m.agency,role=Membership.PM).select_related('user')
+            counts=dict(props.values('manager_id').annotate(total=Count('pk')).values_list('manager_id','total'))
+            data.update(invite_agent_url=reverse('invite_pm'),team=[dict(name=t.user.first_name or t.user.email,email=t.user.email,active=t.user.is_active,properties=counts.get(t.user_id,0)) for t in team],pending_agents=[dict(name=i.name,email=i.email) for i in Invitation.objects.filter(agency=m.agency,role=Membership.PM,accepted_at=None,revoked_at=None,expires_at__gt=timezone.now())])
+        return JsonResponse(data)
     if section=='updates':
         from .events import activity_data
         events=JobActivity.objects.filter(request__in=requests_for(request.user),visibility='shared').select_related('request__property').order_by('-created_at')

@@ -113,26 +113,37 @@
 @media(max-width:760px){.sevlink-workspace .stage-register{padding:16px}.sevlink-workspace .stage-register-table{font-size:11px}}
 .sevlink-workspace tr.stage-register-row{border-top:0;border-radius:0;box-shadow:none}
 .sevlink-workspace .stage-request-type{display:inline-block;padding:4px 8px;background:#eaf3f5;color:#285c67;border-radius:6px;white-space:nowrap;font-size:11px;font-weight:650}
-/* Compact Sevlink dashboards: retain every pot while bringing the job table higher. */
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid{gap:10px;margin:16px 0}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card{display:grid;grid-template-columns:36px minmax(0,1fr) auto;grid-template-rows:1fr auto;align-items:center;column-gap:10px;row-gap:3px;min-height:72px;padding:9px 12px;border-radius:11px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-icon.dashboard-illustration{grid-column:1;grid-row:1 / 3;width:36px;height:36px;border-radius:9px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-icon.dashboard-illustration svg{width:32px;height:32px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card strong{grid-column:3;grid-row:1 / 3;font-size:25px;line-height:1.1;margin:0}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card b{grid-column:2;grid-row:1;font-size:12px;line-height:1.35;align-self:end}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card small{grid-column:2;grid-row:2;font-size:9px;align-self:start}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .stats{gap:10px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .stat{padding:10px 14px;border-radius:11px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .stat label{font-size:10px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .stat strong{font-size:26px;margin:6px 0 3px;line-height:1.1}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .stat small{font-size:9px}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .workflow-overview>.heading{min-height:110px;padding:20px 26px;margin:18px 0}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .workflow-overview>.heading h1{font-size:30px;margin:7px 0}
-.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .stage-register{margin-top:16px;padding:18px}
-@media(min-width:1440px){.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
-@media(min-width:761px){.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview))>main>header{height:72px}}
-@media(max-width:760px){.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card{grid-template-columns:28px minmax(0,1fr) auto;column-gap:7px;padding:11px 9px;min-height:76px}.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-icon.dashboard-illustration{width:28px;height:28px}.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-icon.dashboard-illustration svg{width:25px;height:25px}.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card b{font-size:11px}.sevlink-workspace:is([data-portal-role="superadmin"],[data-portal-role="operations"],:has(.ops-overview)) .operations-stage-grid .stage-card strong{font-size:22px}}
+/* Compact dashboards for every portal role: retain every pot while bringing the job table higher. */
+.sevlink-workspace #app .stage-grid{gap:10px;margin:16px 0}
+.sevlink-workspace #app .stage-grid .stage-card{display:grid;grid-template-columns:36px minmax(0,1fr) auto;grid-template-rows:1fr auto;align-items:center;column-gap:10px;row-gap:3px;min-height:72px;padding:9px 12px;border-radius:11px}
+.sevlink-workspace #app .stage-grid .stage-icon.dashboard-illustration{grid-column:1;grid-row:1 / 3;width:36px;height:36px;border-radius:9px}
+.sevlink-workspace #app .stage-grid .stage-icon.dashboard-illustration svg{width:32px;height:32px}
+.sevlink-workspace #app .stage-grid .stage-card strong{grid-column:3;grid-row:1 / 3;font-size:25px;line-height:1.1;margin:0}
+.sevlink-workspace #app .stage-grid .stage-card b{grid-column:2;grid-row:1;font-size:12px;line-height:1.35;align-self:end}
+.sevlink-workspace #app .stage-grid .stage-card small{grid-column:2;grid-row:2;font-size:9px;align-self:start}
+.sevlink-workspace #app .stats{gap:10px}
+.sevlink-workspace #app .stat{padding:10px 14px;border-radius:11px}
+.sevlink-workspace #app .stat label{font-size:10px}
+.sevlink-workspace #app .stat strong{font-size:26px;margin:6px 0 3px;line-height:1.1}
+.sevlink-workspace #app .stat small{font-size:9px}
+.sevlink-workspace #app .workflow-overview>.heading{min-height:110px;padding:20px 26px;margin:18px 0}
+.sevlink-workspace #app .workflow-overview>.heading h1{font-size:30px;margin:7px 0}
+.sevlink-workspace #app .stage-register{margin-top:16px;padding:18px}
+@media(min-width:1440px){.sevlink-workspace #app .operations-stage-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(min-width:761px){.sevlink-workspace>main>header{height:72px}}
+@media(max-width:760px){.sevlink-workspace #app .stage-grid .stage-card{grid-template-columns:28px minmax(0,1fr) auto;column-gap:7px;padding:11px 9px;min-height:76px}.sevlink-workspace #app .stage-grid .stage-icon.dashboard-illustration{width:28px;height:28px}.sevlink-workspace #app .stage-grid .stage-icon.dashboard-illustration svg{width:25px;height:25px}.sevlink-workspace #app .stage-grid .stage-card b{font-size:11px}.sevlink-workspace #app .stage-grid .stage-card strong{font-size:22px}}
 
-.sevlink-workspace .ops-overview .stat{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 12px}.sevlink-workspace .ops-overview .stat label{grid-column:1;grid-row:1;margin:0}.sevlink-workspace .ops-overview .stat strong{grid-column:2;grid-row:1 / 3;margin:0;font-size:26px}.sevlink-workspace .ops-overview .stat small{grid-column:1;grid-row:2;margin:0}.sevlink-workspace .ops-overview .stat:before{display:none}
+.sevlink-workspace #app .stat{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 12px}.sevlink-workspace #app .stat label{grid-column:1;grid-row:1;margin:0}.sevlink-workspace #app .stat strong{grid-column:2;grid-row:1 / 3;margin:0;font-size:26px}.sevlink-workspace #app .stat small{grid-column:1;grid-row:2;margin:0}.sevlink-workspace #app .stat:before{display:none}
+
+.sevlink-workspace #app .premium-overview-heading{min-height:0;padding:18px 24px;margin:16px 0;border-radius:12px}
+.sevlink-workspace #app .premium-overview-heading h2{font-size:26px;margin:6px 0}
+.sevlink-workspace #app .job-card,.sevlink-workspace #app .attention-card{padding:14px 16px;min-height:0;border-radius:11px}
+.sevlink-workspace #app .job-card h2{font-size:16px;margin:8px 0}
+.sevlink-workspace #app .job-card p,.sevlink-workspace #app .attention-card p{margin:6px 0;line-height:1.5}
 .tenant-access-contacts{padding:18px 20px;margin:18px 0;border:1px solid #d7e7ee;background:#f0f7fa;border-radius:12px}.tenant-access-contacts h3{margin:0 0 8px;font-size:15px}.tenant-access-contacts>p{font-size:12px}.tenant-contact-row{padding:10px 0;border-top:1px solid #dbe8ee}.tenant-contact-row>div{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:5px}.tenant-contact-row a{font-size:13px;color:#286a76;overflow-wrap:anywhere}
 .private-client-badge{display:inline-block;background:#e7edf9;color:#345783;border:1px solid #d5e0f2;border-radius:6px;padding:4px 7px;font-size:10px;font-weight:650;letter-spacing:.25px;white-space:nowrap}.stage-register .private-client-badge{margin-bottom:5px}.workflow-overview>.heading #newPrivateClientRequest{align-self:center;white-space:nowrap;background:#edf5fa;color:#224d65;border:1px solid #d5e4ee}#privateClientRequest label{margin-top:14px}#privateCalloutTerms{padding:14px;border:1px solid #d7e5ed;background:#f2f8fb;border-radius:10px;margin-top:15px}
+
+.sevlink-workspace #app>.heading{min-height:110px;padding:18px 24px;margin:16px 0;border-radius:12px}
+.sevlink-workspace #app>.heading h1{font-size:30px;margin:7px 0}
+@media(min-width:1200px){.sevlink-workspace #app .attention-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.sevlink-workspace #app .agency-team{margin-top:14px}
