@@ -82,6 +82,12 @@ def free_assessment(job):
     return bool(job.job_type=='quoted' and not job.quotations.exists() and last and last.snapshot.get('decision')=='attendance' and not job.closed_at and job.status not in ('completed','closed','cancelled'))
 
 
+def active_confirmed_attendance(job):
+    qs=job.attendance_requests.filter(status='confirmed',appointment__isnull=False,appointment__cancelled_at=None,appointment__progress_status='booked')
+    ids=assessment_ids(job)
+    return qs.filter(pk__in=ids) if free_assessment(job) else qs.exclude(pk__in=ids)
+
+
 def needs_rescheduling(job):
     from .models import TeamAppointment
     return TeamAppointment.objects.filter(assignment__request=job,cancelled_at__isnull=False,customer_visible=True,public_arrival__isnull=False,rescheduled_to__isnull=True).exists()
@@ -252,7 +258,7 @@ def tab_attention(job,user,visible):
             if invoice['document_status']=='active' and Decimal(invoice['outstanding'])>0:
                 key='costs' if invoice.get('visibility')=='internal' else 'invoices'
                 if key in counts:counts[key]+=1
-    updates={'Please confirm attendance date':'attendance','Attendance arrangements requested':'attendance',
+    updates={'Please confirm attendance date':'attendance','Attendance arrangements requested':'attendance','Reschedule date requested':'attendance',
         'Alternative attendance date being arranged':'attendance','Attendance confirmed':'attendance',
         'Alternative attendance confirmed':'attendance','Completion report and photographs available':'reports'}
     notices=UserJobNotification.objects.filter(user=user,event__request=job,read_at=None).exclude(event__actor=user).select_related('event')
@@ -318,15 +324,19 @@ def dashboard(request):
         attendance_by_job={a.request_id:dict(state='date_received' if a.preference=='date' else 'call_requested',date=a.requested_date,window=a.requested_window) for a in AttendanceRequest.objects.filter(request__in=result,status='pending')}
     upcoming=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date__gte=timezone.localdate(),appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).select_related('request__property').order_by('agreed_date')[:12]
     rescheduling=[]
+    reschedule_requests=[]
     if request.user.is_superuser:
         from .models import TeamAppointment
         cancelled=TeamAppointment.objects.filter(assignment__request__in=rows,cancelled_at__isnull=False,customer_visible=True,public_arrival__isnull=False,rescheduled_to__isnull=True).exclude(assignment__request__status__in=['completed','closed','cancelled']).select_related('assignment__request__property')
         rescheduling=[dict(appointment=a.pk,job=str(a.assignment.request_id),reference=a.assignment.request.reference,property=a.assignment.request.property.address,date=str(timezone.localtime(a.starts_at).date()),reason=a.cancellation_reason) for a in cancelled]
+    if request.user.is_superuser:
+        pending=AttendanceRequest.objects.filter(request__in=rows,status='pending',request__closed_at=None).exclude(request__status__in=['closed','cancelled','completed']).select_related('request__property').order_by('created_at','pk')
+        reschedule_requests=[dict(job=str(a.request_id),attendance=a.pk,reference=a.request.reference,property=a.request.property.address,date=a.requested_date,window=a.requested_window,preference=a.preference) for a in pending if active_confirmed_attendance(a.request).exists()]
     summary=None
     if request.user.is_superuser:
         today=timezone.localdate()
         summary=[dict(label='New today',count=sum(timezone.localtime(j.created_at).date()==today for j in rows)),dict(label='Urgent attention',count=sum(j.urgency in ('urgent','safety') and j.status not in ('cancelled','completed','closed') for j in rows)),dict(label='Visits today',count=AttendanceRequest.objects.filter(request__in=rows,status='confirmed',agreed_date=today,appointment__isnull=False,appointment__cancelled_at__isnull=True).exclude(request__status__in=['completed','closed','cancelled']).count()),dict(label='Waiting on Sevlink',count=sum(len(grouped[k]) for k in ('quoting','deposit_invoice','deposit_confirmation','ready','underway','invoice')))]
-    return JsonResponse({'pipeline':pipeline,'rescheduling':rescheduling,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
+    return JsonResponse({'pipeline':pipeline,'rescheduling':rescheduling,'reschedule_requests':reschedule_requests,'summary':summary,'upcoming':[dict(id=str(a.request_id),reference=a.request.reference,property=a.request.property.address,date=a.agreed_date,window=a.agreed_window) for a in upcoming], 'attention_action_count':len(attention), 'stages':[dict(key=k,label=label,count=len(grouped[k])) for k,label in definitions],
         'results':[dict(id=str(j.pk),reference=j.reference,title=j.title,property=j.property.address,property_name=j.property.name,agency=j.property.agency.name,received_at=j.created_at.isoformat(),job_type=j.job_type,client_type='private' if j.private_client_id else 'agency',category=j.category,urgency=j.urgency,safety_concern=j.safety_concern,status=j.get_status_display(),attention_actions=attention_by_job.get(str(j.pk),[]),**({'attendance':attendance_by_job.get(j.pk,dict(state='awaiting_date',date=None,window=''))} if show_attendance else {})) for j in result]})
 
 
@@ -458,7 +468,9 @@ def action(request,job_id,operation):
                 when=day(values.get('date')) if pref=='date' else None
                 window=values.get('window','') if pref=='date' else ''
                 if when and (when<timezone.localdate() or window not in WINDOWS):raise ValueError('Choose a future date and one of the two arrival windows.')
+                values['reschedule']=active_confirmed_attendance(job).exists()
                 item=AttendanceRequest.objects.create(request=job,requested_by=request.user,preference=pref,requested_date=when,requested_window=window)
+                values['attendance_request']=item.pk
                 if free_assessment(job):values['assessment_attendance']=item.pk
             elif operation=='attendance-decline':
                 item=get_object_or_404(AttendanceRequest.objects.select_for_update(),pk=values.get('additional'),request=job)
@@ -482,6 +494,7 @@ def action(request,job_id,operation):
             snapshot={k:v for k,v in values.items() if k!='version'}
             decision=WorkflowDecision.objects.create(request=job,actor=request.user,operation=operation,key=key,fingerprint=fingerprint,snapshot=snapshot)
             labels={'jobs-intake':'Sevlink selected job payment terms','operations-triage':'Sevlink assessment route selected','review':'Request reviewed and routed','additional-request':'Additional spending authorisation requested','additional-decision':'Additional spending decision recorded','verify-deposit':'Deposit verified','attendance-request':'Attendance arrangements requested','attendance-decline':'Alternative attendance date being arranged','completion':'Completion report and photographs available'}
+            if operation=='attendance-request' and values.get('reschedule'):labels[operation]='Reschedule date requested'
             event=record(job,request.user,'workflow_event','workflow:'+str(key),{'action':labels[operation],'decision_id':str(decision.pk)},private=operation in ('additional-request','additional-decision','review','verify-deposit'))
             notify(event,operators() if operation=='attendance-request' or pm or role==Membership.CLIENT else participants(job,operation=='completion'))
             if (operation=='review' and job.job_type=='callout' and job.jobs_payment_route!='pending') or operation=='verify-deposit' or (operation=='operations-triage' and values.get('decision')=='attendance') or (operation=='jobs-intake' and values.get('decision')=='without_deposit'):
