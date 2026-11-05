@@ -17,3 +17,7 @@
 .private-client-workspace .client-actions{gap:8px;margin-top:10px}
 .private-client-workspace .client-back{margin:8px 0}
 @media(max-width:650px){.private-client-workspace{padding:0}.private-client-workspace>.heading{padding:16px}.private-client-workspace>.heading h1{font-size:24px}.private-client-workspace .client-job,.private-client-workspace .client-document,.private-client-workspace .client-message{padding:12px}}
+
+
+
+.private-client-workspace .client-attendance-card h3{font-size:12px;font-weight:650;color:#367b82;margin:0 0 12px}.private-client-workspace .client-attendance-card .attendance-date{font-size:32px;line-height:1.25;letter-spacing:-.5px;color:#173b50;margin:12px 0 16px}.private-client-workspace .client-attendance-card .attendance-window{display:grid;gap:5px;padding:14px 16px;border-radius:9px;background:#edf6f8;margin:0}.private-client-workspace .attendance-window>span{font-size:12px;color:#577284}.private-client-workspace .attendance-window>strong{font-size:20px;color:#173b50}.private-client-workspace .attendance-window>small{font-size:10px;color:#617d8e}@media(max-width:650px){.private-client-workspace .client-attendance-card .attendance-date{font-size:26px}}

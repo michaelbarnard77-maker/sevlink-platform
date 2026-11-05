@@ -149,3 +149,5 @@
 .sevlink-workspace #app .agency-team{margin-top:14px}
 
 .stage-register-table .stage-attendance{min-width:145px}.stage-attendance-status{display:inline-block;border-radius:6px;padding:5px 8px;background:#f1f4f7;color:#526a7d;font-size:10px;line-height:1.5}.stage-attendance-status.date-received{background:#e5f3f0;color:#246e63}
+
+.sevlink-workspace #modal .attendance-card .attendance-date{font-size:32px;line-height:1.25;letter-spacing:-.5px;margin:16px 0;color:#173b50}@media(max-width:760px){.sevlink-workspace #modal .attendance-card .attendance-date{font-size:26px}}
