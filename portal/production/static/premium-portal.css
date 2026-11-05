@@ -147,3 +147,5 @@
 .sevlink-workspace #app>.heading h1{font-size:30px;margin:7px 0}
 @media(min-width:1200px){.sevlink-workspace #app .attention-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .sevlink-workspace #app .agency-team{margin-top:14px}
+
+.stage-register-table .stage-attendance{min-width:145px}.stage-attendance-status{display:inline-block;border-radius:6px;padding:5px 8px;background:#f1f4f7;color:#526a7d;font-size:10px;line-height:1.5}.stage-attendance-status.date-received{background:#e5f3f0;color:#246e63}

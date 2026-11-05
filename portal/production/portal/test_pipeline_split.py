@@ -124,3 +124,20 @@ class PipelineSplitTests(TestCase):
         self.approve()
         self.assertEqual(self.job.jobs_payment_route,'pending')
         self.assertEqual(pipeline_stage(self.job,'jobs'),'new')
+
+    def test_ready_rows_distinguish_requested_date_call_and_no_date(self):
+        from datetime import timedelta
+        from .models import AttendanceRequest
+        self.intake();self.approve();self.act('without_deposit')
+        row=self.rows('jobs','ready').json()['results'][0]
+        self.assertEqual(row['attendance'],dict(state='awaiting_date',date=None,window=''))
+        day=timezone.localdate()+timedelta(days=3)
+        arrival=AttendanceRequest.objects.create(request=self.job,requested_by=self.pm,preference='date',requested_date=day,requested_window='09:00–13:00')
+        row=self.rows('jobs','ready').json()['results'][0]
+        self.assertEqual(row['attendance'],dict(state='date_received',date=str(day),window='09:00–13:00'))
+        arrival.status='declined';arrival.save(update_fields=['status'])
+        self.assertEqual(self.rows('jobs','ready').json()['results'][0]['attendance']['state'],'awaiting_date')
+        AttendanceRequest.objects.create(request=self.job,requested_by=self.pm,preference='call')
+        self.assertEqual(self.rows('jobs','ready').json()['results'][0]['attendance']['state'],'call_requested')
+        self.assertNotIn('attendance',self.client.get(reverse('workflow_stages'),{'pipeline':'jobs'}).json()['results'][0])
+        self.assertEqual(self.rows('jobs','ready',self.foreign).status_code,403)
