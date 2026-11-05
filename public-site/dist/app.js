@@ -46,3 +46,16 @@ $('#enquiryForm').addEventListener('input',()=>$('#formError').hidden=true);
 document.querySelectorAll('[data-enquire]').forEach(b=>b.onclick=()=>enquire());document.querySelectorAll('[data-service]').forEach(b=>b.onclick=()=>showService(b.dataset.service));$('#allServicesButton').onclick=showCategories;$('#closeDialog').onclick=()=>dialog.close();dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close()}});
 $('#menuButton').onclick=()=>{const open=$('#mainNav').classList.toggle('is-open');$('#menuButton').setAttribute('aria-expanded',String(open))};$('#mainNav').querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{$('#mainNav').classList.remove('is-open');$('#menuButton').setAttribute('aria-expanded','false')}));document.addEventListener('keydown',event=>{if(event.key==='Escape'){$('#mainNav').classList.remove('is-open');$('#menuButton').setAttribute('aria-expanded','false')}});
 $('#privacyButton').onclick=()=>showDialog(`<p class="eyebrow">YOUR ENQUIRY</p><h2 class="dialog-title">Your details, your choice.</h2><div class="privacy-text"><p>This demo uses the details you enter to prepare a message for you to review. It does not submit the form to a lead database or send a message automatically.</p><p>If you choose WhatsApp or email, the details are passed to that service so you can send your enquiry to Sevlink. Please share only the information needed for the work requested.</p><p>For questions about an enquiry, contact info@sevlink.co.za or call 081 028 5034.</p></div>`);$('#year').textContent=new Date().getFullYear();
+
+// A live sign-in is optional and never points to the browser-local demo implicitly.
+if (window.SEVLINK_PORTAL_SIGN_IN_URL) {
+  try {
+    const livePortal = new URL(window.SEVLINK_PORTAL_SIGN_IN_URL);
+    if (livePortal.protocol !== 'https:' || livePortal.username || livePortal.password ||
+        livePortal.search || livePortal.hash || !['/', '/login/'].includes(livePortal.pathname)) throw new Error('Invalid portal origin');
+    const signIn = document.createElement('a');
+    signIn.href = livePortal.origin + '/login/';
+    signIn.textContent = 'Agency sign-in';
+    document.querySelector('#mainNav').append(signIn);
+  } catch (_) { /* Invalid configuration never becomes a visitor-facing link. */ }
+}

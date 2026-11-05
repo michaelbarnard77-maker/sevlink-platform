@@ -1,0 +1,10 @@
+{% extends 'portal/base.html' %}{% block content %}
+<h1>{{ agency.name }} · Account access</h1>
+<p>Changes preserve historical jobs and financial records. Moving out removes access to that property's jobs. Deactivation also removes PM allocations; reactivation does not restore them automatically.</p>
+<section class="panel"><h2>People</h2>{% for member in members %}<div class="line"><b>{{ member.user.first_name }}</b> · {{ member.user.email }} · {{ member.get_role_display }} · {{ member.user.is_active|yesno:'Active,Inactive' }}
+{% if member.role != 'admin' and not member.user.is_staff and not member.user.is_superuser %}
+{% if member.user.is_active %}<a href="{% url 'agency_account_change' agency.pk 'deactivate' member.user.pk %}">Deactivate</a>{% else %}<a href="{% url 'agency_account_change' agency.pk 'reactivate' member.user.pk %}">Reactivate</a>{% endif %}{% endif %}</div>{% endfor %}</section>
+<section class="panel"><h2>Active tenancies</h2>{% for tenancy in tenancies %}<div class="line">{{ tenancy.name }} · {{ tenancy.property.address }} · <a href="{% url 'agency_account_change' agency.pk 'move-out' tenancy.pk %}">Record move-out</a></div>{% empty %}<p>No active tenancies.</p>{% endfor %}</section>
+<section class="panel"><h2>Pending invitations</h2>{% for invitation in invitations %}<div class="line">{{ invitation.email }} · {{ invitation.role }} · <a href="{% url 'agency_account_change' agency.pk 'cancel-invitation' invitation.pk %}">Cancel invitation</a></div>{% empty %}<p>No pending invitations.</p>{% endfor %}</section>
+<section class="panel"><h2>Account activity · latest 100</h2>{% for event in events %}<div class="line"><b>{{ event.action }}</b> · {{ event.created_at }} · {{ event.actor.email }}<p>{{ event.reason }}</p></div>{% empty %}<p>No account access changes.</p>{% endfor %}</section>
+{% endblock %}

@@ -23,9 +23,14 @@ class InviteForm(forms.Form):
     name = forms.CharField(max_length=150)
     email = forms.EmailField()
     phone = forms.CharField(max_length=40,required=False)
+    def __init__(self, *args, agency=None, tenant=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.agency, self.tenant = agency, tenant
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
+        existing = User.objects.filter(email__iexact=email).first()
+        if existing and not (self.tenant and existing.is_active and
+                Membership.objects.filter(user=existing, agency=self.agency, role=Membership.TENANT).exists()):
             raise forms.ValidationError('An account already uses this email. Contact Sevlink to arrange access; an existing account will not be reassigned.')
         return email
 class PropertyForm(forms.ModelForm):

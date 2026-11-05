@@ -24,5 +24,5 @@ def queue_invite(*,agency,email,name,role,actor,tenancy=None):
     token = secrets.token_urlsafe(48)
     invitation = Invitation.objects.create(agency=agency,email=email,name=name,role=role,invited_by=actor,tenancy=tenancy,token_hash=digest(token),expires_at=timezone.now()+timedelta(hours=48))
     link = settings.SITE_URL+'/invitation/'+token+'/'
-    MailQueue.objects.create(recipient=email,subject='Sevlink account invitation',body=f'Hello {name},\n\n{agency.name} has requested your {role} access to Sevlink.\nOpen this link within 48 hours:\n{link}\n\nIf unexpected, ignore this message.\nSevlink')
+    MailQueue.objects.create(recipient=email,expires_at=invitation.expires_at,subject='Sevlink account invitation',body=f'Hello {name},\n\n{agency.name} has requested your {role} access to Sevlink.\nOpen this link within 48 hours:\n{link}\n\nIf unexpected, ignore this message.\nSevlink')
     return invitation

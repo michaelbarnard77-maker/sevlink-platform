@@ -1,3 +1,11 @@
+> PM/tenant workspace update: [dashboard, accounts and customer calendar](docs/PM-DASHBOARD-AND-CUSTOMER-CALENDAR.md) now use scoped Django data. [Safe Windows update instructions](docs/WINDOWS-PM-DASHBOARD-UPDATE.md) preserve existing local records and private files. Numeric SV job references retain legacy UUID links; customer appointments require explicit sharing.
+
+> Controlled-launch preparation: see [current readiness and acceptance gates](docs/CONTROLLED-LAUNCH-READINESS.md). Account lifecycle controls, privileged MFA, fail-closed scanner integration, account-email queue readiness and fresh-account browser coverage extend the existing platform. CK Properties (80–100 properties) is the proposed pilot; launch, live email and deployment remain unapproved.
+
+> Step 7.5 development update: refunds, invoice void/correction holds, approved quotation amendments, annual SQ/SI internal IDs and disabled email operations tooling are documented in [Step 7.5 acceptance](docs/STEP-7-5-ACCEPTANCE.md). No production deployment or live email is active.
+
+> Development update: quotations and invoices are prepared externally and uploaded as PDFs. The Django workspace supports quotation decisions/revisions and manual invoice payment records; it does not calculate line items or generate documents. See [current commercial document workflows](docs/STEP-7-QUOTATIONS-AND-OPERATIONS.md). Older source-export/demo descriptions below are historical.
+
 # Sevlink source export for Codex
 
 This archive contains the complete source currently available for the Sevlink work completed in the hosted demos and the available backend foundation. It preserves the existing design, branding, pages, navigation, styling, assets, tests and demo behaviour.
@@ -58,18 +66,16 @@ The production settings require real secrets, HTTPS, a PostgreSQL database and a
 
 The portal UI already demonstrates the intended workflow, including agency and property-manager views, tenants, repair categories, quote and invoice screens, deposits and payments, scheduling, attendance, operations calendar, subcontractor planning, job cancellation and website issue reporting. In the current hosted demo these records are browser-local and the role selectors are a simulation.
 
-The Django backend is not yet connected to the portal UI and is not a complete production backend. The following still need implementation and integration before launch:
+The authenticated Django workspace at `/maintenance/` now supports maintenance,
+private attachments, comments, quotation PDF decisions, invoice PDFs/manual ledgers,
+refunds/corrections, supplier management, scheduling and Monday Payments Due.
+The static portal demo is separate and remains browser-local. Account setup is at
+`/`; the public marketing website still links explicitly to the demo.
 
-- Repair, quote, invoice, payment, deposit, appointment, attendance and cancellation models and API/views.
-- Centralised document and photo uploads with private object storage and access control.
-- The Operations calendar, subcontractor assignments and private Sevlink-only data.
-- Production email delivery for invitations, updates, quote links and invoices.
-- Online payment-gateway integration, if required.
-- Full production frontend-to-backend authentication and permissions.
-- Production database deployment, backups, monitoring, restore testing and load testing.
-- Final DNS/domain connection and production security review.
-
-The available source does not silently claim these items are finished.
+Live email, production infrastructure, malware protection, privileged MFA,
+restore testing and owner acceptance are launch gates. No bank integration,
+payment gateway or document generation is planned. See the current launch
+readiness report for verified capabilities and outstanding gates.
 
 ## Hosted demo references
 
@@ -85,6 +91,19 @@ The hosted demos were private review sites at the time of export. The custom dom
 - Public site repository: `/workspace/sites/sevlink-public-demo`
 - The export excludes `.git` directories, Python cache files and `portal/production/development.sqlite3` (local generated database state).
 
+## Phase 1 development workflow
+
+On `development/phase-1-foundations`, Django now supports tenant maintenance reports,
+PM/agency status review, persistent status history and Super Admin visibility.
+After migrating and signing in, open `/maintenance/`. The authenticated workspace
+reuses the existing portal layout/CSS and reads scoped Django APIs; the original
+static demo and public site remain unchanged. See [Phase 1 workflow](docs/PHASE-1-WORKFLOW.md)
+for permissions, endpoints, setup, tests and unfinished features.
+Use [Phase 1 verification](docs/PHASE-1-VERIFICATION.md) for local review accounts and a manual checklist. This is not a
+production deployment or a completed port of every demo feature.
+
+The earlier export description and review document the baseline before this phase.
+
 ## Repository preparation and review
 
 - [Architecture and review](docs/PROJECT-REVIEW.md): current components, boundaries and launch gaps.
@@ -94,3 +113,19 @@ The hosted demos were private review sites at the time of export. The custom dom
 
 The `dist/` directories are the available editable frontend source. Keep them in Git.
 No design, branding, page, script-loading order or application behavior was changed during repository preparation.
+
+## Private attachments development update
+
+The development branch now supports authenticated private photo/PDF uploads and
+downloads using local Django storage. See [private attachments](docs/PRIVATE-ATTACHMENTS.md)
+for limits, permissions, storage/S3 architecture, tests and production prerequisites.
+The original static demo remains separate and unchanged.
+
+## Operations event notifications development update
+
+Saved job submissions, shared comments, quotation decisions and completion/cancellation
+now create a durable Operations outbox for maintenance@sevlink.co.za (configurable).
+Real shared comments and basic quotation decisions are connected to Django. Delivery
+is local-only until explicitly configured; run the separate worker to process previews.
+See [Operations notifications](docs/OPERATIONS-NOTIFICATIONS.md) for setup, guarantees,
+privacy, SES preparation, tests and unfinished work. No live email or cloud service was activated.

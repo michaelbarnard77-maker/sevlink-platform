@@ -1,3 +1,11 @@
+> Current development workflow: manually uploaded quotation/invoice PDFs, PM quotation decisions and Operations manual payment records. No PDF generation, quote line-item calculations or payment gateway. See [the current guide](../../docs/STEP-7-QUOTATIONS-AND-OPERATIONS.md); older exported-backend descriptions below are historical.
+
+> Development branch update: Phase 1 now includes persistent maintenance requests,
+> authenticated API endpoints and a portal adapter at `/maintenance/`. See
+> [Phase 1 workflow](../../docs/PHASE-1-WORKFLOW.md) for current behavior and tests.
+> The baseline notes below describe the original onboarding implementation; the
+> remaining repair/financial/operations features are still incomplete. Not deployed.
+
 # Sevlink server application — first implementation stage
 
 This is real server-side account and property setup code for a future xneelo
@@ -106,3 +114,21 @@ verification, PM invitation, PM property ownership, tenant invitation, role
 escalation denial, cross-agency/PM isolation, tenant privacy, expired/reissued/
 reused links, CSRF, POST-only logout, login throttling and queued password resets.
 PostgreSQL and Docker deployment have NOT been exercised in this environment.
+
+## Private attachment follow-up
+
+Authenticated photo/PDF uploads and downloads now use a private local storage alias.
+Install the updated lockfile and apply migration 0003 for local testing.
+See [private attachment implementation](../../docs/PRIVATE-ATTACHMENTS.md) for policy,
+S3 extension points, tests and unfinished production requirements.
+The proposed Compose configuration has a web-only private upload volume; it has not been deployed.
+
+## Operations events and local mail delivery
+
+Saved important maintenance events now queue durable Operations notifications. Shared
+comments and basic quote issue/decisions are real Django workflows, with timestamped
+actor history. Delivery defaults to private local preview files. Run
+`python manage.py send_operations_notifications --watch --interval 5` in a separate
+local terminal to process saved events; it does not send external mail by default.
+See [Operations event documentation](../../docs/OPERATIONS-NOTIFICATIONS.md).
+The old account invitation queue/SMTP command remains separate and disabled.
