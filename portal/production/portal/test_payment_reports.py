@@ -28,6 +28,7 @@ class PaymentReportTests(TestCase):
         self.assertEqual(result.status_code,201,result.content)
         self.assertTrue(result.json()['payment_reported'])
         self.assertEqual(result.json()['payment_status'],'unpaid')
+        self.assertEqual(result.json()['payment_label'],'Paid — awaiting verification')
         self.assertEqual(result.json()['outstanding'],'1000.00')
         self.assertEqual(InvoicePayment.objects.count(),0)
         attention=self.client.get(reverse('customer_portal_section',args=['attention'])).json()['items']
@@ -44,6 +45,7 @@ class PaymentReportTests(TestCase):
         self.assertEqual(response.status_code,201,response.content)
         self.assertFalse(response.json()['payment_reported'])
         self.assertEqual(response.json()['payment_status'],'paid')
+        self.assertEqual(response.json()['payment_label'],'Paid — verified')
         self.client.force_login(self.pm)
         self.assertEqual(self.report(response.json()).status_code,409)
 

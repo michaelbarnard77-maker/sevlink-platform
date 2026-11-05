@@ -193,6 +193,8 @@ def section(request,section):
         if not finance:return JsonResponse({'error':'Agency quotation access required.'},status=403)
         from .quotations import quote_data
         return JsonResponse({'quotations':[dict(job_row(q.request),quotation=quote_data(q,request.user)) for q in JobQuotation.objects.filter(request__in=requests_for(request.user)).exclude(status='draft').select_related('request__property')]})
+    if section=='profile' and access(request.user)[0]!=Membership.ADMIN:
+        return JsonResponse({'error':'Only your agency administrator can view the agency profile.'},status=403)
     if section in ('properties','tenants','profile'):
         role,m=access(request.user);props=properties_for(request.user).select_related('manager','agency')
         from .maintenance import property_data

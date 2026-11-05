@@ -44,6 +44,11 @@ def invoice_data(invoice, user):
         state=deposit_state(invoice.request)
         result['needs_deposit_verification']=bool(invoice.purpose=='deposit' and invoice.visibility=='shared' and invoice.document_status=='active' and not invoice.reconciliation_required and not state['ready'] and not state['verification_recorded'] and Decimal(state['required'])>0 and Decimal(state['received'])>=Decimal(state['required']))
     reported = pending_payment_report(invoice)
+    # Display the customer's report separately from the verified financial ledger.
+    result['payment_label'] = ('Voided' if invoice.document_status=='void' else
+        'Reconciliation hold' if invoice.reconciliation_required else
+        'Paid — awaiting verification' if reported else
+        {'paid':'Paid — verified','partially_paid':'Part-paid — verified','unpaid':'Unpaid','refunded':'Refunded'}.get(invoice.payment_status,invoice.payment_status))
     result['payment_reported'] = bool(reported)
     result['payment_reported_at'] = reported.created_at.isoformat() if reported else None
     result['collectible'] = result['outstanding'] if not invoice.reconciliation_required else '0.00'

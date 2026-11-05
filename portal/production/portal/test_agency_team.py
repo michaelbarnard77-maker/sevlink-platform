@@ -20,7 +20,9 @@ class AgencyTeamTests(TestCase):
         self.assertEqual(next(r for r in result['team'] if r['email'] == self.pm.email)['properties'], 1)
 
     def test_agent_has_no_team_controls_or_other_agents_properties(self):
-        self.assertNotIn('team', self.profile(self.pm).json())
+        self.assertEqual(self.profile(self.pm).status_code, 403)
+        self.assertEqual(self.profile(self.tenant).status_code, 403)
+        self.client.force_login(self.pm)
         self.assertEqual(self.client.get(reverse('invite_pm')).status_code, 403)
         other = Property.objects.create(agency=self.agency, manager=self.other_pm, name='Other agent', address='Private other agent address')
         result = self.client.get(reverse('customer_portal_section', args=['properties'])).json()

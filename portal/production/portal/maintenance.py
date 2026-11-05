@@ -408,11 +408,11 @@ def workspace(request):
     from django.templatetags.static import static
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+static('workflow.css')+'"><link rel="stylesheet" href="'+(static('premium-portal.css')+'?v=compact-all-portals-20261104-3')+'"></head>')
+    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+static('workflow.css')+'"><link rel="stylesheet" href="'+(static('premium-portal.css')+'?v=payment-labels-20261105-5')+'"></head>')
     html = html.replace('src="sevlink-logo.png"', 'src="'+static('landing/assets/sevlink-logo.png')+'"')
     html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
     html = html.replace('content="#101c31"', 'content="#102e46"')
-    html = html.replace('</body>', '<script src="'+(static('workflow-ui.js')+'?v=compact-all-portals-20261104-3')+'"></script><script src="' + (static('maintenance.js')+'?v=compact-all-portals-20261104-3') + '"></script></body>')
+    html = html.replace('</body>', '<script src="'+(static('workflow-ui.js')+'?v=payment-labels-20261105-5')+'"></script><script src="' + (static('maintenance.js')+'?v=payment-labels-20261105-5') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)
