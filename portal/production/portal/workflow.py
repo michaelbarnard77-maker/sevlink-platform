@@ -486,8 +486,9 @@ def action(request,job_id,operation):
                 if exception and not exception_reason:raise ValueError('Record the reason before-work photographs are unavailable.')
                 if not docs.filter(purpose='completion_before').exists() and not (exception and exception_reason):raise ValueError('Before-work photos or a confirmed reason for their absence are required.')
                 completion=CompletionRecord.objects.create(request=job,recorded_by=request.user,report=report,before_unavailable=exception,exception_reason=exception_reason)
-                completion.documents.set(docs)
-                from .completion_delivery import maybe_queue
+                completion.documents.set(docs.filter(purpose__in=['completion_before','completion_after']))
+                from .completion_delivery import maybe_queue,ensure_report
+                ensure_report(job,completion,request.user,keys)
                 maybe_queue(job,request.user)
             else:return JsonResponse({'error':'Unknown workflow action.'},status=404)
             job.version+=1;job.save()

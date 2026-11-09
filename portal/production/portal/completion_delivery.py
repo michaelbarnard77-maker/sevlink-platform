@@ -2,6 +2,7 @@
 from io import BytesIO
 from itertools import zip_longest
 import textwrap
+from pathlib import Path
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
@@ -30,43 +31,89 @@ def eligible_recipient(job):
 
 
 def build_report(job,completion):
-    """Bounded, image-backed A4 PDF. Only the accepted client-facing evidence."""
+    """Branded A4 report with the accepted description and paired evidence."""
     pages=[];size=(1240,1754)
-    font=ImageFont.load_default(size=25);small=ImageFont.load_default(size=21);title=ImageFont.load_default(size=42)
+    ink='#173b50';teal='#25858c';muted='#617986'
+    fonts=Path(__file__).parent/'email_assets'
+    font=ImageFont.truetype(str(fonts/'report-sans.ttf'),25)
+    small=ImageFont.truetype(str(fonts/'report-sans.ttf'),21)
+    title=ImageFont.truetype(str(fonts/'report-sans-bold.ttf'),36)
+    def wrap(value):
+        width=73
+        while width>1:
+            lines=textwrap.wrap(value,width=width) or ['']
+            if all(font.getlength(line)<=1100 for line in lines):return lines
+            width-=1
+        return list(value)
     def page(label):
-        image=Image.new('RGB',size,'white');draw=ImageDraw.Draw(image)
-        draw.text((70,55),'SEVLINK',fill='#062f61',font=title)
-        draw.text((70,115),'Before & After Completion Report',fill='#006bb0',font=font)
-        draw.text((70,160),label,fill='#102e50',font=small)
-        draw.line((70,205,1170,205),fill='#00b6c8',width=4)
+        image=Image.new('RGB',size,'#f1f6f9');draw=ImageDraw.Draw(image)
+        draw.rounded_rectangle((35,35,1205,1698),radius=24,fill='white')
+        draw.rounded_rectangle((70,55,1170,65),radius=5,fill=teal)
+        logo_path=settings.BASE_DIR/'static/landing/assets/sevlink-logo.png'
+        if logo_path.exists():
+            with Image.open(logo_path) as original:
+                logo=original.convert('RGBA');logo.thumbnail((200,105));image.paste(logo,(70,85),logo)
+        else:draw.text((70,100),'SEVLINK',fill=ink,font=title)
+        draw.text((670,100),'COMPLETION REPORT',fill=ink,font=font)
+        draw.text((670,145),job.reference,fill=teal,font=font)
+        draw.line((70,215,1170,215),fill='#dce8ee',width=2)
+        draw.text((70,240),label,fill=teal,font=font)
         pages.append(image);return image,draw
-    image,draw=page(job.reference);y=245
-    text='\n'.join([job.property.address,job.title,'','Work completed:',completion.report,
-        '\nBefore-photo exception: '+completion.exception_reason if completion.before_unavailable else ''])
-    for line in text.splitlines():
-        for wrapped in textwrap.wrap(line,width=76) or ['']:
-            if y>1610:image,draw=page(job.reference+' — continued');y=245
-            draw.text((70,y),wrapped,fill='#102e50',font=font);y+=36
+    image,draw=page('YOUR PROPERTY. OUR PRIORITY.');y=305
+    from django.utils import timezone
+    details=[('PROPERTY',job.property.address),('JOB',job.title),('REPORT DATE',timezone.localtime(completion.created_at).strftime('%d %B %Y')),('WORK COMPLETED',completion.report)]
+    if completion.before_unavailable:details.append(('BEFORE PHOTOGRAPHS',completion.exception_reason))
+    for heading,value in details:
+        if y>1450:image,draw=page('WORK COMPLETED — CONTINUED');y=305
+        draw.text((70,y),heading,fill=teal,font=small);y+=42
+        for line in value.splitlines():
+            for wrapped in wrap(line):
+                if y>1550:image,draw=page('WORK COMPLETED — CONTINUED');y=305
+                draw.text((70,y),wrapped,fill=ink,font=font);y+=38
+        y+=30
     docs=completion.documents.filter(visibility__in=['shared','agency']).exclude(comment__visibility='internal')
     before=list(docs.filter(purpose='completion_before',content_type__startswith='image/'))
     after=list(docs.filter(purpose='completion_after',content_type__startswith='image/'))
     if len(before)+len(after)>20:raise ValueError('A completion PDF supports up to 20 report photographs.')
     for left,right in zip_longest(before,after):
-        image,draw=page(job.reference+' — photographs')
-        for x,label,document in [(70,'BEFORE WORK',left),(655,'AFTER WORK',right)]:
-            draw.text((x,250),label,fill='#006bb0',font=font)
+        image,draw=page('BEFORE & AFTER PHOTOGRAPHS')
+        pictures=[]
+        for document in (left,right):
             if document:
                 with attachments.storage().open(document.storage_key,'rb') as handle:
-                    with Image.open(handle) as original:
-                        photo=ImageOps.exif_transpose(original).convert('RGB');photo.thumbnail((515,1200))
-                        image.paste(photo,(x,310))
-                draw.text((x,1560),document.filename[:42],fill='#526d89',font=small)
-            else:draw.text((x,310),'No photograph in this column.',fill='#526d89',font=small)
+                    with Image.open(handle) as original:pictures.append(ImageOps.exif_transpose(original).convert('RGB'))
+            else:pictures.append(None)
+        landscape=all(photo is None or photo.width>photo.height for photo in pictures)
+        boxes=[(70,300,1170,895),(70,935,1170,1530)] if landscape else [(70,300,600,1550),(640,300,1170,1550)]
+        for photo,document,label,box in zip(pictures,(left,right),('BEFORE WORK','AFTER WORK'),boxes):
+            x,y,right_edge,bottom=box;width=right_edge-x
+            draw.rounded_rectangle(box,radius=16,fill='#f1f6f9',outline='#dce8ee',width=2)
+            draw.text((x+20,y+25),label,fill=teal,font=font)
+            if photo:
+                photo.thumbnail((width-40,bottom-y-150))
+                image.paste(photo,(x+(width-photo.width)//2,y+80+(bottom-y-150-photo.height)//2))
+                photo.close()
+                draw.text((x+20,bottom-45),document.filename[:40],fill=muted,font=small)
+            else:draw.text((x+20,y+110),'No photograph supplied.',fill=muted,font=small)
+    for number,image in enumerate(pages,1):
+        draw=ImageDraw.Draw(image);draw.line((70,1615,1170,1615),fill='#dce8ee',width=2)
+        draw.text((70,1635),'maintenance@sevlink.co.za  |  081 028 5034',fill=muted,font=small)
+        draw.text((1170,1635),f'{number} / {len(pages)}',fill=muted,font=small,anchor='ra')
     output=BytesIO()
-    pages[0].save(output,format='PDF',save_all=True,append_images=pages[1:],resolution=150,quality=80,
+    pages[0].save(output,format='PDF',save_all=True,append_images=pages[1:],resolution=150,quality=82,
         title='Sevlink '+job.reference+' completion report',author='Sevlink')
     for image in pages:image.close()
     return output.getvalue()
+
+
+def ensure_report(job,completion,actor,keys):
+    report=completion.documents.filter(purpose='completion_report').order_by('-created_at','-pk').first()
+    if report:return report
+    raw=build_report(job,completion)
+    prepared=attachments.prepare([SimpleUploadedFile('Sevlink-'+job.reference+'-completion-report.pdf',raw,content_type='application/pdf')])
+    report=attachments.save_files(job,actor,prepared,keys,visibility='agency',purpose='completion_report')[0]
+    completion.documents.add(report)
+    return report
 
 
 def maybe_queue(job,actor):
@@ -89,9 +136,7 @@ def maybe_queue(job,actor):
     if existing:return existing
     completion=job.completion_records.order_by('-created_at','-pk').first();keys=[]
     try:
-        raw=build_report(job,completion)
-        prepared=attachments.prepare([SimpleUploadedFile('Sevlink-'+job.reference+'-completion-report.pdf',raw,content_type='application/pdf')])
-        report=attachments.save_files(job,actor,prepared,keys,visibility='agency',purpose='completion_report')[0]
+        report=ensure_report(job,completion,actor,keys)
         message=MailQueue.objects.create(recipient=recipient.email,subject='Sevlink '+job.reference+' — completion report and final invoice',
             body='\n'.join(['Hi '+(recipient.first_name or 'Property Manager')+',','',
                 'The completed Before & After Report and original final invoice are attached.',
@@ -124,7 +169,10 @@ def status(request,job_id):
     job=get_object_or_404(requests_for(request.user),pk=job_id)
     if not request.user.is_superuser:raise Http404
     package=CompletionPackage.objects.filter(invoice__request=job).select_related('message','report_document').order_by('-created_at').first()
-    if not package:return JsonResponse({'queued':False})
+    if not package:
+        completion=job.completion_records.order_by('-created_at','-pk').first()
+        report=completion.documents.filter(purpose='completion_report').order_by('-created_at','-pk').first() if completion else None
+        return JsonResponse({'queued':False,'report_ready':bool(report),'report_url':reverse('maintenance_attachment_download',args=[job.pk,report.pk]) if report else None})
     state='sent' if package.message.sent_at else 'blocked' if package.message.retired_at else 'failed' if package.message.attempts>=5 else 'preview' if package.message.error_code=='preview_only' else 'queued'
     return JsonResponse({'queued':True,'state':state,'report_url':reverse('maintenance_attachment_download',args=[job.pk,package.report_document_id]),'invoice_number':package.invoice.number,'live_enabled':bool(settings.SMTP_DELIVERY_ENABLED and settings.OPERATIONS_LIVE_DELIVERY_ENABLED)})
 
@@ -170,7 +218,8 @@ def upload_completed_report(request,job_id):
             attachments.save_files(job,request.user,before,keys,purpose='completion_before')
             attachments.save_files(job,request.user,after,keys,purpose='completion_after')
             completion=CompletionRecord.objects.create(request=job,recorded_by=request.user,report=report,before_unavailable=exception,exception_reason=reason)
-            completion.documents.set(job.attachments.filter(purpose__in=['completion_before','completion_after','completion_report']))
+            completion.documents.set(job.attachments.filter(purpose__in=['completion_before','completion_after']))
+            ensure_report(job,completion,request.user,keys)
             job.version+=1;job.save(update_fields=['version'])
             decision=WorkflowDecision.objects.create(request=job,actor=request.user,operation='completion',key=key,fingerprint=fingerprint,snapshot={'completion':completion.pk})
             from .workflow import attention_notifications

@@ -54,7 +54,7 @@ class CompletionDeliveryTests(TestCase):
         key=uuid.uuid4();r=self.upload(key);self.assertEqual(r.status_code,201,r.content)
         r=self.upload(key);self.assertEqual(r.status_code,200,r.content)
         self.assertEqual(CompletionRecord.objects.count(),1)
-        self.assertEqual(set(self.job.attachments.values_list('purpose',flat=True)),{'completion_before','completion_after'})
+        self.assertEqual(set(self.job.attachments.values_list('purpose',flat=True)),{'completion_before','completion_after','completion_report'})
         self.assertFalse(CompletionPackage.objects.exists())
 
     def test_report_and_invoice_are_two_attachments_in_one_private_preview(self):
@@ -136,3 +136,21 @@ class CompletionDeliveryTests(TestCase):
         self.assertEqual(r.status_code,200,r.content)
         r=self.upload(mark_completed=True);self.assertEqual(r.status_code,201,r.content)
         self.job.refresh_from_db();self.assertEqual(self.job.status,'completed')
+
+    def test_report_pdf_ready_before_invoice_and_reused_for_combined_delivery(self):
+        from .models import MaintenanceAttachment
+        self.completed()
+        self.client.force_login(self.ops)
+        status=self.client.get(reverse('completion_package_status',args=[self.job.pk])).json()
+        self.assertFalse(status['queued']);self.assertTrue(status['report_ready'])
+        response=self.client.get(status['report_url'])
+        self.assertEqual(response.status_code,200)
+        raw=b''.join(response.streaming_content)
+        self.assertGreaterEqual(len(PdfReader(io.BytesIO(raw)).pages),2)
+        document=MaintenanceAttachment.objects.get(request=self.job,purpose='completion_report')
+        self.assertFalse(CompletionPackage.objects.exists());self.assertFalse(MailQueue.objects.exists())
+        response=self.invoice(purpose='final')
+        self.assertEqual(response.status_code,201,response.content)
+        self.assertEqual(CompletionPackage.objects.get().report_document_id,document.pk)
+        self.assertEqual(MaintenanceAttachment.objects.filter(request=self.job,purpose='completion_report').count(),1)
+        self.assertEqual(MailQueue.objects.count(),1)
