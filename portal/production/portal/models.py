@@ -121,7 +121,27 @@ class Invitation(models.Model):
     accepted_at = models.DateTimeField(null=True,blank=True)
     revoked_at = models.DateTimeField(null=True,blank=True)
     invited_by = models.ForeignKey(User,on_delete=models.PROTECT)
+class WebsiteEnquiry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submission_key = models.UUIDField(unique=True)
+    fingerprint = models.CharField(max_length=64)
+    name = models.CharField(max_length=100)
+    phone = models.CharField(max_length=30)
+    email = models.EmailField()
+    client_type = models.CharField(max_length=40)
+    area = models.CharField(max_length=120)
+    service = models.CharField(max_length=80)
+    details = models.TextField(max_length=2500)
+    status = models.CharField(max_length=16, default="new", choices=[("new","New"),("contacted","Contacted"),("closed","Closed")])
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @model_property
+    def reference(self):
+        return "WEB-" + self.pk.hex[:12].upper()
+
+
 class MailQueue(models.Model):
+    website_enquiry = models.ForeignKey(WebsiteEnquiry, null=True, blank=True, on_delete=models.PROTECT, related_name="mail")
     private_job = models.ForeignKey('MaintenanceRequest',null=True,blank=True,on_delete=models.PROTECT,related_name='private_client_mail')
     recipient = models.EmailField()
     subject = models.CharField(max_length=200)

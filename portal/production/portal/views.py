@@ -15,7 +15,8 @@ from .forms import RegisterForm, InviteForm, PropertyForm, EmailLoginForm
 from .services import digest, limited, queue_invite
 
 def landing(request):
-    return render(request,'portal/landing.html')
+    from .website_enquiries import public_landing
+    return public_landing(request)
 
 class PortalLogin(LoginView):
     authentication_form = EmailLoginForm

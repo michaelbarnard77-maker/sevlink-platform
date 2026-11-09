@@ -30,10 +30,10 @@ PLAIN_SIGNATURE = ('SEVLINK | Property Maintenance\n'
                    '081 028 5034\nhttps://www.sevlink.co.za')
 
 
-def branded_bodies(body):
+def branded_bodies(body, *, content_html=None):
     """Keep a readable text alternative and safely render clickable message links."""
     text = str(body)
-    html_body = urlize(text, autoescape=True).replace('\n', '<br>')
+    html_body = content_html if content_html is not None else urlize(text, autoescape=True).replace('\n', '<br>')
     signature = '''<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:28px"><tr><td>
 <a href="https://www.sevlink.co.za" style="text-decoration:none"><img src="cid:sevlink-signature-watermark" width="542" alt="SEVLINK | Property Maintenance. maintenance@sevlink.co.za | finance@sevlink.co.za | info@sevlink.co.za | 081 028 5034 | www.sevlink.co.za. Your Property. Our Priority." style="display:block;width:100%;max-width:542px;height:auto;border:0;border-radius:12px"></a>
 </td></tr><tr><td style="padding-top:12px;font:12px Arial,sans-serif;line-height:2;color:#28546b">

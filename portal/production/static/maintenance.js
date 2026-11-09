@@ -57,6 +57,7 @@
     const tenantItems=[['overview','◫','Overview'],['requests','☷','My Repairs'],['report','＋','Request a repair'],['properties','⌂','My Property'],['publicCalendar','▦','Maintenance Calendar'],['updates','◷','Updates & Notifications'],['issues','⚑','Report Website Issue']];
     const items = context.user.role==='tenant'?tenantItems:['pm','admin'].includes(context.user.role)?pmItems:[['overview','◫','Overview'],['quotePipeline','☷','Quotes'],['jobPipeline','☷','Jobs'],['requests','☷','Repair jobs'],...(context.user.role==='superadmin'?[['agencies','⌖','Agencies'],['websiteIssues','⚑','Website Issues']]:[]),...(context.can_schedule?[['calendar','▦','Weekly calendar']]:[]),...(context.can_supplier_payments?[['monday','R','Payments'],['regions','♙','Subcontractors']]:[])];
     $('#nav').innerHTML=items.map(([key,icon,label])=>`<button data-view="${key}" class="${view===key?'active':''}" aria-current="${view===key?'page':'false'}"><span class="nav-icon" aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span><span>${label}</span></button>`).join('');
+    if(context.user.role==='superadmin'||context.can_schedule){$('#nav').insertAdjacentHTML('beforeend','<a href="/enquiries/" class="button">Website enquiries ↗</a>');}
     $('.profile').innerHTML = `<span class="demo">SIGNED IN</span><span class="name">${esc(context.user.name)}<br><small>${esc({superadmin:'Sevlink Super Admin',operations:'Sevlink Operations',admin:'Agency administrator',pm:'Property manager',tenant:'Tenant'}[context.user.role])}</small></span>${context.user.role === 'superadmin' ? '<button class="secondary" id="notifications" aria-label="Operations notifications">🔔 Notifications</button>' : ''}<button class="secondary" id="logout">Sign out</button>`;
     if ($('#notifications')) { $('#notifications').onclick = () => notificationCentre(); notificationCount(); }
     if(['pm','admin','tenant'].includes(context.user.role)){
@@ -78,6 +79,7 @@
     $('#phoneBar').innerHTML = '<a class="phone-brand" href="/maintenance/">SEVLINK<span>PROPERTY MAINTENANCE</span></a><button id="phoneMenuButton" aria-label="Open navigation menu" aria-expanded="false">☰ Menu</button>';
     $('#phoneNav').classList.toggle('customer-nav', ['admin','pm','tenant'].includes(context.user.role));
     $('#phoneNav').innerHTML = items.map(([key, icon, label]) => `<button data-view="${key}" class="${view === key ? 'active' : ''}"><span aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span>${label}</button>`).join('');
+    if(context.user.role==='superadmin'||context.can_schedule){$('#phoneNav').insertAdjacentHTML('beforeend','<a href="/enquiries/" class="button">Website enquiries ↗</a>');}
     $('#phoneMenuButton').onclick = () => {
       const open = document.body.classList.toggle('phone-menu-open');
       $('#phoneMenuButton').setAttribute('aria-expanded', String(open));

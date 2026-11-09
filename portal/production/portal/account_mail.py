@@ -50,8 +50,15 @@ def deliver(limit=50, preview=False, *, message_id=None):
             provider=get_connection(backend)
             from .email_branding import branded_bodies, BrandedEmail
             plain,html=branded_bodies(item.body)
+            if item.website_enquiry_id:
+                from .website_enquiries import email_bodies
+                plain,html=email_bodies(item.website_enquiry,item.recipient)
             message=BrandedEmail(item.subject,plain,to=[item.recipient],connection=provider,
                                  headers={'Message-ID':f'<sevlink-account-{item.pk}@sevlink.co.za>'})
+            if item.website_enquiry_id:
+                message.from_email='Sevlink <maintenance@sevlink.co.za>'
+                if item.recipient == 'maintenance@sevlink.co.za':
+                    message.reply_to=[item.website_enquiry.email]
             message.attach_alternative(html,'text/html')
             from .private_clients import validate_delivery
             validate_delivery(item)

@@ -1,0 +1,14 @@
+{% extends 'portal/base.html' %}
+{% block content %}
+<div style="max-width:1000px;margin:auto"><p><a href="/maintenance/">← Back to dashboard</a></p><h1>Website enquiries</h1><p>Homeowner, landlord and agency enquiries from the Sevlink website. Contact the customer to discuss the next step before creating a job.</p>
+{% for enquiry in enquiries %}
+<article style="background:white;border:1px solid #dce7ef;border-radius:16px;padding:24px;margin:20px 0;overflow-wrap:anywhere">
+<p style="color:#347f87"><strong>{{ enquiry.reference }}</strong> · {{ enquiry.created_at|date:'j M Y, H:i' }} · {{ enquiry.get_status_display }}</p>
+<h2>{{ enquiry.service }} · {{ enquiry.area }}</h2>
+<p><strong>{{ enquiry.name }}</strong> · {{ enquiry.client_type }}</p>
+<p><a href="mailto:{{ enquiry.email }}">{{ enquiry.email }}</a> · <a href="tel:{{ enquiry.phone }}">{{ enquiry.phone }}</a></p>
+<div style="white-space:pre-wrap;background:#f1f6fa;padding:18px;border-radius:10px">{{ enquiry.details }}</div>
+<form method="post" style="margin-top:18px">{% csrf_token %}<input type="hidden" name="id" value="{{ enquiry.pk }}"><label>Status <select name="status"><option value="new" {% if enquiry.status == 'new' %}selected{% endif %}>New</option><option value="contacted" {% if enquiry.status == 'contacted' %}selected{% endif %}>Contacted</option><option value="closed" {% if enquiry.status == 'closed' %}selected{% endif %}>Closed</option></select></label> <button>Save status</button></form>
+</article>{% empty %}<p>No website enquiries yet.</p>{% endfor %}
+<p>{% if enquiries.has_previous %}<a href="?page={{ enquiries.previous_page_number }}">Previous</a> · {% endif %}Page {{ enquiries.number }} of {{ enquiries.paginator.num_pages }}{% if enquiries.has_next %} · <a href="?page={{ enquiries.next_page_number }}">Next</a>{% endif %}</p></div>
+{% endblock %}
