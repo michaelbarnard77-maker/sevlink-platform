@@ -602,7 +602,7 @@ class JobActivity(AppendOnlyModel):
 class OperationsNotification(models.Model):
     event = models.OneToOneField(JobActivity, on_delete=models.PROTECT, related_name='operations_notification')
     recipient = models.EmailField()
-    state = models.CharField(max_length=12, choices=[('pending', 'Pending'), ('sending', 'Sending'), ('sent', 'Sent'), ('dead', 'Failed')], default='pending')
+    state = models.CharField(max_length=12, choices=[('pending', 'Pending'), ('sending', 'Sending'), ('sent', 'Sent'), ('dead', 'Failed'), ('suppressed','Not emailed')], default='pending')
     attempts = models.PositiveIntegerField(default=0)
     retry_limit = models.PositiveIntegerField(default=5)
     feedback_status = models.CharField(max_length=16, default='unknown')

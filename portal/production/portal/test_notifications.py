@@ -156,7 +156,7 @@ class EventWorkflowTests(TestCase):
         self.ops.is_superuser = False; self.ops.save()
         self.assertNotIn('PRIVATE-STAFF-NAME', str(self.client.get(self.detail_url).json()))
 
-    def test_approval_and_rejection_each_notify_once_and_cannot_be_changed(self):
+    def test_only_approval_is_emailed_but_both_decisions_are_saved(self):
         self.new_job()
         for decision in ['approved', 'rejected']:
             quote = self.new_quote()
@@ -168,7 +168,7 @@ class EventWorkflowTests(TestCase):
             quote.refresh_from_db()
             self.assertEqual(quote.status, decision)
             self.assertEqual(quote.decided_by, self.pm)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind__in=['quote_approved','quote_rejected']).count(), 2)
+        self.assertEqual(OperationsNotification.objects.filter(event__kind__in=['quote_approved','quote_rejected']).count(), 1)
         self.assertEqual(JobActivity.objects.filter(kind='quote_created').count(), 2)
 
     def test_quote_issue_replay_and_financial_data_are_scoped(self):
@@ -214,12 +214,12 @@ class EventWorkflowTests(TestCase):
         self.assertEqual(self.status('in_progress',2).status_code,200)
         self.assertEqual(self.status('completed',3).status_code,200)
         self.assertEqual(self.status('completed',3).status_code,409)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind='job_completed').count(),1)
+        self.assertEqual(OperationsNotification.objects.filter(event__kind='job_completed').count(),0)
         self.assertEqual(JobActivity.objects.filter(request=self.job).count(),4)
         self.new_job()
         self.assertEqual(self.status('cancelled',1).status_code,200)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind='job_cancelled').count(),1)
-        self.assertEqual(OperationsNotification.objects.count(),2)  # completion and cancellation; tenant reports go to the PM
+        self.assertEqual(OperationsNotification.objects.filter(event__kind='job_cancelled').count(),0)
+        self.assertEqual(OperationsNotification.objects.count(),0)  # progress remains in the portal; no routine maintenance email
 
     def test_failed_and_invalid_mutations_do_not_create_events_or_outbox(self):
         self.new_job()

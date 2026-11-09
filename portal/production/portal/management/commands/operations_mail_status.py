@@ -18,7 +18,7 @@ class Command(BaseCommand):
             raise CommandError('Max age must be 30–86400 seconds.')
         cutoff=timezone.now()-timedelta(seconds=options['max_age'])
         beat=OperationsWorkerHeartbeat.objects.filter(name='operations').first()
-        counts={state:OperationsNotification.objects.filter(state=state).count() for state in ('pending','sending','sent','dead')}
+        counts={state:OperationsNotification.objects.filter(state=state).count() for state in ('pending','sending','sent','dead','suppressed')}
         oldest=OperationsNotification.objects.filter(state='pending').aggregate(at=Min('created_at'))['at']
         summary=dict(counts,worker_stale=not beat or beat.at<cutoff,
             pending_overdue=bool(oldest and oldest<cutoff),negative_feedback=OperationsFeedback.objects.filter(kind__in=['bounce','complaint'],resolution__isnull=True).count(),

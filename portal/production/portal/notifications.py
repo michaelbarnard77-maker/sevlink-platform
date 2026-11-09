@@ -31,6 +31,13 @@ def claim():
             notification = query.first()
             if not notification:
                 return None
+            from .maintenance_mail_policy import maintenance_email_allowed
+            if not maintenance_email_allowed(notification.event):
+                OperationsDeliveryAttempt.objects.filter(notification=notification,outcome='sending').update(outcome='uncertain',finished_at=now,error_code='preferences_changed')
+                notification.state='suppressed';notification.error_code='maintenance_email_preferences'
+                notification.lease_token=notification.lease_expires_at=None
+                notification.save()
+                continue
             if OperationsFeedback.objects.filter(notification__recipient=notification.recipient,kind__in=['bounce','complaint'],resolution__isnull=True).exists():
                 notification.state='dead'
                 notification.error_code='recipient_suppressed'
