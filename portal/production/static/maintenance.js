@@ -7,6 +7,7 @@
   const badge = value => `<span class="badge ${esc(value.split(' ')[0])}">${esc(value)}</span>`;
   const app = $('#app'), modal = $('#modal');
   let detailGeneration = 0;
+  let liveSync;
   let jobReturnPosition=null;
   let context, jobs = [], total = 0, page = 1, next = null, view = 'overview', selected, toastTimer;
   const csrf = () => document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.slice(10) || '';
@@ -26,6 +27,7 @@
       const fields = data.fields ? Object.entries(data.fields).map(([field, errors]) => `${field}: ${errors.map(e => e.message).join(' ')}`).join(' ') : '';
       throw Error(fields || data.error || 'The request could not be saved.');
     }
+    if(options.method && !["GET","HEAD"].includes(options.method.toUpperCase()))liveSync?.nudge();
     return data;
   }
   let loadGeneration=0, registerMetadata={}, registerTimer;
@@ -120,14 +122,32 @@
   }
   async function refresh(newPage = page) {
     const oldPage = page;
-    try { page = newPage; if(await loadJobs()!==false)render(); }
+    try { page = newPage; if(await loadJobs()!==false)await render(); }
     catch (error) { page = oldPage; toast(error.message); }
   }
   const icons = {'Plumbing':'🚰','Electrical':'💡','Doors & locks':'🚪','Painting':'🖌','Tiling':'▦'};
   function reportLanding() {
     app.innerHTML = heading('What needs attention?', (['pm','admin'].includes(context.user.role)?'Report a repair directly to Sevlink.':'A few clear details help your property manager review the repair.')) + '<div class="reportwrap"><div class="panel"><div class="step-label">01 / SELECT A REPAIR CATEGORY</div><div class="categorygrid">' + context.categories.filter(c=>c!=='Renovations & Refurbishments').map(c => `<button class="category illustrated" data-category="${esc(c)}"><span>${window.SevlinkWorkflowUI?.categoryIcon(c) || ''}</span><b>${esc(c)}</b><small>${esc(window.SevlinkWorkflowUI?.categoryDescription(c)||'Repairs and maintenance')}</small></button>`).join('') + '</div><div class="notice">For immediate danger, use your established emergency contact. This portal does not dispatch emergency assistance.</div></div></div>';
   }
-  function render() { shell(); if (view === 'renovations') renovationPage(); else if (view === 'report') reportLanding(); else if(['quotePipeline','jobPipeline'].includes(view)&&['superadmin','operations'].includes(context.user.role)){app.innerHTML='';window.SevlinkWorkflowUI?.stages({api,app,showDetail,toast,context,pipeline:view==='quotePipeline'?'quotes':'jobs'});}else if(view==='agencies')window.SevlinkWorkflowUI?.agencies({api,app,showDetail,toast});else if (view === 'regions') regionalWorkspace(); else if(view==='calendar')weeklyCalendar();else if(view==='monday')mondayPayments();else if(['properties','tenants','quotes','accounts','publicCalendar','updates','profile','issues','websiteIssues'].includes(view))customerPage();else if(view==='overview'){if(customerRole())customerOverview();else{list();window.SevlinkWorkflowUI?.stages({api,app,showDetail,toast,context});}}else list(); }
+  async function render(live=false) {
+    shell();
+    if(view==='renovations')return renovationPage();
+    if(view==='report')return reportLanding();
+    if(['quotePipeline','jobPipeline'].includes(view)&&['superadmin','operations'].includes(context.user.role)){
+      if(!live)app.innerHTML='';return window.SevlinkWorkflowUI?.stages({api,app,showDetail,toast,context,pipeline:view==='quotePipeline'?'quotes':'jobs'});
+    }
+    if(view==='agencies')return window.SevlinkWorkflowUI?.agencies({api,app,showDetail,toast});
+    if(view==='regions')return regionalWorkspace();
+    if(view==='calendar')return weeklyCalendar();
+    if(view==='monday')return mondayPayments();
+    if(['properties','tenants','quotes','accounts','publicCalendar','updates','profile','issues','websiteIssues'].includes(view))return customerPage();
+    if(view==='overview'){
+      if(customerRole())return customerOverview();
+      list();return window.SevlinkWorkflowUI?.stages({api,app,showDetail,toast,context});
+    }
+    return list();
+  }
+
   function privateClientRequest(){
     if(context.user.role!=='superadmin')return;
     modal.innerHTML=`<button class="close" data-close aria-label="Close">×</button><span class="private-client-badge">PRIVATE CLIENT</span><h1>New private-client request</h1><p>Sevlink manages the request. Use the same email for a returning private client to keep their records together.</p><form id="privateClientRequest"><label>Client name</label><input name="name" required maxlength="180"><label>Client email</label><input name="email" type="email" required maxlength="150"><label>Client phone number</label><input name="phone" type="tel" required maxlength="40"><label>Property address</label><input name="address" required maxlength="400"><label>Repair / work</label><input name="title" required maxlength="180"><label>Request details</label><textarea name="description" required maxlength="2500" rows="4"></textarea><label>Request type</label><select name="job_type"><option value="quoted">Quotation</option><option value="callout">Authorised call-out</option></select><div id="privateCalloutTerms" hidden><label>Maximum client-authorised total (ZAR)</label><input name="limit" type="number" min="0.01" step="0.01"><label>Record the client’s call-out authorisation</label><textarea name="authorisation" maxlength="1000" placeholder="Record how and when the client authorised the call-out and spending ceiling."></textarea><p>Call-outs activate portal access by email immediately and allow preferred-date requests without a deposit.</p></div><p id="privateClientError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">Create private-client request</button></div></form>`;
@@ -377,8 +397,8 @@
       } finally { if (button.isConnected) button.disabled = false; }
     };
   }
-  document.addEventListener('sevlink-pipeline-changed',()=>{if(['quotePipeline','jobPipeline'].includes(view))render();});
-  document.addEventListener('sevlink-job-moved',()=>refresh());
+  document.addEventListener('sevlink-pipeline-changed',()=>liveSync?.nudge());
+  document.addEventListener('sevlink-job-moved',()=>liveSync?.nudge());
   document.addEventListener('keydown',event=>{
     const row=event.target.closest('tr[data-job],.job-card[data-stage-job],.workflow-job-row[data-upcoming]');
     if(row && event.target===row && ['Enter',' '].includes(event.key)){event.preventDefault();row.click();}
@@ -686,7 +706,8 @@
   async function start() {
     app.innerHTML = '<div class="notice" role="status">Loading your maintenance workspace…</div>';
     try {
-      context = await api('context/'); await loadJobs(); render();
+      context = await api('context/'); await loadJobs(); await render();
+      if(!liveSync)liveSync=window.SevlinkLiveSync?.start({read:()=>api('live-revision/'),update:applyLiveUpdate});
       const linkedJob = new URLSearchParams(location.search).get('job');
       if (linkedJob && /^[0-9a-f-]{36}$/i.test(linkedJob)) {
         try { showDetail(await api(`requests/${linkedJob}/`)); } catch (error) { toast(error.message); }
@@ -697,7 +718,26 @@
       $('#retry').onclick = start;
     }
   }
-  modal.addEventListener('close',()=>{const position=jobReturnPosition;jobReturnPosition=null;selected=null;++detailGeneration;if(position&&position.view===view){requestAnimationFrame(()=>window.scrollTo(position.x,position.y));}else if(customerRole())render();});
-  setInterval(()=>{if(customerRole() && !modal.open && ['overview','accounts','publicCalendar','updates'].includes(view))render();},60000);
+  modal.addEventListener('close',()=>{const position=jobReturnPosition;jobReturnPosition=null;selected=null;++detailGeneration;if(position&&position.view===view){requestAnimationFrame(()=>window.scrollTo(position.x,position.y));}else if(customerRole())render();liveSync?.nudge(false);});
+  function hasLiveDraft(root){return !!root.querySelector('form[data-live-dirty]') || (root.contains(document.activeElement)&&document.activeElement.matches('input,textarea,select,[contenteditable="true"]'));}
+  for(const type of ['input','change'])document.addEventListener(type,event=>{const form=event.target.closest('form');if(form)form.dataset.liveDirty='true';});
+  async function applyLiveUpdate(){
+    if(!context||hasLiveDraft(app))return false;
+    const active=view,position={x:scrollX,y:scrollY},table=app.querySelector('.stage-register-scroll'),tablePosition=table?{top:table.scrollTop,left:table.scrollLeft}:null;
+    if(await loadJobs()===false||active!==view)return false;
+    await render(true);
+    if(active!==view)return false;
+    const updatedTable=app.querySelector('.stage-register-scroll');if(updatedTable&&tablePosition){updatedTable.scrollTop=tablePosition.top;updatedTable.scrollLeft=tablePosition.left;}
+    if(modal.open&&selected&&!hasLiveDraft(modal)){
+      const id=selected.id,tab=modal.dataset.tab,top=modal.scrollTop;
+      const saved=await api(`requests/${id}/`);
+      if(modal.open&&selected?.id===id&&!hasLiveDraft(modal)){
+        showDetail(saved);if(tab)modal.querySelector(`[data-tab="${tab}"]`)?.click();modal.scrollTop=top;
+      }
+    }
+    if(context.user.role==='superadmin')await notificationCount();else await refreshUserNotifications();
+    if(active===view)window.scrollTo(position.x,position.y);
+    return true;
+  }
   start();
 })();

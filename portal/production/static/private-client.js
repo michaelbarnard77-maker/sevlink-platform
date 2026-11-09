@@ -1,12 +1,13 @@
 /* Private-client portal: server-scoped data only. */
 (()=>{'use strict';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let liveSync;
 let jobs=[],selected=null,section='jobs',page=1,next=null,renderGeneration=0;
 const csrf=()=>document.cookie.split('; ').find(c=>c.startsWith('csrftoken='))?.slice(10)||'';
 const notice=t=>{$('#clientNotice').textContent=t;$('#clientNotice').hidden=false;};
 const date=v=>v?new Date(v).toLocaleString('en-ZA',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Johannesburg'}):'Not confirmed';
 const money=v=>'R '+Number(v||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
-async function api(path,values){const response=await fetch('/api/maintenance/'+path,{method:values?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRFToken':csrf(),...(values?{'Idempotency-Key':crypto.randomUUID()}:{})},...(values?{body:JSON.stringify(values)}:{})});if(response.status===401){location.assign('/login/?next='+encodeURIComponent('/client/portal/'));throw Error('Please sign in.');}const data=await response.json();if(!response.ok)throw Error(data.error||'Please try again.');return data;}
+async function api(path,values){const response=await fetch('/api/maintenance/'+path,{method:values?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRFToken':csrf(),...(values?{'Idempotency-Key':crypto.randomUUID()}:{})},...(values?{body:JSON.stringify(values)}:{})});if(response.status===401){location.assign('/login/?next='+encodeURIComponent('/client/portal/'));throw Error('Please sign in.');}const data=await response.json();if(!response.ok)throw Error(data.error||'Please try again.');if(values)liveSync?.nudge();return data;}
 async function act(path,values){await api(path,values);if(selected)selected=await api('requests/'+selected.id+'/');await render();notice('Saved to your job.');}
 async function load(){const data=await api('requests/?page='+page);jobs=page===1?data.results:jobs.concat(data.results);next=data.next;$('#clientMore').hidden=!next;}
 async function open(id){selected=await api('requests/'+id+'/');await render();window.scrollTo({top:0});}
@@ -33,5 +34,16 @@ document.querySelectorAll('[data-client-payments]').forEach(b=>b.onclick=()=>{co
 }
 document.querySelectorAll('[data-client-section]').forEach(b=>b.onclick=async()=>{section=b.dataset.clientSection;if(!selected&&jobs.length)selected=await api('requests/'+jobs[0].id+'/');render();});
 $('#clientMore').onclick=async()=>{page=next;try{await load();render();}catch(e){notice(e.message);}};
-(async()=>{try{const context=await api('context/');if(context.user.role!=='client')throw Error('Private-client access required.');await load();const params=new URLSearchParams(location.search);if(['jobs','quotes','invoices','attendance','comments'].includes(params.get('section')))section=params.get('section');const id=params.get('job');if(id)await open(id);else await render();}catch(e){notice(e.message);}})();
+for(const type of ['input','change'])document.addEventListener(type,event=>{const form=event.target.closest('form');if(form)form.dataset.liveDirty='true';});
+async function applyLiveUpdate(){
+ const content=$('#clientContent');
+ if(content.querySelector('form[data-live-dirty]')||(content.contains(document.activeElement)&&document.activeElement.matches('input,textarea,select')))return false;
+ const id=selected?.id,active=section,loadedPage=page,position={x:scrollX,y:scrollY};let fresh=[],last;
+ for(let i=1;i<=loadedPage;i++){last=await api('requests/?page='+i);fresh=fresh.concat(last.results);if(!last.next)break;}
+ const job=id?await api('requests/'+id+'/'):null;
+ if(active!==section||id!==selected?.id||loadedPage!==page)return false;
+ if(content.querySelector('form[data-live-dirty]')||(content.contains(document.activeElement)&&document.activeElement.matches('input,textarea,select')))return false;
+ jobs=fresh;next=last.next;selected=job;$('#clientMore').hidden=!next;await render();window.scrollTo(position.x,position.y);return true;
+}
+(async()=>{try{const context=await api('context/');if(context.user.role!=='client')throw Error('Private-client access required.');await load();const params=new URLSearchParams(location.search);if(['jobs','quotes','invoices','attendance','comments'].includes(params.get('section')))section=params.get('section');const id=params.get('job');if(id)await open(id);else await render();liveSync=window.SevlinkLiveSync?.start({read:()=>api('live-revision/'),update:applyLiveUpdate});}catch(e){notice(e.message);}})();
 })();

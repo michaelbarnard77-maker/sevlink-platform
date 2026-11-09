@@ -138,7 +138,7 @@ window.SevlinkWorkflowUI = (() => {
       });
       if(context?.user.role==='superadmin')app.querySelectorAll(':scope > .panel').forEach(p=>p.remove());
       const selectedStage=selectedStages.get(selectionKey)||(context?.user.role==='superadmin'?'new':null);
-      if(selectedStage)app.querySelector(`[data-stage="${selectedStage}"]`)?.click();
+      if(selectedStage){const button=app.querySelector(`[data-stage="${selectedStage}"]`);if(button)await button.onclick();}
     }catch(e){toast(e.message);}
   }
   let inboxGeneration=0;
