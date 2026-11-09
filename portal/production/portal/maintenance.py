@@ -413,7 +413,7 @@ def workspace(request):
     html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
     html = html.replace('content="#101c31"', 'content="#102e46"')
     html = html.replace('</head>', '<script src="'+static('live-sync.js')+'?v=live-pots-20261109"></script></head>')
-    html = html.replace('</body>', '<script src="'+(static('workflow-ui.js')+'?v=live-pots-20261109')+'"></script><script src="' + (static('maintenance.js')+'?v=live-pots-20261109') + '"></script></body>')
+    html = html.replace('</body>', '<script src="'+(static('workflow-ui.js')+'?v=live-pots-20261109')+'"></script><script src="' + (static('maintenance.js')+'?v=calendar-job-sync-20261109') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)

@@ -393,7 +393,7 @@ class AttendanceAndFinanceTests(TestCase):
         self.assertEqual(second_visit.progress_status,'cancelled');self.assertIsNotNone(second_visit.cancelled_at)
         week=self.client.get(reverse('operations_calendar'),{'week':str(new_day)}).json()['appointments']
         self.assertTrue(any(row['id']==second_visit.pk and row['appointment_status']=='cancelled' for row in week))
-        self.assertEqual(self.job.status,'scheduled');self.assertEqual(self.job.version,job_version)
+        self.assertEqual(self.job.status,'in_progress');self.assertGreater(self.job.version,job_version)
         alerts=self.client.get(reverse('workflow_stages')).json()['rescheduling']
         self.assertTrue(any(row['appointment']==second_visit.pk for row in alerts))
         self.client.force_login(self.pm)
@@ -461,6 +461,64 @@ class AttendanceAndFinanceTests(TestCase):
         from .workflow import refresh_overdue
         refresh_overdue(self.ops);refresh_overdue(self.ops)
         self.assertEqual(UserJobNotification.objects.filter(event__dedup_key__startswith='supplier-overdue:').count(),1)
+
+
+    def progress(self, visit, status, key=None):
+        visit.refresh_from_db()
+        return self.client.post(reverse('appointment_progress',args=[visit.pk]),__import__('json').dumps(dict(version=visit.version,status=status)),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(key or uuid.uuid4()))
+
+    def test_calendar_progress_updates_job_pots_and_preserves_document_gate(self):
+        from .workflow import stage
+        from .models import CompletionPackage, MaintenanceStatusEvent
+        self.assertEqual(self.confirm(self.prepare()).status_code,201)
+        visit=TeamAppointment.objects.get()
+        self.assertEqual(self.progress(visit,'on_site').status_code,200)
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'on_site');self.assertEqual(stage(self.job),'underway')
+        key=uuid.uuid4();visit.refresh_from_db();version=visit.version
+        response=self.progress(visit,'completed',key)
+        self.assertEqual(response.status_code,200,response.content)
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'completed');self.assertEqual(stage(self.job),'invoice')
+        self.assertFalse(CompletionPackage.objects.exists())
+        count=MaintenanceStatusEvent.objects.filter(request=self.job,status='completed').count()
+        duplicate=self.client.post(reverse('appointment_progress',args=[visit.pk]),__import__('json').dumps(dict(version=version,status='completed')),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(key))
+        self.assertEqual(duplicate.status_code,200)
+        self.assertEqual(MaintenanceStatusEvent.objects.filter(request=self.job,status='completed').count(),count)
+        self.assertEqual(self.progress(visit,'on_site').status_code,409)
+
+    def test_calendar_completion_with_final_invoice_moves_to_final_payment(self):
+        from .models import MaintenanceAttachment
+        from .workflow import stage
+        self.assertEqual(self.confirm(self.prepare()).status_code,201)
+        document=MaintenanceAttachment.objects.create(request=self.job,uploaded_by=self.ops,purpose='invoice',storage_key='test-final-invoice',filename='final.pdf',content_type='application/pdf',size=10,sha256='a'*64)
+        JobInvoice.objects.create(request=self.job,document=document,uploaded_by=self.ops,number='TEST-FINAL',amount=100,due_date=timezone.localdate(),creation_key=uuid.uuid4(),purpose='final',visibility='shared')
+        response=self.progress(TeamAppointment.objects.get(),'completed')
+        self.assertEqual(response.status_code,200,response.content)
+        self.job.refresh_from_db();self.assertEqual(stage(self.job),'payment');self.assertIsNone(self.job.closed_at)
+
+    def test_completed_assessment_returns_to_quoting_without_completing_repair(self):
+        from .workflow import stage,pipeline_for
+        self.assertEqual(self.confirm(self.prepare()).status_code,201)
+        self.job.refresh_from_db();self.job.job_type='quoted';self.job.save()
+        WorkflowDecision.objects.create(request=self.job,actor=self.ops,operation='operations-triage',key=uuid.uuid4(),fingerprint='test-assessment',snapshot={'decision':'attendance','assessment_attendance':self.arrival.pk})
+        response=self.progress(TeamAppointment.objects.get(),'completed')
+        self.assertEqual(response.status_code,200,response.content)
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'reviewed');self.assertEqual(stage(self.job),'quoting');self.assertEqual(pipeline_for(self.job),'quotes')
+
+
+    def test_calendar_reconciliation_previews_then_repairs_existing_job(self):
+        from django.core.management import call_command
+        from io import StringIO
+        from .workflow import stage
+        self.assertEqual(self.confirm(self.prepare()).status_code,201)
+        visit=TeamAppointment.objects.get();visit.progress_status='completed';visit.save(update_fields=['progress_status'])
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'scheduled')
+        call_command('sync_calendar_job',reference=self.job.reference,stdout=StringIO())
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'scheduled')
+        call_command('sync_calendar_job',reference=self.job.reference,apply=True,stdout=StringIO())
+        self.job.refresh_from_db();self.assertEqual(self.job.status,'completed');self.assertEqual(stage(self.job),'invoice')
+        version=self.job.version
+        call_command('sync_calendar_job',reference=self.job.reference,apply=True,stdout=StringIO())
+        self.job.refresh_from_db();self.assertEqual(self.job.version,version)
 
 from django.test import TransactionTestCase,skipUnlessDBFeature
 from . import test_financial75 as concurrent_fixtures

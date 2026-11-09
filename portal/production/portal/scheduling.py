@@ -114,8 +114,12 @@ def save_values(request,data):
             Property.objects.select_for_update().get(pk=a.assignment.request.property_id)
             job=MaintenanceRequest.objects.select_for_update().get(pk=a.assignment.request_id)
             a.refresh_from_db();changed=not bool(a.cancelled_at)
+            if changed and (a.progress_status=='completed' or job.closed_at or job.status in ('completed','closed','cancelled')):
+                return JsonResponse({'error':'Completed visits and finished jobs retain their history.'},status=409)
             result=save_appointment(request.user,a.team.subcontractor_id,data)
             if result.status_code<400 and changed:
+                from .calendar_sync import sync_job
+                sync_job(job,request.user,'cancelled')
                 record(job,request.user,'appointment_changed','calendar-cancel:'+str(a.pk),{'appointment_id':str(a.pk),'action':'cancelled'},private=True)
             return result
     if 'customer_visible' in data and type(data['customer_visible'])is not bool: raise ValueError
@@ -259,6 +263,10 @@ def appointment_progress(request,appointment_id):
         reason=values.get('reason','')
         if not isinstance(reason,str) or len(reason)>500:raise ValueError('Invalid appointment reason.')
         previous=item.progress_status
+        if job.closed_at or job.status in ('closed','cancelled'):
+            return JsonResponse({'error':'Closed and cancelled jobs retain their history.'},status=409)
+        if item.progress_status=='completed' and values['status']!='completed':
+            return JsonResponse({'error':'A completed visit retains its history. Add a new appointment for further work.'},status=409)
         if values['status']=='cancelled':
             if not reason.strip():raise ValueError('Record a reason for cancelling this appointment.')
             response=save_values(request,dict(cancel=item.pk,reason=reason.strip()))
@@ -266,6 +274,8 @@ def appointment_progress(request,appointment_id):
             item.refresh_from_db()
         else:
             item.progress_status=values['status'];item.version+=1;item.save(update_fields=['progress_status','version'])
+        from .calendar_sync import sync_job
+        sync_job(job,request.user,values['status'],key=key)
         WorkflowDecision.objects.create(request=job,actor=request.user,operation='appointment-progress',key=key,fingerprint=fingerprint,snapshot=dict(appointment=item.pk,previous=previous,status=item.progress_status,version=item.version,reason=reason))
         from .workflow import attention_notifications
         if values['status']!='cancelled' or not job.workflow_version:
