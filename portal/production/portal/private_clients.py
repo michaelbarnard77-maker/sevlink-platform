@@ -80,9 +80,9 @@ def handle_event(event):
     elif event.kind=='quote_approved':
         activate_or_notify(client,job)
     elif event.kind=='invoice_uploaded' and event.visibility!='internal':
-        portal_message(client,job,'invoice available','A new invoice is available. Use Paid to report payment; Sevlink verifies received money.')
+        portal_message(client,job,'invoice available','A new invoice is available. Use Paid to report payment; Sevlink verifies received money.',section='invoices')
     elif event.kind=='comment_added' and event.visibility=='shared' and event.actor_id!=client.user_id:
-        portal_message(client,job,'new message','Sevlink has added a message to your job. Sign in to read and reply.')
+        portal_message(client,job,'new message','Sevlink has added a message to your job. Sign in to read and reply.',section='comments')
     elif event.kind=='workflow_event':
         label=event.details.get('action','')
         if label=='Please confirm attendance date':
@@ -92,7 +92,7 @@ def handle_event(event):
             arrival=job.attendance_requests.filter(status='confirmed').order_by('-created_at').first()
             if arrival:MailQueue.objects.create(recipient=client.email,subject='Sevlink assessment confirmed',body=f'Hello {client.name},\n\nYour free quotation assessment at {job.property.address} is confirmed for {arrival.agreed_date}, {arrival.agreed_window}.\nPlease contact maintenance@sevlink.co.za if you need assistance.')
         elif client.portal_active and label in ('Attendance confirmed','Alternative attendance confirmed','Appointment on site','Appointment complete','Completion report and photographs available'):
-            portal_message(client,job,'job update',label+'. Review the saved details in your portal.')
+            portal_message(client,job,'job update',label+'. Review the saved details in your portal.',section='attendance' if label.startswith('Attendance') or label.startswith('Appointment') or label.startswith('Alternative attendance') else 'jobs')
 
 
 def sync_closed_access(job):

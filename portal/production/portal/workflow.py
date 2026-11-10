@@ -237,11 +237,12 @@ def tab_attention(job,user,visible):
     one quote/invoice/attendance action twice. No new read-state model is needed.
     """
     role,_=access(user)
-    tenant=role=='tenant';staff=user.is_superuser;pm=role in ('pm','admin')
+    tenant=role=='tenant';staff=user.is_superuser;pm=role in ('pm','admin','client')
     counts=dict(overview=0,comments=0,attendance=0,activity=0,reports=0)
     if not tenant:counts.update(quotes=0,invoices=0)
     if staff:counts['costs']=0
     unread={key:[] for key in counts}
+    client_records={'quotes':set(),'invoices':set()}
     w=visible['workflow'];terminal=job.status in ('completed','closed','cancelled')
     if pm and not terminal:
         counts['overview']=int(job.status=='awaiting_review')+sum(a['status']=='pending' for a in w['additional'])
@@ -253,14 +254,18 @@ def tab_attention(job,user,visible):
     comments={c['id'] for c in visible['comments']}
     if not tenant:
         actionable=('draft','sent','rejected','revision_requested') if staff else ('sent',)
-        counts['quotes']=sum(q['status'] in actionable and not q['has_next_revision'] and not q['superseded_by_approval'] for q in quotes.values())
+        quote_ids={q['id'] for q in quotes.values() if q['status'] in actionable and not q['has_next_revision'] and not q['superseded_by_approval'] and (role!='client' or q.get('can_decide',True))}
+        counts['quotes']=len(quote_ids)
+        if role=='client':client_records['quotes'].update(quote_ids)
         for invoice in invoices.values():
-            if invoice['document_status']=='active' and Decimal(invoice['outstanding'])>0:
+            if invoice['document_status']=='active' and Decimal(invoice['outstanding'])>0 and not (role=='client' and invoice.get('payment_reported')):
                 key='costs' if invoice.get('visibility')=='internal' else 'invoices'
                 if key in counts:counts[key]+=1
+                if role=='client' and key=='invoices':client_records['invoices'].add(invoice['id'])
     updates={'Please confirm attendance date':'attendance','Attendance arrangements requested':'attendance','Reschedule date requested':'attendance',
         'Alternative attendance date being arranged':'attendance','Attendance confirmed':'attendance',
-        'Alternative attendance confirmed':'attendance','Completion report and photographs available':'reports'}
+        'Alternative attendance confirmed':'attendance','Appointment on site':'attendance','Appointment complete':'attendance',
+        'Free quotation assessment confirmed':'attendance','Completion report and photographs available':'reports'}
     notices=UserJobNotification.objects.filter(user=user,event__request=job,read_at=None).exclude(event__actor=user).select_related('event')
     for notice in notices:
         e=notice.event;key=None
@@ -276,9 +281,14 @@ def tab_attention(job,user,visible):
         elif e.kind in ('status_changed','job_cancelled','job_completed') and (staff or e.visibility=='shared'):
             key='activity'
         if key in unread:unread[key].append(notice.pk)
+        if role=='client' and key in client_records:
+            identifier=e.details.get('quote_id' if key=='quotes' else 'invoice_id')
+            if identifier:client_records[key].add(identifier)
     # Quote/invoice badges describe unresolved records, not stale upload alerts.
     for key in ('comments','reports','activity'):
         counts[key]=len(unread[key])
+    if role=='client':
+        for key,records in client_records.items():counts[key]=len(records)
     if not counts['attendance']:counts['attendance']=len(unread['attendance'])
     return dict(counts=counts,unread=unread)
 
