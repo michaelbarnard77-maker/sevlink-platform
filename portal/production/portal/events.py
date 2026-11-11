@@ -57,12 +57,17 @@ def record(job, actor, kind, dedup_key, details=None, *, private=False):
         OperationsInboxItem.objects.create(event=event)
     from .maintenance_mail_policy import maintenance_email_allowed
     if created and maintenance_email_allowed(event):
-        OperationsNotification.objects.create(event=event, recipient=settings.OPERATIONS_NOTIFICATION_EMAIL)
+        OperationsNotification.objects.get_or_create(event=event, recipient=settings.OPERATIONS_NOTIFICATION_EMAIL.lower())
     if created:
         from .workflow import notify,participants,operators
         if kind=='job_submitted':notify(event,operators() if role in ('pm','admin') else participants(job))
         elif kind in ('quote_sent','invoice_uploaded') and not private:notify(event,participants(job))
         elif kind in ('quote_approved','quote_rejected','quote_revision_requested'):notify(event,operators())
+    if created:
+        from .maintenance_mail_policy import assigned_pm,pm_email_allowed
+        pm=assigned_pm(event)
+        if pm and pm_email_allowed(event):
+            OperationsNotification.objects.get_or_create(event=event,recipient=pm.email.lower())
     if created and job.private_client_id:
         from .private_clients import handle_event
         handle_event(event)

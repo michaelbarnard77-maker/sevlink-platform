@@ -600,7 +600,7 @@ class JobActivity(AppendOnlyModel):
 
 
 class OperationsNotification(models.Model):
-    event = models.OneToOneField(JobActivity, on_delete=models.PROTECT, related_name='operations_notification')
+    event = models.ForeignKey(JobActivity, on_delete=models.PROTECT, related_name='operations_notifications')
     recipient = models.EmailField()
     state = models.CharField(max_length=12, choices=[('pending', 'Pending'), ('sending', 'Sending'), ('sent', 'Sent'), ('dead', 'Failed'), ('suppressed','Not emailed')], default='pending')
     attempts = models.PositiveIntegerField(default=0)
@@ -615,6 +615,7 @@ class OperationsNotification(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=['state', 'next_attempt_at'], name='operations_delivery_due')]
+        constraints = [models.UniqueConstraint(fields=['event', 'recipient'], name='job_email_recipient_unique')]
 
 
 class OperationsDeliveryAttempt(models.Model):

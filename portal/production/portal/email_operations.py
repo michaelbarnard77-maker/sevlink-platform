@@ -10,7 +10,7 @@ def feedback(data):
     """Normalized event from a signature-verified provider adapter or trusted operator."""
     import uuid
     try:
-        if not isinstance(data,dict) or set(data)!={'event_id','provider_event_id','kind','occurred_at'}:
+        if not isinstance(data,dict) or set(data) not in ({'event_id','provider_event_id','kind','occurred_at'},{'event_id','notification_id','provider_event_id','kind','occurred_at'}):
             raise ValueError()
         event_id=uuid.UUID(str(data['event_id']))
         kind=data['kind']
@@ -21,7 +21,13 @@ def feedback(data):
     except (ValueError,TypeError,AttributeError):
         raise ValueError('Invalid normalized, verified email feedback.') from None
     with transaction.atomic():
-        notification=OperationsNotification.objects.select_for_update().get(event_id=event_id)
+        candidates=OperationsNotification.objects.select_for_update().filter(event_id=event_id)
+        if 'notification_id' in data:
+            try:candidates=candidates.filter(pk=int(data['notification_id']))
+            except (ValueError,TypeError):raise ValueError('Invalid email notification identifier.') from None
+        if candidates.count()!=1:
+            raise ValueError('Feedback must identify a single recipient notification.')
+        notification=candidates.get()
         existing=OperationsFeedback.objects.filter(provider_event_id=key).first()
         if existing:
             if existing.notification_id != notification.pk or existing.kind!=kind or existing.occurred_at!=at:

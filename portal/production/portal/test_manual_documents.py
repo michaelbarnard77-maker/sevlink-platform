@@ -111,7 +111,7 @@ class ManualDocumentTests(TestCase):
         self.client.force_login(self.pm)
         self.download(new['document']['download_url'],404)
         self.assertEqual(self.post(reverse('maintenance_quote_decision',args=[self.job.pk,quote['id']]),dict(version=quote['version'],status='approved',reason='Stale')).status_code,409)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),1)
+        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),0)  # Revision requests remain in the portal under the maintenance email policy.
 
     def test_quote_create_replay_and_pdf_only_validation(self):
         key=uuid.uuid4()

@@ -31,8 +31,8 @@ def claim():
             notification = query.first()
             if not notification:
                 return None
-            from .maintenance_mail_policy import maintenance_email_allowed
-            if not maintenance_email_allowed(notification.event):
+            from .maintenance_mail_policy import email_allowed_for_recipient
+            if not email_allowed_for_recipient(notification):
                 OperationsDeliveryAttempt.objects.filter(notification=notification,outcome='sending').update(outcome='uncertain',finished_at=now,error_code='preferences_changed')
                 notification.state='suppressed';notification.error_code='maintenance_email_preferences'
                 notification.lease_token=notification.lease_expires_at=None
@@ -79,9 +79,9 @@ def deliver(limit=50):
         try:
             event = notification.event
             subject, body = notification_message(event)
-            headers={'Message-ID': f'<sevlink-event-{event.pk}@notifications.sevlink.co.za>', 'X-Sevlink-Event':str(event.pk)}
+            headers={'Message-ID': f'<sevlink-event-{event.pk}-{notification.pk}@notifications.sevlink.co.za>', 'X-Sevlink-Event':str(event.pk), 'X-Sevlink-Notification':str(notification.pk)}
             if settings.OPERATIONS_SES_TAGGING_ENABLED:
-                headers['X-SES-MESSAGE-TAGS']='sevlink_event='+str(event.pk)
+                headers['X-SES-MESSAGE-TAGS']='sevlink_event='+str(event.pk)+',sevlink_notification='+str(notification.pk)
             from .email_branding import branded_bodies, BrandedEmail
             plain, html = branded_bodies(body)
             message = BrandedEmail(subject, plain, settings.DEFAULT_FROM_EMAIL, [notification.recipient],

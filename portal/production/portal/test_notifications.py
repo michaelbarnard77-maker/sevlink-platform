@@ -51,6 +51,8 @@ class EventWorkflowTests(TestCase):
         cls.collection = reverse('maintenance_collection')
 
     def setUp(self):
+        # These tests isolate maintenance delivery; PM-recipient delivery has its own suite.
+        self.pm.email='';self.pm.save(update_fields=['email'])
         directory = tempfile.TemporaryDirectory(prefix='sevlink-commercial-test-')
         self.addCleanup(directory.cleanup)
         aliases = {**settings.STORAGES, 'maintenance_private': {

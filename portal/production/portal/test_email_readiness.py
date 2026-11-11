@@ -26,6 +26,7 @@ class EmailReadinessTests(TestCase):
     new_job=fixtures.EventWorkflowTests.new_job
 
     def setUp(self):
+        self.pm.email='';self.pm.save(update_fields=['email'])
         self.new_job(as_pm=True)
         self.item=OperationsNotification.objects.get()
 
