@@ -28,13 +28,13 @@ def maintenance_email_allowed(event):
 
 
 def assigned_pm(event):
-    """Only the active PM currently assigned within this property's agency."""
+    """Only the active PM or administrator explicitly assigned to this property."""
     job=event.request
     if job.private_client_id:return None
     pm=job.property.manager
     if not pm or not pm.is_active or not pm.email:return None
     from .models import Membership
-    if not Membership.objects.filter(user=pm,agency_id=job.property.agency_id,role=Membership.PM).exists():return None
+    if not Membership.objects.filter(user=pm,agency_id=job.property.agency_id,role__in=(Membership.PM,Membership.ADMIN)).exists():return None
     return pm
 
 

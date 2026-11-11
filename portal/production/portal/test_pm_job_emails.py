@@ -82,3 +82,45 @@ class PMJobEmailTests(TestCase):
             self.assertEqual(set(OperationsNotification.objects.filter(event=event).values_list('recipient',flat=True)),{self.pm.email,'maintenance@sevlink.co.za'})
         self.assertEqual(deliver(),4)
         self.assertTrue(all(not m.attachments for m in mail.outbox))
+
+    def test_assigned_admin_receives_only_own_property_email(self):
+        from .models import User,Membership
+        other=User.objects.create_user(username='other-admin@example.test',email='other-admin@example.test')
+        Membership.objects.create(user=other,agency=self.agency,role=Membership.ADMIN)
+        self.home.manager=self.admin;self.home.save(update_fields=['manager'])
+        self.new_job()
+        self.assertEqual(list(OperationsNotification.objects.values_list('recipient',flat=True)),[self.admin.email])
+        self.event('quote_approved',{'quote_id':str(uuid.uuid4()),'amount':'100','status':'approved','reason':''})
+        self.assertEqual(set(OperationsNotification.objects.values_list('recipient',flat=True)),{self.admin.email,'maintenance@sevlink.co.za'})
+        self.assertEqual(deliver(),3)
+
+    def test_unassigned_property_does_not_email_agency_administrators(self):
+        self.home.manager=None;self.home.save(update_fields=['manager'])
+        self.new_job()
+        self.assertFalse(OperationsNotification.objects.exists())
+        event=self.event('quote_approved',{'quote_id':str(uuid.uuid4()),'amount':'100','status':'approved','reason':''})
+        self.assertEqual(list(OperationsNotification.objects.filter(event=event).values_list('recipient',flat=True)),['maintenance@sevlink.co.za'])
+
+    def test_admin_can_assign_self_but_not_foreign_agency_user(self):
+        from .forms import PropertyForm
+        from .models import Property
+        form=PropertyForm(member=self.admin.membership)
+        self.assertIn(self.admin,form.fields['manager'].queryset)
+        self.assertIn(self.pm,form.fields['manager'].queryset)
+        self.assertNotIn(self.foreign,form.fields['manager'].queryset)
+        self.client.force_login(self.admin)
+        result=self.client.post('/properties/new/',dict(name='Admin property',address='Admin property address',manager=self.admin.pk,access_responsibility='sevlink'))
+        self.assertEqual(result.status_code,302)
+        self.assertEqual(Property.objects.get(name='Admin property').manager,self.admin)
+        result=self.client.post('/properties/new/',dict(name='Invalid property',address='Outside assignment',manager=self.foreign.pk,access_responsibility='sevlink'))
+        self.assertEqual(result.status_code,200)
+        self.assertFalse(Property.objects.filter(name='Invalid property').exists())
+
+    def test_completion_report_recipient_matches_explicit_admin_assignment(self):
+        from .completion_delivery import eligible_recipient
+        self.new_job()
+        self.assertEqual(eligible_recipient(self.job),self.pm)
+        self.job.property.manager=self.admin
+        self.assertEqual(eligible_recipient(self.job),self.admin)
+        self.job.property.manager=None
+        self.assertIsNone(eligible_recipient(self.job))

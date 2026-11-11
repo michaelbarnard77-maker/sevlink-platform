@@ -107,7 +107,17 @@ def payload(request, allowed):
 def property_data(prop):
     return {'id': str(prop.pk), 'name': prop.name, 'address': prop.address,
             'agency': prop.agency.name,
-            'manager': (prop.manager.get_full_name() or 'Property manager') if prop.manager else 'Agency administrator'}
+            'manager': (prop.manager.get_full_name() or 'Property manager') if prop.manager else 'Unassigned'}
+
+
+def register_row(job, role):
+    """Lists load a small row; opening a job loads its full authorised detail."""
+    from .workflow import stage
+    return dict(id=str(job.pk),reference=job.reference,legacy_reference='SV-'+str(job.pk).upper(),
+        client_type='private' if job.private_client_id else 'agency',property=property_data(job.property),
+        title=job.title,category=job.category,status=job.status,status_label=job.get_status_display(),
+        urgency=job.urgency,created_at=job.created_at.isoformat(),
+        workflow={'stage':stage(job)} if role in ('superadmin','operations') else {})
 
 
 def serialize(job, user):
@@ -238,8 +248,11 @@ def collection(request):
         try:qs,metadata=register_projection(request.user,request.GET) if request.GET.get('register')=='1' else (requests_for(request.user),{})
         except ValueError as error:return JsonResponse({'error':str(error)},status=400)
         count = qs.count()
+        summary=request.GET.get('summary')=='1'
+        if summary:qs=qs.prefetch_related(None)
         jobs = qs[(page - 1) * 50:page * 50]
-        return JsonResponse({'register':metadata,'results': [serialize(j, request.user) for j in jobs], 'count': count,
+        role,_=access(request.user)
+        return JsonResponse({'register':metadata,'results': [register_row(j,role) if summary else serialize(j, request.user) for j in jobs], 'count': count,
                              'next': page + 1 if page * 50 < count else None})
     if access(request.user)[0] not in (Membership.TENANT,Membership.PM,Membership.ADMIN):
         return JsonResponse({'error': 'Only authorised tenants and agency users can submit reports.'}, status=403)
@@ -413,7 +426,7 @@ def workspace(request):
     html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
     html = html.replace('content="#101c31"', 'content="#102e46"')
     html = html.replace('</head>', '<script src="'+static('live-sync.js')+'?v=live-pots-20261109"></script></head>')
-    html = html.replace('</body>', '<script src="'+(static('workflow-ui.js')+'?v=agency-onboarding-20261111')+'"></script><script src="' + (static('maintenance.js')+'?v=agency-onboarding-20261111') + '"></script></body>')
+    html = html.replace('</body>', '<script src="'+(static('workflow-ui.js')+'?v=assigned-property-emails-20261111')+'"></script><script src="' + (static('maintenance.js')+'?v=assigned-property-emails-20261111') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)

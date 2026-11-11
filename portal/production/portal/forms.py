@@ -40,7 +40,10 @@ class PropertyForm(forms.ModelForm):
         widgets = {'access_notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,member,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['manager'].queryset = User.objects.filter(membership__agency=member.agency,membership__role=Membership.PM,is_active=True)
-        self.fields['manager'].empty_label = 'Agency administrator manages'
+        self.fields['manager'].queryset = User.objects.filter(membership__agency=member.agency,membership__role__in=(Membership.PM,Membership.ADMIN),is_active=True)
+        self.fields['manager'].label = 'Responsible property manager / administrator'
+        self.fields['manager'].empty_label = 'Unassigned — no property email recipient'
+        self.fields['manager'].help_text = 'Only the person assigned here receives this property’s job emails. Agency oversight does not subscribe other administrators.'
+        self.fields['manager'].label_from_instance = lambda user: (user.get_full_name() or user.email)+' — '+user.email
         if member.role == Membership.PM:
             del self.fields['manager']

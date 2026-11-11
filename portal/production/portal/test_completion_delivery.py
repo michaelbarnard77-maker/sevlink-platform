@@ -28,6 +28,8 @@ class CompletionDeliveryTests(TestCase):
         workflows.OperationalWorkflowTests.setUp(self)
         self.home.manager=self.pm;self.home.save(update_fields=['manager'])
         self.review()
+        # Completion mail needs a real synthetic recipient, unlike maintenance-only fixtures.
+        self.pm.email=self.pm.username;self.pm.save(update_fields=['email'])
         self.url=reverse('completion_report_upload',args=[self.job.pk])
 
     def upload(self,key=None,after=True,mark_completed=False):
@@ -94,6 +96,7 @@ class CompletionDeliveryTests(TestCase):
 
     def test_receipt_on_full_original_invoice_does_not_queue_before_work_complete(self):
         workflows.OperationalWorkflowTests.setUp(self)
+        self.pm.email=self.pm.username;self.pm.save(update_fields=['email'])
         self.home.manager=self.pm;self.home.save(update_fields=['manager'])
         self.url=reverse('completion_report_upload',args=[self.job.pk])
         self.review('quoted');self.client.force_login(self.ops)
@@ -121,7 +124,10 @@ class CompletionDeliveryTests(TestCase):
         package=self.package()
         from django.utils import timezone
         from .models import OperationsNotification,OperationsFeedback
-        notification=OperationsNotification.objects.first();notification.recipient=self.pm.email;notification.save(update_fields=['recipient'])
+        notification=OperationsNotification.objects.filter(recipient=self.pm.email).first()
+        if notification is None:
+            source=OperationsNotification.objects.first()
+            notification=OperationsNotification.objects.create(event=source.event,recipient=self.pm.email)
         OperationsFeedback.objects.create(notification=notification,provider_event_id='synthetic-pm-bounce',kind='bounce',occurred_at=timezone.now())
         with tempfile.TemporaryDirectory() as directory,override_settings(EMAIL_FILE_PATH=Path(directory)):
             self.assertEqual(deliver(preview=True),0);self.assertEqual(list(Path(directory).glob('*')),[])

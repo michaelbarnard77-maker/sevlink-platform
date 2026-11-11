@@ -34,7 +34,7 @@
   const defaultRegister=()=>({search:'',bucket:'all',property:'',agency:'',status:'',stage:'',category:'',urgency:'',sort:'newest'});
   let registerFilters=defaultRegister();
   async function loadJobs() {
-    const active=view,generation=++loadGeneration,params=new URLSearchParams({page});
+    const active=view,generation=++loadGeneration,params=new URLSearchParams({page,summary:'1'});
     if(active==='requests'){params.set('register','1');for(const [k,v] of Object.entries(registerFilters))if(v)params.set(k,v);}
     const data = await api('requests/?'+params);
     if(active!==view || generation!==loadGeneration)return false;

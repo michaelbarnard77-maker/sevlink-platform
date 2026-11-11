@@ -36,3 +36,26 @@ class PilotPortfolioTests(TestCase):
         self.assertEqual(self.client.get('/api/maintenance/requests/').json()['count'],100)
         self.client.force_login(tenant)
         self.assertEqual(self.client.get('/api/maintenance/requests/').json()['count'],2)
+
+    def test_hundred_property_summary_avoids_loading_full_job_histories(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        agency=Agency.objects.create(name='Summary pilot')
+        admin=User.objects.create_user(username='summary-admin',email='summary-admin@example.test')
+        Membership.objects.create(user=admin,agency=agency,role='admin')
+        for n in range(100):
+            prop=Property.objects.create(agency=agency,manager=admin,name=f'Property {n}',address=f'Example address {n}')
+            MaintenanceRequest.objects.create(property=prop,reported_by=admin,title=f'Repair {n}',description='Stored detail remains private until opened',category='Plumbing')
+        self.client.force_login(admin)
+        with CaptureQueriesContext(connection) as queries:
+            response=self.client.get('/api/maintenance/requests/',{'summary':'1','register':'1'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json()['count'],100)
+        self.assertEqual(len(response.json()['results']),50)
+        self.assertLess(len(queries),35)
+        row=response.json()['results'][0]
+        for field in ('attachments','invoices','quotations','activity','comments','description'):
+            self.assertNotIn(field,row)
+        detail=self.client.get('/api/maintenance/requests/'+row['id']+'/')
+        self.assertEqual(detail.status_code,200)
+        self.assertIn('activity',detail.json());self.assertIn('invoices',detail.json())
