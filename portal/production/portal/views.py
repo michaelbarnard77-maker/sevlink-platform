@@ -154,7 +154,8 @@ def accept_invitation(request,token):
         return render(request,'portal/sent.html',{'title':'Sign out first','text':'Sign out before accepting an invitation.'},status=409)
     activation = invitation.role==Membership.ADMIN
     draft = User(username=invitation.email,email=invitation.email,first_name=invitation.name)
-    form = forms.Form(request.POST if request.method=='POST' else None) if activation else SetPasswordForm(draft,request.POST if request.method=='POST' else None)
+    password_setup = activation and existing is not None and not existing.has_usable_password()
+    form = forms.Form(request.POST if request.method=='POST' else None) if activation and not password_setup else SetPasswordForm(existing if password_setup else draft,request.POST if request.method=='POST' else None)
     if request.method=='POST' and form.is_valid():
         try:
             with transaction.atomic():
@@ -163,9 +164,11 @@ def accept_invitation(request,token):
                 if invitation.accepted_at or invitation.revoked_at or invitation.expires_at<=timezone.now():
                     return HttpResponse('This invitation is no longer available.',status=410)
                 if activation:
-                    user = User.objects.get(email=invitation.email,is_active=False)
+                    user = User.objects.select_for_update().get(email=invitation.email,is_active=False,membership__agency=invitation.agency,membership__role=Membership.ADMIN)
+                    if password_setup:
+                        user.set_password(form.cleaned_data['new_password1'])
                     user.is_active = True
-                    user.save(update_fields=['is_active'])
+                    user.save(update_fields=['is_active','password'])
                 else:
                     user = form.save()
                     Membership.objects.create(user=user,agency=invitation.agency,role=invitation.role)

@@ -706,7 +706,9 @@
   async function start() {
     app.innerHTML = '<div class="notice" role="status">Loading your maintenance workspace…</div>';
     try {
-      context = await api('context/'); await loadJobs(); await render();
+      context = await api('context/');
+      if(context.user.role==='superadmin' && new URLSearchParams(location.search).get('view')==='agencies')view='agencies';
+      await loadJobs(); await render();
       if(!liveSync)liveSync=window.SevlinkLiveSync?.start({read:()=>api('live-revision/'),update:applyLiveUpdate});
       const linkedJob = new URLSearchParams(location.search).get('job');
       if (linkedJob && /^[0-9a-f-]{36}$/i.test(linkedJob)) {

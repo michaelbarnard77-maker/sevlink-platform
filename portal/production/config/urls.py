@@ -1,10 +1,11 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
 from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers, scheduling, lifecycle, mfa, customer_portal
-from portal import website_enquiries, live_updates, private_notifications
+from portal import website_enquiries, live_updates, private_notifications, agency_onboarding
 from portal import workflow, completion_delivery, admin_controls, private_clients
 
 urlpatterns = [
+    path("agencies/new/",agency_onboarding.create,name="agency_new"),
     path("api/maintenance/private-clients/notifications/",private_notifications.notifications,name="private_client_notifications"),
     path("api/maintenance/live-revision/",live_updates.revision,name="maintenance_live_revision"),
     path("enquiries/", website_enquiries.inbox, name="website_enquiries"),
