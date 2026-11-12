@@ -24,7 +24,7 @@ class EnquiryForm(forms.Form):
     phone = forms.CharField(max_length=30)
     email = forms.EmailField(max_length=254)
     clientType = forms.ChoiceField(choices=[(v,v) for v in ['Homeowner / private client','Landlord','Property agency']])
-    area = forms.CharField(max_length=120)
+    area = forms.CharField(max_length=400)
     service = forms.CharField(max_length=80)
     details = forms.CharField(max_length=2500)
     consent = forms.BooleanField()
@@ -89,7 +89,7 @@ def email_text(enquiry, recipient):
     intro = 'A new property enquiry has been received.' if staff else f'Thank you, {enquiry.name}. We have received your property enquiry.'
     return (f'{intro}\n\nReference: {enquiry.reference}\n\n'
         f'CONTACT DETAILS\nName: {enquiry.name}\nPhone: {enquiry.phone}\nEmail: {enquiry.email}\nEnquiring as: {enquiry.client_type}\n\n'
-        f'PROPERTY & SERVICE\nProperty area: {enquiry.area}\nService: {enquiry.service}\n\nWORK REQUESTED\n{enquiry.details}\n\n'
+        f'PROPERTY & SERVICE\nProperty address: {enquiry.area}\nService: {enquiry.service}\n\nWORK REQUESTED\n{enquiry.details}\n\n'
         + ('Open Website enquiries in your Sevlink dashboard to follow up.' if staff else
         'Our team will contact you to discuss the work and next step. This is an enquiry, not a confirmed booking.\nFor urgent assistance, call 081 028 5034.'))
 
@@ -101,7 +101,7 @@ def email_bodies(enquiry, recipient):
     from .email_branding import branded_bodies
     staff = recipient == 'maintenance@sevlink.co.za'
     rows = format_html_join('', '<tr><td style="padding:9px 0;width:36%;color:#597182;vertical-align:top">{}</td><td style="padding:9px 0;font-weight:600">{}</td></tr>',
-        [('Name',enquiry.name),('Phone',enquiry.phone),('Email',enquiry.email),('Enquiring as',enquiry.client_type),('Property area',enquiry.area),('Service',enquiry.service)])
+        [('Name',enquiry.name),('Phone',enquiry.phone),('Email',enquiry.email),('Enquiring as',enquiry.client_type),('Property address',enquiry.area),('Service',enquiry.service)])
     details = format_html_join(format_html('<br>'), '{}', ((line,) for line in enquiry.details.splitlines()))
     content = format_html('<p style="color:#24868a;font-size:12px;letter-spacing:2px">SEVLINK PROPERTY CARE</p>'
         '<h1 style="font-size:26px;color:#102e46">{}</h1><p>{}</p>'

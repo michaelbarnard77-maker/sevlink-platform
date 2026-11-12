@@ -129,7 +129,7 @@ class WebsiteEnquiry(models.Model):
     phone = models.CharField(max_length=30)
     email = models.EmailField()
     client_type = models.CharField(max_length=40)
-    area = models.CharField(max_length=120)
+    area = models.CharField(max_length=400)
     service = models.CharField(max_length=80)
     details = models.TextField(max_length=2500)
     status = models.CharField(max_length=16, default="new", choices=[("new","New"),("contacted","Contacted"),("closed","Closed")])

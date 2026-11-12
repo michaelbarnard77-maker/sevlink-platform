@@ -83,3 +83,13 @@ class WebsiteEnquiryTests(TransactionTestCase):
         self.assertIn('Work requested',staff.alternatives[0].content)
         self.assertEqual(WebsiteEnquiry.objects.count(),1)
         self.assertEqual(MailQueue.objects.filter(sent_at__isnull=False).count(),2)
+
+    def test_full_property_address_is_saved_without_suburb_length_limit(self):
+        data=self.payload()
+        address='Unit 12, Example Residential Estate, 123 Example Street, Example Extension and Residential Area, Pretoria East, Gauteng, South Africa, 0081'
+        self.assertGreater(len(address),120)
+        data['area']=address
+        self.assertEqual(self.client.post('/',data).status_code,201)
+        enquiry=WebsiteEnquiry.objects.get();self.assertEqual(enquiry.area,address)
+        plain,html=email_bodies(enquiry,enquiry.email)
+        self.assertIn('Property address',plain);self.assertIn(address,plain)
