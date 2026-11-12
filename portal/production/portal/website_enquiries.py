@@ -95,6 +95,9 @@ def email_text(enquiry, recipient):
 
 
 def email_bodies(enquiry, recipient):
+    if enquiry.service=='Agency consultation':
+        from .agency_enquiries import email_bodies as agency_email_bodies
+        return agency_email_bodies(enquiry,recipient)
     from .email_branding import branded_bodies
     staff = recipient == 'maintenance@sevlink.co.za'
     rows = format_html_join('', '<tr><td style="padding:9px 0;width:36%;color:#597182;vertical-align:top">{}</td><td style="padding:9px 0;font-weight:600">{}</td></tr>',

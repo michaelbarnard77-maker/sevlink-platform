@@ -1,7 +1,7 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth
 from portal import views, maintenance, attachments, collaboration, quotations, operations, invoices, financial, regions, suppliers, scheduling, lifecycle, mfa, customer_portal
-from portal import website_enquiries, live_updates, private_notifications, agency_onboarding
+from portal import website_enquiries, live_updates, private_notifications, agency_onboarding, agency_enquiries
 from portal import workflow, completion_delivery, admin_controls, private_clients
 
 urlpatterns = [
@@ -75,7 +75,7 @@ urlpatterns = [
     path('api/maintenance/requests/', maintenance.collection, name='maintenance_collection'),
     path('api/maintenance/requests/<uuid:job_id>/', maintenance.detail, name='maintenance_detail'),
     path('verify/resend/',views.resend_verification,name='resend_verification'),
-    path('',views.landing,name='landing'),path('portal/',views.dashboard,name='dashboard'),path('register/',views.register,name='register'),
+    path('',views.landing,name='landing'),path('portal/',views.dashboard,name='dashboard'),path('register/',agency_enquiries.public_enquiry,name='register'),
     path('login/',views.PortalLogin.as_view(),name='login'),path('logout/',auth.LogoutView.as_view(),name='logout'),
     path('team/invite/',views.invite_pm,name='invite_pm'),path('properties/new/',views.property_edit,name='property_new'),
     path('properties/<uuid:pid>/edit/',views.property_edit,name='property_edit'),path('properties/<uuid:pid>/tenant/',views.invite_tenant,name='invite_tenant'),

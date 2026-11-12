@@ -93,9 +93,9 @@ class LifecycleTests(TestCase):
     def test_production_admission_gate_creates_no_unapproved_agency(self):
         self.client.logout()
         with override_settings(AGENCY_REGISTRATION_ENABLED=False):
-            self.assertEqual(self.client.get('/register/').status_code,403)
+            self.assertContains(self.client.get('/register/'),'Arrange an agency consultation')
         with override_settings(AGENCY_REGISTRATION_ENABLED=True,AGENCY_REGISTRATION_ALLOWED_EMAILS=['approved@example.test']):
             response=self.client.post('/register/',{'agency_name':'Unapproved','first_name':'Unapproved','email':'unapproved@example.test','phone':'test','area':'Test','password1':'Long-testing-passphrase-482!','password2':'Long-testing-passphrase-482!'})
-            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.status_code,400)
             self.assertFalse(Agency.objects.filter(name='Unapproved').exists())
             self.assertFalse(User.objects.filter(email='unapproved@example.test').exists())

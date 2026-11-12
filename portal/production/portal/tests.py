@@ -15,18 +15,22 @@ class OnboardingTests(TestCase):
         u = User.objects.create_user(username=email,email=email,password=self.password,first_name=email.split('@')[0])
         Membership.objects.create(user=u,agency=agency,role=role)
         return u
-    def register(self,email='owner@example.test'):
-        return self.client.post('/register/',{'agency_name':'Oak & River','first_name':'Michael','email':email,'phone':'0810000000','area':'Gauteng','password1':self.password,'password2':self.password})
-    def test_register_verify_invite_pm_property_tenant(self):
-        self.assertEqual(self.register().status_code,200)
+    def prepare_agency(self,email='owner@example.test'):
+        owner=User.objects.create_superuser(username='sevlink-owner@example.test',email='sevlink-owner@example.test',password=self.password)
+        self.client.force_login(owner)
+        response=self.client.post('/agencies/new/',{'agency_name':'Oak & River','admin_name':'Michael','admin_email':email,'phone':'0810000000','area':'Gauteng'})
+        self.client.logout()
+        return response
+    def test_owner_onboarding_verify_invite_pm_property_tenant(self):
+        self.assertEqual(self.prepare_agency().status_code,302)
         admin = User.objects.get(email='owner@example.test')
         self.assertFalse(admin.is_active)
         self.assertFalse(admin.check_password('wrong'))
-        self.assertTrue(admin.check_password(self.password))
+        self.assertFalse(admin.has_usable_password())
         self.assertFalse(self.client.login(username=admin.username,password=self.password))
         token = self.token(admin.email)
         self.assertFalse(Invitation.objects.filter(token_hash=token).exists())
-        self.assertEqual(self.client.post('/invitation/'+token+'/').status_code,302)
+        self.assertEqual(self.client.post('/invitation/'+token+'/',{'new_password1':self.password,'new_password2':self.password}).status_code,302)
         admin.refresh_from_db()
         self.assertTrue(admin.is_active)
         self.assertEqual(self.client.get('/portal/').status_code,302)
@@ -81,7 +85,7 @@ class OnboardingTests(TestCase):
         p1.refresh_from_db()
         self.assertEqual(p1.manager,pm1)
     def test_expired_and_reissued_tokens(self):
-        self.register()
+        self.prepare_agency()
         old = self.token('owner@example.test')
         self.client.post('/verify/resend/',{'email':'owner@example.test'})
         new = self.token('owner@example.test')

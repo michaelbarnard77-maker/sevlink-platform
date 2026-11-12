@@ -11,7 +11,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_post_parameters
 from .models import User, Agency, Membership, Property, Tenancy, Invitation, Audit
-from .forms import RegisterForm, InviteForm, PropertyForm, EmailLoginForm
+from .forms import InviteForm, PropertyForm, EmailLoginForm
 from .services import digest, limited, queue_invite
 
 def landing(request):
@@ -48,35 +48,9 @@ def properties_for(m):
     return Property.objects.none()
 def form_page(request,form,title):
     return render(request,'portal/form.html',{'form':form,'title':title})
-@sensitive_post_parameters('password1','password2')
 def register(request):
-    if request.user.is_authenticated:
-        return redirect('dashboard')
-    if not settings.AGENCY_REGISTRATION_ENABLED:
-        return HttpResponse('New agency registration is by prior arrangement. Contact Sevlink.', status=403)
-    form = RegisterForm(request.POST if request.method=='POST' else None)
-    if request.method=='POST':
-        if limited('register:'+request.META.get('REMOTE_ADDR',''),maximum=5,minutes=60):
-            return HttpResponse('Please try again in an hour.',status=429)
-        if form.is_valid():
-            if (settings.AGENCY_REGISTRATION_ALLOWED_EMAILS and
-                    form.cleaned_data['email'].casefold() not in settings.AGENCY_REGISTRATION_ALLOWED_EMAILS):
-                form.add_error(None, 'Registration is by prior arrangement. Contact Sevlink.')
-                return form_page(request, form, 'Create your agency account')
-            try:
-                with transaction.atomic():
-                    user = form.save(commit=False)
-                    user.username = form.cleaned_data['email']
-                    user.is_active = False
-                    user.save()
-                    agency = Agency.objects.create(name=form.cleaned_data['agency_name'],phone=form.cleaned_data['phone'],area=form.cleaned_data['area'])
-                    Membership.objects.create(user=user,agency=agency,role=Membership.ADMIN)
-                    queue_invite(agency=agency,email=user.email,name=user.first_name,role=Membership.ADMIN,actor=user)
-                    Audit.objects.create(agency=agency,actor=user,action='Agency registered; verification requested')
-                return render(request,'portal/sent.html',{'title':'Verify your email','text':'Your workspace has been created. Open your email verification link before signing in.'})
-            except IntegrityError:
-                form.add_error(None,'This email is already registered. Sign in or reset your password.')
-    return form_page(request,form,'Create your agency account')
+    from .agency_enquiries import public_enquiry
+    return public_enquiry(request)
 @login_required
 def dashboard(request):
     m = member(request)
