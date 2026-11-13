@@ -1040,3 +1040,17 @@ class PrivateClientLink(models.Model):
     revoked_at = models.DateTimeField(null=True,blank=True)
     message = models.OneToOneField(MailQueue,null=True,blank=True,on_delete=models.PROTECT,related_name='private_client_link')
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class JobInternalNoteRevision(AppendOnlyModel):
+    request = models.ForeignKey(MaintenanceRequest, on_delete=models.PROTECT, related_name='internal_note_revisions')
+    author = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField()
+    text = models.TextField(max_length=6000, blank=True)
+    key = models.UUIDField(unique=True, null=True, blank=True)
+    fingerprint = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-version']
+        constraints = [models.UniqueConstraint(fields=['request','version'], name='job_internal_note_version_unique')]
