@@ -1,0 +1,22 @@
+PASS: real commit chain from tenant report → PM review → uploaded quote → approval → partial deposit + top-up → booking → tenant access → on site → completion → final balance request → paid/closed, with one locked invoice number. Document privacy and concurrent-submit guards also passed.
+PASS: job register address search, agency and cancellation filters, PM portfolio isolation and tenant scoping; website issue reporting by tenants and managers, unique references, private staff triage, no maintenance job changes; full-month count grid for 100 subcontractors, day drill-down, private role guard; vertically grouped month weeks, working week, mobile day groups; month length, leap year, month/year navigation; 19 categories, clean start, proportional geometry, adjacent and overlapping lanes, conflict checks, named authorisation, role guards, shared/private separation, on-site/completion, invoice handoff, cancellation and deposit guards.
+System check identified no issues (0 silenced).
+No changes detected
+Creating test database for alias 'default'...
+Destroying old test database for alias 'default'...
+................................................................................................................................................................................................................................................ss...ssssss...F...s.ssss.ssss.s.
+======================================================================
+FAIL: test_tenant_submission_manager_update_and_relogin (portal.test_maintenance_browser.MaintenanceBrowserTests.test_tenant_submission_manager_update_and_relogin)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/sevlink/sevlink-codex-source-export/portal/production/portal/test_maintenance_browser.py", line 77, in test_tenant_submission_manager_update_and_relogin
+    self.assertEqual(InvoicePayment.objects.get().amount,250)
+AssertionError: Decimal('1000.00') != 250
+
+----------------------------------------------------------------------
+Ran 272 tests in 167.587s
+
+FAILED (failures=1, skipped=18)
+Destroying test database for alias 'default'...
+Found 272 test(s).
+System check identified no issues (0 silenced).

@@ -1,0 +1,20 @@
+Premium Sevlink website and portal
+=================================
+
+The approved visual direction is deep navy, turquoise accents, crisp white surfaces and balanced spacing. The production landing page, account/sign-in screens and authenticated workspace share a coordinated identity, with original branding and existing property photography retained. No external font service, icon service or runtime dependency is added.
+
+The landing page has a framed photographic hero, refined typography, clearer service cards, an updated agency showcase, a matching contact section and more legible supporting text. The sign-in page has a branded introduction beside the existing account form, with the same password, CSRF and onboarding behaviour.
+
+The portal applies a scoped visual system to Operations, PM, agency administrator and tenant views: navy navigation with turquoise active indicators, consistent page headers, dashboard cards, tables, job dialogs, forms, document folders and detailed repair illustrations. PM/agency overview headers sit above the actionable attention section. Mobile offers the main quick navigation shortcuts and a full navigation drawer; every existing authorised destination remains available. Tables scroll inside their panel at narrower desktop/tablet widths.
+
+Quotations remains absent from the sidebar; Accounts & Payments holds combined job folders. The Quotes tab and approval controls remain inside jobs. Yellow unread notifications, per-appointment red/blue/green statuses, payment verification and role-specific document privacy retain their meanings. Job state, financial calculations and database schema are unchanged.
+
+Implementation: premium-portal.css is scoped to sevlink-workspace and sevlink-account; premium-site.css is scoped to sevlink-site. The authenticated workspace injects its stylesheet after the preserved source styles. The production landing template and account base template load their corresponding styles. Motion reduction is supported. Text/button contrast and phone/tablet overflow were checked during review.
+
+Local installation uses the existing Desktop Update-Sevlink.cmd launcher and cumulative update-windows-premium-sevlink.ps1. All 40 embedded source payloads are checked against SHA256. Existing source/SQLite backup and rollback protections apply, with migrations remaining at 0036. No hosting deployment or live email delivery is enabled.
+
+Validation: 86 unique account, onboarding, tenant/privacy, maintenance and browser checks passed across the regression run and targeted core-flow rerun; one SQLite concurrency check was skipped. The browser test's invoice Payments action was scoped to the open dialog to distinguish it from the sidebar destination. Premium visual acceptance passed with 45 screenshots covering the public landing/login journey, all four roles, dashboard/register/document/report/planner screens, job tabs and mobile drawers. Overflow checks covered 360, 390, 768, 1024, 1440 and 1920 pixel layouts as applicable. Django system checks, migration drift, JavaScript syntax and installer payload integrity passed.
+
+Reproduce visual acceptance with SEVLINK_PREMIUM_PROOF=1, SEVLINK_CHROMIUM_PATH pointing to Chromium, and the existing Django/Playwright environment running scripts/capture-portal-visual-proof.py. It creates only synthetic records in an isolated temporary database and captures to SEVLINK_VISUAL_PROOF_DIR.
+
+Presentation artwork: all 19 repair-category drawings now use clean, aligned geometry and separated fixtures/tools, with redundant perspective crossings removed. Renovations & Refurbishments shows kitchen cabinets, a sink/worktop, paint roller and hammer. Eight PM/agency dashboard stages have distinct matching navy/turquoise illustrations keyed to their stage identifiers. Counts, labels, links and workflow logic remain unchanged. Acceptance covered four dashboard screenshots with PM/admin desktop/mobile checks, nine category screenshots with keyboard/report routing, and a high-resolution kitchen tile preview. All 40 cumulative installer payloads were verified against their source hashes.

@@ -1,0 +1,340 @@
+{
+  "synthetic": true,
+  "viewport": "1440 \u00d7 1000",
+  "captures": [
+    {
+      "file": "source-operations-overview.png",
+      "role": "Source demo",
+      "screen": "Preserved source Operations dashboard",
+      "match": "Original preserved demo reference; prototype only.",
+      "differences": [
+        "Source reference only; prototype data and controls."
+      ]
+    },
+    {
+      "file": "source-register.png",
+      "role": "Source demo",
+      "screen": "Preserved source register",
+      "match": "Original preserved demo reference; prototype only.",
+      "differences": [
+        "Source reference only; prototype records."
+      ]
+    },
+    {
+      "file": "source-job-header.png",
+      "role": "Source demo",
+      "screen": "Preserved source job header",
+      "match": "Original preserved demo reference; prototype only.",
+      "differences": [
+        "Source reference only; synthetic identities."
+      ]
+    },
+    {
+      "file": "source-tab-invoices.png",
+      "role": "Source demo",
+      "screen": "Source Invoices",
+      "match": "Original preserved demo reference; prototype only.",
+      "differences": [
+        "Source reference only."
+      ]
+    },
+    {
+      "file": "source-pm-overview.png",
+      "role": "Source demo",
+      "screen": "Published source PM dashboard",
+      "match": "Original preserved demo reference; prototype only.",
+      "differences": [
+        "Prototype controls and example records only."
+      ]
+    },
+    {
+      "file": "operations-overview.png",
+      "role": "operations",
+      "screen": "Operations overview/dashboard",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Operations retains the ten agreed real workflow stages; the preserved demo has twelve prototype stages.",
+        "Real sign-in/notifications replace the simulated role picker and demo labels."
+      ]
+    },
+    {
+      "file": "operations-sidebar.png",
+      "role": "operations",
+      "screen": "Left sidebar navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    },
+    {
+      "file": "operations-repair-register.png",
+      "role": "operations",
+      "screen": "Operations repair register",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Real REQ/SV references and permission-scoped backend filters replace demo records.",
+        "The backend pages 50 records; the prototype pages 25."
+      ]
+    },
+    {
+      "file": "operations-existing-req.png",
+      "role": "operations",
+      "screen": "Existing saved REQ maintenance request",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Persisted synthetic Django request; no official SV number or invoice is invented."
+      ]
+    },
+    {
+      "file": "operations-job-header.png",
+      "role": "operations",
+      "screen": "Job details top section and header",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Real request/job identifiers and authorised property information replace synthetic demo identities.",
+        "Overview remains an additional agreed tab; Private Costs is Operations-only."
+      ]
+    },
+    {
+      "file": "operations-job-comments.png",
+      "role": "operations",
+      "screen": "Comments",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Audience selection and attachments follow the current private/shared conversation rules.",
+        "Forms and decisions implement the current approved backend workflow, rather than the prototype actions.",
+        "Header is captured separately; this image scrolls the dialog to show the selected tab and its content."
+      ]
+    },
+    {
+      "file": "operations-job-attendance.png",
+      "role": "operations",
+      "screen": "Attendance",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Public arrival windows and read-only completed attendance history replace the prototype scheduling controls.",
+        "Forms and decisions implement the current approved backend workflow, rather than the prototype actions.",
+        "Header is captured separately; this image scrolls the dialog to show the selected tab and its content."
+      ]
+    },
+    {
+      "file": "operations-job-quotes.png",
+      "role": "operations",
+      "screen": "Quotes",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Manually uploaded PDFs, numbered revisions and saved decisions replace prototype quote data.",
+        "Forms and decisions implement the current approved backend workflow, rather than the prototype actions.",
+        "Header is captured separately; this image scrolls the dialog to show the selected tab and its content."
+      ]
+    },
+    {
+      "file": "operations-job-invoices.png",
+      "role": "operations",
+      "screen": "Invoices",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Manual deposit/final PDFs and payment history replace prototype document/payment simulation.",
+        "Operations has additional audited refund, void, correction and credit-note forms; its tab is longer than the prototype.",
+        "Forms and decisions implement the current approved backend workflow, rather than the prototype actions.",
+        "Header is captured separately; this image scrolls the dialog to show the selected tab and its content."
+      ]
+    },
+    {
+      "file": "operations-job-timeline.png",
+      "role": "operations",
+      "screen": "Timeline",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Events are permanent Django audit records, filtered by the signed-in role.",
+        "Some workflow events retain generic Workflow decision labels.",
+        "Forms and decisions implement the current approved backend workflow, rather than the prototype actions.",
+        "Header is captured separately; this image scrolls the dialog to show the selected tab and its content."
+      ]
+    },
+    {
+      "file": "operations-job-before-after-report.png",
+      "role": "operations",
+      "screen": "Before & After Report",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Accepted report text and authorised uploaded photographs replace prototype report content.",
+        "Images in this proof are clearly labelled test illustrations, not real before/after evidence.",
+        "Forms and decisions implement the current approved backend workflow, rather than the prototype actions.",
+        "Header is captured separately; this image scrolls the dialog to show the selected tab and its content."
+      ]
+    },
+    {
+      "file": "operations-upload-invoice-form.png",
+      "role": "operations",
+      "screen": "Actual invoice PDF and amount before upload",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Synthetic original PDF submitted to the actual Django invoice endpoint."
+      ]
+    },
+    {
+      "file": "operations-uploaded-invoice-card.png",
+      "role": "operations",
+      "screen": "Saved full job invoice before payment",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Saved invoice is Unpaid. Uploading never marks it paid."
+      ]
+    },
+    {
+      "file": "pm-uploaded-invoice-attention.png",
+      "role": "pm",
+      "screen": "PM attention after the actual invoice upload",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Actual scoped attention response, not a simulated notification."
+      ]
+    },
+    {
+      "file": "operations-verified-deposit.png",
+      "role": "operations",
+      "screen": "Deposit verified and attendance unlocked",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Half the full invoice is recorded and verified. The original invoice number and full total remain unchanged."
+      ]
+    },
+    {
+      "file": "operations-mobile-navigation.png",
+      "role": "operations",
+      "screen": "Mobile demo-style navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    },
+    {
+      "file": "pm-overview.png",
+      "role": "pm",
+      "screen": "PM overview/dashboard",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Exactly eight PM cards and the attention banner, as specifically approved; this intentionally differs from the older demo dashboard.",
+        "Attention items and counts come from the authorised Django portfolio."
+      ]
+    },
+    {
+      "file": "pm-sidebar.png",
+      "role": "pm",
+      "screen": "Left sidebar navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    },
+    {
+      "file": "pm-repair-register.png",
+      "role": "pm",
+      "screen": "PM repair jobs",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Real REQ/SV references and permission-scoped backend filters replace demo records.",
+        "The backend pages 50 records; the prototype pages 25."
+      ]
+    },
+    {
+      "file": "pm-existing-req.png",
+      "role": "pm",
+      "screen": "Existing saved REQ maintenance request",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Persisted synthetic Django request; no official SV number or invoice is invented."
+      ]
+    },
+    {
+      "file": "pm-job-header.png",
+      "role": "pm",
+      "screen": "Job details top section and header",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Real request/job identifiers and authorised property information replace synthetic demo identities.",
+        "Overview remains an additional agreed tab; Private Costs is Operations-only."
+      ]
+    },
+    {
+      "file": "pm-mobile-navigation.png",
+      "role": "pm",
+      "screen": "Mobile demo-style navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    },
+    {
+      "file": "admin-overview.png",
+      "role": "admin",
+      "screen": "Agency Admin overview/dashboard",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Exactly eight PM cards and the attention banner, as specifically approved; this intentionally differs from the older demo dashboard.",
+        "Attention items and counts come from the authorised Django portfolio."
+      ]
+    },
+    {
+      "file": "admin-mobile-navigation.png",
+      "role": "admin",
+      "screen": "Mobile demo-style navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    },
+    {
+      "file": "tenant-sidebar.png",
+      "role": "tenant",
+      "screen": "Left sidebar navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    },
+    {
+      "file": "tenant-existing-req.png",
+      "role": "tenant",
+      "screen": "Existing saved REQ maintenance request",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Persisted synthetic Django request; no official SV number or invoice is invented."
+      ]
+    },
+    {
+      "file": "tenant-job-header.png",
+      "role": "tenant",
+      "screen": "Job details top section and header",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Tenant sees only their authorised request, permitted messages, photos and attendance.",
+        "Private supplier details, internal notes and agency financial documents are excluded."
+      ]
+    },
+    {
+      "file": "tenant-mobile-navigation.png",
+      "role": "tenant",
+      "screen": "Mobile demo-style navigation",
+      "match": "Original published source styling and component structure reused with saved Django records. Intentional differences are listed below.",
+      "differences": [
+        "Role-specific navigation and the private FINANCE heading follow the agreed business requirements.",
+        "Simulated role/account switching is deliberately absent.",
+        "All roles now share the requested demo navy background, blue selected state, compact rows, white text and small white navigation symbols; role links remain permission-specific."
+      ]
+    }
+  ]
+}

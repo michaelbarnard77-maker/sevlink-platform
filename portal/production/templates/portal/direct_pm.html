@@ -1,0 +1,7 @@
+{% extends 'portal/base.html' %}{% block content %}
+<section class="panel form">
+<a href="{% url 'maintenance_workspace' %}?view=agencies">← Back to agencies</a>
+<span class="eyebrow">SEVLINK ONBOARDING</span><h1>Add PM / agent</h1>
+<p>Invite a property manager directly. They will set their own password and manage their own properties. No agency administrator account is needed.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Send PM invitation</button></form>
+</section>{% endblock %}

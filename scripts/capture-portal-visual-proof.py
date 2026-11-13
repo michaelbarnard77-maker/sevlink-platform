@@ -1,0 +1,223 @@
+"""Capture authenticated screens with synthetic data in an isolated temporary SQLite DB.
+Run with the existing Django Python environment; requires Node Playwright/Chromium.
+Set SEVLINK_VISUAL_PROOF_DIR to choose the output directory. No production services.
+"""
+import os,sys,tempfile,secrets,json,uuid,subprocess,base64,re
+from pathlib import Path
+from datetime import timedelta
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'portal/production'))
+os.environ['DJANGO_SETTINGS_MODULE']='config.settings'
+os.environ['DEBUG']='1'
+os.environ.setdefault('DJANGO_SECRET_KEY',secrets.token_urlsafe(64))
+os.environ['SMTP_DELIVERY_ENABLED']='0';os.environ['OPERATIONS_LIVE_DELIVERY_ENABLED']='0'
+os.environ.pop('DB_HOST',None)
+if Path('/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules').exists():
+    os.environ.setdefault('NODE_PATH','/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules')
+OUTPUT=Path(os.environ.get('SEVLINK_VISUAL_PROOF_DIR',str(Path(tempfile.gettempdir())/'sevlink-visual-proof'))).resolve()
+TEMP=tempfile.TemporaryDirectory(prefix='sevlink-visual-proof-')
+os.environ['SEVLINK_SQLITE_TEST_DATABASE']=str(Path(TEMP.name)/'test.sqlite3')
+import django
+django.setup()
+from django.conf import settings
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.test import Client,override_settings
+from django.urls import reverse
+from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
+from portal.models import User,Agency,Membership,Province,City,Property,Tenancy,Subcontractor,SubcontractorTeam,TradeCategory,MaintenanceRequest,AttendanceRequest
+from portal.test_attachments import document
+
+@override_settings(SECURE_SSL_REDIRECT=False,SESSION_COOKIE_SECURE=False,CSRF_COOKIE_SECURE=False,ALLOWED_HOSTS=['testserver','localhost','127.0.0.1'],PRIVATE_ATTACHMENT_ROOT=Path(TEMP.name)/'private',STORAGES={**settings.STORAGES,'maintenance_private':{'BACKEND':'portal.attachment_storage.PrivateAttachmentStorage','OPTIONS':{'location':str(Path(TEMP.name)/'private')}}},EMAIL_FILE_PATH=Path(TEMP.name)/'email',OPERATIONS_LIVE_DELIVERY_ENABLED=False)
+class VisualProof(StaticLiveServerTestCase):
+    def post(self,user,url,values=None,files=None,method='POST'):
+        self.client.force_login(user)
+        if files is not None:r=self.client.post(url,{**(values or {}),**files},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        elif method=='PATCH':r=self.client.patch(url,json.dumps(values),content_type='application/json')
+        else:r=self.client.post(url,json.dumps(values or {}),content_type='application/json',HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+        self.assertIn(r.status_code,(200,201),f'{url}: {r.status_code} {r.content[:800]}')
+        return r.json()
+    def action(self,user,job,op,**v):
+        job.refresh_from_db()
+        return self.post(user,reverse('workflow_action',args=[job.pk,op]),dict(version=job.version,**v))
+    def create(self,title,category='Plumbing',safety=False):
+        d=self.post(self.tenant,reverse('maintenance_collection'),dict(property=str(self.home.pk),title=title,description='Synthetic visual-review record. No actual customer job or service is represented.',category=category,urgency='safety' if safety else 'normal'))
+        MaintenanceRequest.objects.filter(pk=d['id']).update(jobs_payment_route='legacy')
+        return MaintenanceRequest.objects.get(pk=d['id'])
+    def quote(self,job,ref,approve=False):
+        existing_terms=job.jobs_payment_route=='legacy'
+        d=self.post(self.ops,reverse('maintenance_quote',args=[job.pk]),dict(reference=ref,amount='4000.00',title='Tap repair and testing — visual test',scope='Synthetic uploaded PDF for visual acceptance only.'),{'attachments':document(name=ref+'.pdf')})
+        d=self.post(self.ops,reverse('maintenance_quote_action',args=[job.pk,d['id'],'send']),dict(version=d['version']))
+        if approve:d=self.post(self.pm,reverse('maintenance_quote_decision',args=[job.pk,d['id']]),dict(version=d['version'],status='approved',reason='Synthetic visual-review approval only.'))
+        if approve and existing_terms:
+            job.refresh_from_db()
+            if job.jobs_payment_route=='pending':self.action(self.ops,job,'jobs-intake',decision='deposit')
+        return d
+    def invoice(self,job,ref,purpose,amount,pay=False):
+        d=self.post(self.ops,reverse('maintenance_invoice',args=[job.pk]),dict(number=ref,amount=amount,due_date=str(timezone.localdate()+timedelta(days=7)),visibility='shared',purpose=purpose),{'attachments':document(name=ref+'.pdf')})
+        if pay:self.post(self.ops,reverse('maintenance_invoice_payment',args=[job.pk,d['id']]),dict(version=d['version'],amount=amount,paid_on=str(timezone.localdate()),reference='VISUAL-TEST-RECEIPT',note='Synthetic manual receipt in temporary test database only.'))
+        return d
+    def test_capture(self):
+        from django.db import connection
+        self.assertEqual(str(connection.settings_dict['NAME']),os.environ['SEVLINK_SQLITE_TEST_DATABASE'])
+        self.ops=User.objects.create_user(username='operations-review',first_name='Operations Review',email='operations@example.test',is_staff=True,is_superuser=True)
+        agency=Agency.objects.create(name='Visual review agency — test data',phone='Test only',area='Gauteng and Cape Town')
+        self.pm=User.objects.create_user(username='pm-review',first_name='PM Review',email='pm@example.test');Membership.objects.create(user=self.pm,agency=agency,role='pm')
+        self.tenant=User.objects.create_user(username='tenant-review',first_name='Tenant Review',email='tenant@example.test');Membership.objects.create(user=self.tenant,agency=agency,role='tenant')
+        gp,_=Province.objects.get_or_create(code='GP',defaults={'name':'Gauteng'});city,_=City.objects.get_or_create(province=gp,name='Johannesburg')
+        self.home=Property.objects.create(agency=agency,manager=self.pm,name='Visual test home',address='12 Example Road — test property',city=city)
+        Tenancy.objects.create(property=self.home,user=self.tenant,name='Tenant Review',email='tenant@example.test',phone='082 000 0000')
+        supplier=Subcontractor.objects.create(name='PRIVATE TEST SUPPLIER',created_by=self.ops,internal_notes='PRIVATE TEST INFORMATION')
+        supplier.cities.add(city);trade,_=TradeCategory.objects.get_or_create(name='Plumbing');supplier.trades.add(trade)
+        team=SubcontractorTeam.objects.create(subcontractor=supplier,name='Private test team',working_days=list(range(7)))
+        job=self.create('Kitchen tap repair — visual test')
+        self.action(self.pm,job,'review',job_type='quoted',urgency='normal',access_responsibility='pm',access_information='Test access arrangement only.')
+        self.quote(job,'SQ-VISUAL-001',True)
+        self.invoice(job,'INV-VISUAL-DEPOSIT','deposit','2000.00',True)
+        self.action(self.ops,job,'verify-deposit',confirmation='VERIFY')
+        when=timezone.localdate()+timedelta(days=2)
+        self.action(self.pm,job,'attendance-request',preference='date',date=str(when),window='09:00–13:00')
+        arrival=AttendanceRequest.objects.get(request=job);job.refresh_from_db()
+        self.post(self.ops,reverse('workflow_confirm_attendance',args=[job.pk]),dict(version=job.version,attendance=arrival.pk,date=str(when),window='09:00–13:00',subcontractor=str(supplier.pk),team=str(team.pk),starts_at=f'{when}T09:00:00+02:00',ends_at=f'{when}T10:00:00+02:00'))
+        for purpose in ['completion_before','completion_after']:
+            photo=SimpleUploadedFile(purpose+'-TEST-ILLUSTRATION.png',(ROOT/'public-site/dist/assets/hero-home.png').read_bytes(),content_type='image/png')
+            self.post(self.ops,reverse('workflow_documents',args=[job.pk]),dict(kind=purpose),{'attachments':photo})
+        self.action(self.ops,job,'completion',report='VISUAL TEST ONLY — no actual work was performed. The before and after images are the same existing website illustration, uploaded solely to demonstrate the report layout.',before_unavailable=False,exception_reason='')
+        for status in ['on_site','completed']:
+            job.refresh_from_db();self.post(self.ops,reverse('maintenance_detail',args=[job.pk]),dict(version=job.version,status=status),method='PATCH')
+        self.invoice(job,'INV-VISUAL-FINAL','final','2000.00')
+        for user,body,visibility in [(self.tenant,'Please keep me informed about attendance. Visual test message.','shared'),(self.pm,'Please review the uploaded documents. Visual test message.','agency'),(self.ops,'The report and final invoice are available for review. Visual test message.','shared'),(self.ops,'PRIVATE TEST INFORMATION — Operations only.','internal')]:
+            self.post(user,reverse('maintenance_comment',args=[job.pk]),dict(text=body,visibility=visibility))
+        pending=self.create('Bathroom tap quotation — visual test');self.action(self.pm,pending,'review',job_type='quoted',urgency='high',access_responsibility='sevlink');self.quote(pending,'SQ-VISUAL-002')
+        callout=self.create('Authorised call-out — visual test');self.action(self.pm,callout,'review',job_type='callout',urgency='normal',access_responsibility='pm',limit='1500.00')
+        deposit_job=self.create('Full job invoice and deposit — visual test');self.action(self.pm,deposit_job,'review',job_type='quoted',urgency='normal',access_responsibility='pm');self.quote(deposit_job,'SQ-VISUAL-FULL',True)
+        if os.environ.get('SEVLINK_DOCUMENT_FOLDERS_PROOF')=='1':
+            old=pending.quotations.get()
+            changed=self.post(self.pm,reverse('maintenance_quote_decision',args=[pending.pk,old.pk]),dict(version=old.version,status='revision_requested',reason='Synthetic revised scope.'))
+            revision=self.post(self.ops,reverse('maintenance_quote_action',args=[pending.pk,old.pk,'revise']),dict(version=changed['version'],reference='SQ-VISUAL-002-R2',amount='3500',title='Synthetic revision 2',scope='Synthetic updated scope'),{'attachments':document(name='revision.pdf')})
+            self.post(self.ops,reverse('maintenance_quote_action',args=[pending.pk,revision['id'],'send']),dict(version=revision['version']))
+        if os.environ.get('SEVLINK_MULTI_APPOINTMENT_PROOF')=='1':Subcontractor.objects.create(name='SECOND PHONE COMPANY',created_by=self.ops)
+        if os.environ.get('SEVLINK_NO_COVERAGE_PROOF')=='1':
+            supplier.provinces.clear();supplier.cities.clear();supplier.suburbs.clear()
+        existing_req=self.create('New repair needing review — visual test',category='Electrical',safety=True)
+        if os.environ.get('SEVLINK_STAGE_TABLE_PROOF')=='1':
+            # Illustrate fresh PM-forwarded intake only, with no Sevlink decisions or documents.
+            self.action(self.ops,callout,'operations-triage',decision='attendance')
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='pm')
+            existing_req.title='Bedroom light not switching on';existing_req.safety_concern=False;existing_req.save(update_fields=['title','safety_concern'])
+            for title,category in [('Kitchen tap leaking','Plumbing'),('Bathroom pipe leaking','Plumbing')]:
+                incoming=self.create(title,category=category)
+                self.action(self.pm,incoming,'review',job_type='callout' if title=='Bathroom pipe leaking' else 'quoted',urgency='normal',access_responsibility='pm',**({'limit':'1500.00'} if title=='Bathroom pipe leaking' else {}))
+            from portal.workflow import stage
+            for incoming in MaintenanceRequest.objects.all():
+                if stage(incoming)=='new':
+                    self.assertFalse(incoming.quotations.exists())
+                    self.assertFalse(incoming.invoices.exists())
+                    self.assertFalse(incoming.workflow_decisions.filter(operation='operations-triage').exists())
+        if os.environ.get('SEVLINK_ALL_STAGE_TABLES_PROOF')=='1':
+            # Synthetic records only: seed examples for each table, never owner records.
+            from portal.workflow import stage
+            def intake(title):
+                item=self.create(title)
+                self.action(self.pm,item,'review',job_type='quoted',urgency='normal',access_responsibility='pm')
+                return item
+            quote_needed=intake('Replace leaking kitchen mixer')
+            self.action(self.ops,quote_needed,'operations-triage',decision='desktop')
+            rejected=intake('Bathroom cupboard replacement')
+            sent=self.quote(rejected,'SQ-TABLE-DECLINED')
+            self.post(self.pm,reverse('maintenance_quote_decision',args=[rejected.pk,sent['id']]),dict(version=sent['version'],status='rejected',reason='Sample: agency declined the proposed work.'))
+            for target,title in [('deposit','Bathroom tap replacement'),('deposit_confirmation','Kitchen pipe repair')]:
+                item=intake(title);self.quote(item,'SQ-TABLE-'+target,True)
+                inv=self.invoice(item,'INV-TABLE-'+target,'deposit','2000.00')
+                if target=='deposit_confirmation':self.post(self.pm,reverse('maintenance_invoice_report_paid',args=[item.pk,inv['id']]),dict(version=inv['version']))
+            for target,title,status in [('booked','Bathroom leak inspection','scheduled'),('underway','Kitchen plumbing repairs','in_progress'),('invoice','Completed kitchen tap replacement','completed'),('closed','Completed and settled pipe repair','reviewed')]:
+                item=intake(title)
+                # Isolated fixtures illustrate existing saved statuses, not a workflow mutation feature.
+                item.refresh_from_db();item.status=status
+                if target=='closed':item.closed_at=timezone.now()
+                item.save(update_fields=['status','closed_at'])
+                self.assertEqual(stage(item),target)
+            seen={stage(item) for item in MaintenanceRequest.objects.all()}
+            from portal.workflow import STAGES
+            self.assertEqual(seen,{key for key,label in STAGES})
+        split_ids={}
+        private_ids={}
+        if os.environ.get('SEVLINK_SPLIT_PIPELINES_PROOF')=='1':
+            def fresh(title,kind):
+                response=self.post(self.pm,reverse('maintenance_collection'),dict(property=str(self.home.pk),title=title,description='Synthetic preview only.',category='Plumbing',job_type=kind,**({'limit':'2000'} if kind=='callout' else {})))
+                item=MaintenanceRequest.objects.get(pk=response['id']);self.assertEqual(item.jobs_payment_route,'pending');return item
+            new_quote=fresh('Bathroom mixer replacement','quoted')
+            approved_job=fresh('Approved kitchen pipe repair','quoted');self.quote(approved_job,'SQ-PIPELINE-APPROVED',True)
+            callout_job=fresh('PM-authorised leaking pipe call-out','callout')
+            split_ids=dict(new_quote=str(new_quote.pk),approved_job=str(approved_job.pk),callout_job=str(callout_job.pk))
+            date_preview=fresh('Preferred date received — sample','callout')
+            self.action(self.ops,date_preview,'jobs-intake',decision='without_deposit')
+            self.action(self.tenant,date_preview,'attendance-request',preference='date',date=str(timezone.localdate()+timedelta(days=4)),window='09:00–13:00')
+            booked_preview=fresh('Booked maintenance visit — sample','callout')
+            self.action(self.ops,booked_preview,'jobs-intake',decision='without_deposit')
+            visit_day=timezone.localdate()+timedelta(days=3)
+            self.action(self.tenant,booked_preview,'attendance-request',preference='date',date=str(visit_day),window='12:00–17:00')
+            arrival=AttendanceRequest.objects.get(request=booked_preview);booked_preview.refresh_from_db()
+            self.post(self.ops,reverse('workflow_confirm_attendance',args=[booked_preview.pk]),dict(version=booked_preview.version,attendance=arrival.pk,date=str(visit_day),window='12:00–17:00',subcontractor=str(supplier.pk),team=str(team.pk),starts_at=f'{visit_day}T14:00:00+02:00',ends_at=f'{visit_day}T15:00:00+02:00'))
+
+        if os.environ.get('SEVLINK_PRIVATE_CLIENTS_PROOF')=='1':
+            from portal.models import PrivateClientLink
+            def make_private(title,kind='quoted',email='private-preview@example.test'):
+                data=self.post(self.ops,reverse('private_client_create'),dict(name='Avery Morgan',email=email,phone='082 000 1234',address='24 Sample Avenue',title=title,description='Synthetic private-client preview only.',job_type=kind,**({'limit':'2000','authorisation':'Sample phone authorisation: maximum R2000.'} if kind=='callout' else {})))
+                return MaintenanceRequest.objects.get(pk=data['id'])
+            def link_token(item,purpose):
+                link=PrivateClientLink.objects.filter(request=item,purpose=purpose,revoked_at=None).latest('created_at')
+                return re.search(r'/client/link/([^/]+)/',link.message.body).group(1)
+            def readable_quote(item,reference):
+                from PIL import Image,ImageDraw,ImageFont
+                from io import BytesIO
+                page=Image.new('RGB',(1240,1754),'white');draw=ImageDraw.Draw(page);font=ImageFont.load_default(size=30)
+                for y,text in [(80,'SEVLINK | PROPERTY MAINTENANCE'),(160,'QUOTATION '+reference),(260,'Avery Morgan | 24 Sample Avenue'),(350,item.title),(470,'Scope: Repair, replace and test the affected fitting.'),(610,'Total VAT-inclusive: ZAR 4 000.00'),(760,'SYNTHETIC PREVIEW ONLY — no actual client work.')]:draw.text((70,y),text,font=font,fill='#12344e')
+                output=BytesIO();page.save(output,format='PDF');page.close()
+                q=self.post(self.ops,reverse('maintenance_quote',args=[item.pk]),dict(reference=reference,title=item.title,scope='Repair, replace and test the affected fitting.',amount='4000'),{'attachments':SimpleUploadedFile(reference+'.pdf',output.getvalue(),content_type='application/pdf')})
+                self.post(self.ops,reverse('maintenance_quote_action',args=[item.pk,q['id'],'send']),dict(version=q['version']))
+                return q
+            public_quote=make_private('Bathroom tap replacement')
+            readable_quote(public_quote,'PC-PREVIEW-001')
+            private_job=make_private('Kitchen pipe replacement')
+            readable_quote(private_job,'PC-PREVIEW-002')
+            accepted=Client().post(reverse('private_client_link',args=[link_token(private_job,'quote')]),{'decision':'approved'})
+            self.assertEqual(accepted.status_code,200)
+            activation=link_token(private_job,'activate')
+            self.action(self.ops,private_job,'jobs-intake',decision='deposit')
+            inv=self.invoice(private_job,'PC-INV-DEPOSIT','deposit','2000.00')
+            private_callout=make_private('Urgent bathroom leak call-out','callout','callout-preview@example.test')
+            private_ids=dict(public_quote=str(public_quote.pk),quote_token=link_token(public_quote,'quote'),private_job=str(private_job.pk),activation_token=activation,invoice=inv['id'],callout_job=str(private_callout.pk),callout_activation=link_token(private_callout,'activate'))
+        photo_empty=None
+        if os.environ.get('SEVLINK_TRIAGE_PHOTOS_PROOF')=='1':
+            picture=(ROOT/'public-site/dist/assets/hero-home.png').read_bytes()
+            self.post(self.tenant,reverse('maintenance_attachment_upload',args=[existing_req.pk]),{}, {'attachments':[SimpleUploadedFile('SYNTHETIC-tenant-repair-photo.png',picture,content_type='image/png'),document(name='SYNTHETIC-request-document.pdf')]})
+            self.post(self.pm,reverse('maintenance_attachment_upload',args=[existing_req.pk]),{}, {'attachments':SimpleUploadedFile('SYNTHETIC-PM-repair-photo.png',picture,content_type='image/png')})
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink',access_information='Synthetic access notes for preview.')
+            empty=self.create('No repair photos — synthetic test')
+            self.action(self.pm,empty,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink')
+            photo_empty=str(empty.pk)
+        if os.environ.get('SEVLINK_DEPOSIT_STAGES_PROOF')=='1':
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink')
+            self.quote(existing_req,'SYNTHETIC-DEPOSIT-FLOW',True)
+        if os.environ.get('SEVLINK_QUOTE_UPLOAD_STAGE_PROOF')=='1':
+            self.action(self.pm,existing_req,'review',job_type='quoted',urgency='normal',access_responsibility='sevlink')
+            self.action(self.ops,existing_req,'operations-triage',decision='desktop')
+        self.admin=User.objects.create_user(username='agency-admin-review',first_name='Agency Admin Review',email='agency-admin@example.test')
+        Membership.objects.create(user=self.admin,agency=agency,role='admin')
+        sessions={}
+        for role,user in [('operations',self.ops),('pm',self.pm),('admin',self.admin),('tenant',self.tenant)]:
+            c=Client();c.force_login(user);sessions[role]=c.cookies[settings.SESSION_COOKIE_NAME].value
+        r=subprocess.run(['node',str(ROOT/'scripts/capture-portal-visual-proof.cjs')],input=json.dumps(dict(url=self.live_server_url,sessions=sessions,split_ids=split_ids,private_ids=private_ids,job=str(job.pk),pending=str(pending.pk),callout=str(callout.pk),existing_req=str(existing_req.pk),photo_empty=photo_empty,deposit_job=str(deposit_job.pk),pdf=base64.b64encode(document().read()).decode(),report_photo=base64.b64encode((ROOT/'public-site/dist/assets/hero-home.png').read_bytes()).decode(),today=str(timezone.localdate()),output=str(OUTPUT))),text=True,capture_output=True,timeout=300,env=os.environ)
+        self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        from portal.account_mail import deliver
+        from portal.models import CompletionPackage
+        for _ in range(CompletionPackage.objects.count()):deliver(preview=True)
+        import shutil
+        for index,mail in enumerate((Path(TEMP.name)/'email').glob('*')):shutil.copy2(mail,OUTPUT/('completion-email-preview-'+str(index)+'.eml'))
+        print(r.stdout)
+
+if __name__=='__main__':
+    from django.test.runner import DiscoverRunner
+    try:sys.exit(bool(DiscoverRunner(verbosity=1,interactive=False).run_tests(['__main__.VisualProof'])))
+    finally:TEMP.cleanup()

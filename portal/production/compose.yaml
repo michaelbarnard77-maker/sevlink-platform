@@ -14,7 +14,9 @@ services:
       timeout: 5s
       retries: 10
   web:
-    build: .
+    build:
+      context: ../..
+      dockerfile: portal/production/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
@@ -22,11 +24,14 @@ services:
       DB_NAME: sevlink
       DB_USER: sevlink
       DEBUG: '0'
+      # Bundled bridge-network database has no TLS; real production PostgreSQL must use verify-full.
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - static:/app/collected-static
+      - private_uploads:/app/private-attachments
     # Only Caddy can reach this port; never publish it directly.
     expose: ['8000']
   caddy:
@@ -43,6 +48,7 @@ services:
       - caddyconfig:/config
     depends_on: [web]
 volumes:
+  private_uploads:
   pgdata:
   static:
   caddydata:
