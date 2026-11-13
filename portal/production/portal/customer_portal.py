@@ -201,7 +201,14 @@ def section(request,section):
         if section=='properties':return JsonResponse({'properties':[dict(property_data(p),edit_url=f'/properties/{p.pk}/edit/' if finance else None,invite_url=f'/properties/{p.pk}/tenant/' if finance else None) for p in props]})
         if section=='tenants':
             if not finance:return JsonResponse({'error':'Agency tenant management required.'},status=403)
-            return JsonResponse({'tenants':[dict(id=str(t.pk),name=t.name,email=t.email,phone=t.phone,property=t.property.address,linked=bool(t.user_id)) for t in Tenancy.objects.filter(property__in=props,active=True).select_related('property')]})
+            from django.db.models import Prefetch
+            portfolio=props.order_by('address','name','pk').prefetch_related(Prefetch('tenancy_set',queryset=Tenancy.objects.filter(active=True).order_by('name','pk'),to_attr='active_tenants'))
+            groups=[];tenants=[]
+            for prop in portfolio:
+                rows=[dict(id=str(t.pk),name=t.name,email=t.email,phone=t.phone,property=prop.address,property_id=str(prop.pk),linked=bool(t.user_id)) for t in prop.active_tenants]
+                tenants.extend(rows)
+                groups.append(dict(property_data(prop),tenants=rows,invite_url=f'/properties/{prop.pk}/tenant/'))
+            return JsonResponse({'properties':groups,'tenants':tenants})
         data={'name':m.agency.name,'phone':m.agency.phone,'area':m.agency.area,'account_access_url':f'/accounts/{m.agency_id}/' if role=='admin' else None}
         if role=='admin':
             from .models import Invitation
