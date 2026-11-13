@@ -84,3 +84,53 @@ def invite_property_manager(request,agency_id):
         messages.success(request,'Property manager invitation queued. They set their own password and can add their own properties after signing in.')
         return redirect('agency_accounts',agency_id=agency.pk)
     return render(request,'portal/owner_invite_pm.html',{'form':form,'agency':agency})
+
+
+class DirectPMForm(InviteForm):
+    agency = forms.ModelChoiceField(queryset=Agency.objects.none(),required=False,label='Agency (optional)',empty_label='Own PM portfolio — no agency administrator')
+    agency_name = forms.CharField(max_length=180,required=False,label='New agency name (optional)')
+    area = forms.CharField(max_length=180,required=False,label='Area / region (optional)')
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['agency'].queryset=Agency.objects.filter(kind='agency').order_by('name')
+        self.fields['agency'].help_text='Choose an existing agency, or leave this as Own PM portfolio to onboard the PM directly.'
+        self.fields['agency_name'].help_text='Only fill this in when creating a new agency record for the PM.'
+
+    def clean(self):
+        data=super().clean()
+        if data.get('agency') and data.get('agency_name'):
+            raise forms.ValidationError('Choose an existing agency or enter a new agency name, not both.')
+        name=data.get('agency_name') or 'PM portfolio — '+data.get('name','')
+        if not data.get('agency') and Agency.objects.filter(name__iexact=name).exists():
+            raise forms.ValidationError('This agency or PM portfolio already exists. Select it from the Agency list.')
+        data['portfolio_name']=name
+        return data
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def add_pm(request):
+    if not request.user.is_active or not request.user.is_superuser:
+        return HttpResponseForbidden('Sevlink Super Admin access required.')
+    form=DirectPMForm(request.POST if request.method=='POST' else None)
+    if request.method=='POST' and form.is_valid():
+        try:
+            with transaction.atomic():
+                User.objects.select_for_update().get(pk=request.user.pk)
+                data=form.cleaned_data
+                if User.objects.filter(email__iexact=data['email']).exists():raise IntegrityError('Account exists.')
+                agency=data.get('agency')
+                if agency:
+                    agency=Agency.objects.select_for_update().get(pk=agency.pk,kind='agency')
+                else:
+                    if Agency.objects.filter(name__iexact=data['portfolio_name']).exists():raise IntegrityError('Portfolio exists.')
+                    agency=Agency.objects.create(kind='agency',name=data['portfolio_name'],phone=data.get('phone',''),area=data.get('area',''))
+                invitation=queue_invite(agency=agency,email=data['email'],name=data['name'],role=Membership.PM,actor=request.user)
+                Audit.objects.create(agency=agency,actor=request.user,action='PM invited directly by Sevlink',object_id=str(invitation.pk))
+                AccountLifecycleEvent.objects.create(agency=agency,actor=request.user,action='pm_invited',object_reference=str(invitation.pk),reason='Owner added a PM directly; no administrator account created.')
+            messages.success(request,'PM invitation queued. They set their own password and can add their own properties. No agency administrator account was created.')
+            return redirect('agency_accounts',agency_id=agency.pk)
+        except IntegrityError:
+            form.add_error(None,'This account or portfolio already exists. Choose the existing portfolio or use the existing account.')
+    return render(request,'portal/direct_pm.html',{'form':form})

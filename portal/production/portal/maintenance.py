@@ -427,7 +427,7 @@ def workspace(request):
     html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
     html = html.replace('content="#101c31"', 'content="#102e46"')
     html = html.replace('</head>', '<script src="'+static('live-sync.js')+'?v=live-pots-20261109"></script></head>')
-    html = html.replace('</body>', '<script src="'+static('internal-job-notes.js')+'?v=20261113"></script><script src="'+(static('workflow-ui.js')+'?v=internal-job-notes-20261113')+'"></script><script src="' + (static('maintenance.js')+'?v=emergency-call-20261112') + '"></script></body>')
+    html = html.replace('</body>', '<script src="'+static('internal-job-notes.js')+'?v=20261113"></script><script src="'+(static('workflow-ui.js')+'?v=direct-pm-button-20261113')+'"></script><script src="' + (static('maintenance.js')+'?v=emergency-call-20261112') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)

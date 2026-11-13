@@ -107,3 +107,38 @@ class AgencyOnboardingTests(TestCase):
         self.data['first_role']='superadmin'
         self.assertEqual(self.client.post(self.url,self.data).status_code,200)
         self.assertFalse(Agency.objects.exists());self.assertEqual(User.objects.count(),1)
+
+    def test_add_pm_button_route_creates_own_portfolio_without_admin(self):
+        url=reverse('owner_add_pm')
+        self.assertContains(self.client.get(url),'Add PM / agent')
+        data=dict(name='Solo Agent',email='solo@example.test',phone='0820000000',role='admin')
+        result=self.client.post(url,data)
+        self.assertEqual(result.status_code,302)
+        agency=Agency.objects.get();self.assertEqual(agency.name,'PM portfolio — Solo Agent')
+        self.assertEqual(Invitation.objects.get().role,'pm')
+        self.assertEqual(User.objects.count(),1);self.assertFalse(Membership.objects.exists())
+        self.assertEqual(self.client.post(url,data).status_code,200)
+        self.assertEqual(Agency.objects.count(),1);self.assertEqual(MailQueue.objects.count(),1)
+
+    def test_add_pm_can_select_existing_agency_or_new_agency_but_not_private_client(self):
+        url=reverse('owner_add_pm')
+        agency=Agency.objects.create(name='Existing Agency',kind='agency')
+        result=self.client.post(url,dict(name='Existing Agent',email='agent@example.test',agency=agency.pk))
+        self.assertEqual(result.status_code,302)
+        self.assertEqual(Invitation.objects.get(email='agent@example.test').agency,agency)
+        result=self.client.post(url,dict(name='New Agency Agent',email='new@example.test',agency_name='New Agency'))
+        self.assertEqual(result.status_code,302)
+        self.assertEqual(Invitation.objects.get(email='new@example.test').agency.name,'New Agency')
+        private=Agency.objects.create(name='Private',kind='private')
+        self.assertEqual(self.client.post(url,dict(name='Blocked',email='blocked@example.test',agency=private.pk)).status_code,200)
+        self.assertFalse(Invitation.objects.filter(email='blocked@example.test').exists())
+
+    def test_add_pm_is_superadmin_only_and_requires_csrf(self):
+        url=reverse('owner_add_pm')
+        strict=Client(enforce_csrf_checks=True);strict.force_login(self.owner)
+        self.assertEqual(strict.post(url,dict(name='Agent',email='agent@example.test')).status_code,403)
+        other=User.objects.create_user(username='agency-agent',is_staff=True)
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.assertEqual(self.client.post(url,dict(name='Agent',email='agent@example.test')).status_code,403)
+        self.assertFalse(Agency.objects.exists())
