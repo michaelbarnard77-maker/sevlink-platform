@@ -132,6 +132,4 @@ def inbox(request):
             return JsonResponse({'error':'Invalid enquiry.'},status=400)
         WebsiteEnquiry.objects.filter(pk=enquiry_id).update(status=status)
         return redirect('website_enquiries')
-    from django.core.paginator import Paginator
-    enquiries = Paginator(WebsiteEnquiry.objects.order_by('-created_at'),25).get_page(request.GET.get('page'))
-    return render(request,'portal/website_enquiries.html',{'enquiries':enquiries})
+    return redirect('/maintenance/?view=websiteEnquiries')

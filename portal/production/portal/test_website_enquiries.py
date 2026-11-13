@@ -50,7 +50,8 @@ class WebsiteEnquiryTests(TransactionTestCase):
         self.assertEqual(self.client.get('/enquiries/').status_code,403)
         self.assertEqual(self.client.post('/enquiries/',{'id':enquiry.pk,'status':'closed'}).status_code,403)
         user.is_superuser=True;user.save()
-        self.assertContains(self.client.get('/enquiries/'),enquiry.reference)
+        self.assertRedirects(self.client.get('/enquiries/'),'/maintenance/?view=websiteEnquiries',fetch_redirect_response=False)
+        self.assertContains(self.client.get('/api/maintenance/website-enquiries/'),enquiry.reference)
         self.assertEqual(self.client.post('/enquiries/',{'id':enquiry.pk,'status':'contacted'}).status_code,302)
         enquiry.refresh_from_db();self.assertEqual(enquiry.status,'contacted')
 

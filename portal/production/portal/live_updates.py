@@ -21,8 +21,10 @@ def revision(request):
     parts.append(list(models.AttendanceRequest.objects.filter(request__in=jobs).order_by('pk').values_list('pk','status','preference','requested_date','requested_window','agreed_date','agreed_window','appointment_id')))
     parts.append(list(models.TeamAppointment.objects.filter(assignment__request__in=jobs).order_by('pk').values_list('pk','version','progress_status','cancelled_at','starts_at','ends_at')))
     parts.append(list(models.UserJobNotification.objects.filter(user=request.user,event__request__in=jobs).order_by('pk').values_list('pk','read_at')))
-    if request.user.is_superuser:
+    from .staff_access import can_schedule
+    if can_schedule(request.user):
         parts.append(list(models.WebsiteEnquiry.objects.order_by('pk').values_list('pk','status')))
+        parts.append(models.WebsiteEnquiryReadReceipt.objects.filter(user=request.user).aggregate(count=Count('pk'),latest=Max('read_at')))
     marker = hashlib.sha256(json.dumps(parts,default=str,separators=(',',':')).encode()).hexdigest()
     response = JsonResponse({'revision':marker})
     response['Cache-Control'] = 'no-store'

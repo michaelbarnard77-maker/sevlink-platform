@@ -53,13 +53,47 @@
     const button=$('#userNotifications');if(!button)return;
     if(typeof event.detail?.unread==='number'){++notificationGeneration;setUnreadButton(button,'Updates',event.detail.unread);}else refreshUserNotifications();
   });
+  let websiteEnquiryUnread=0,enquiryCountGeneration=0,enquiryListGeneration=0,enquiryPage=1;
+  function setWebsiteEnquiryCount(count){
+    websiteEnquiryUnread=Math.max(0,Number(count)||0);
+    document.querySelectorAll('[data-view="websiteEnquiries"]').forEach(button=>{
+      const label='Website enquiries'+(websiteEnquiryUnread?' ('+websiteEnquiryUnread+')':'');
+      const text=button.querySelector('.nav-label');if(text)text.textContent=label;
+      button.classList.toggle('has-unread',websiteEnquiryUnread>0);button.setAttribute('aria-label',label);button.dataset.unread=String(websiteEnquiryUnread);
+    });
+  }
+  async function refreshWebsiteEnquiryCount(){
+    if(!context||!(context.user.role==='superadmin'||context.can_schedule))return;
+    const generation=++enquiryCountGeneration;
+    try{const data=await api('website-enquiries/unread/');if(generation===enquiryCountGeneration)setWebsiteEnquiryCount(data.unread);}catch(_){}
+  }
+  async function websiteEnquiries(){
+    const generation=++enquiryListGeneration;
+    try{
+      const data=await api('website-enquiries/?page='+enquiryPage);
+      if(view!=='websiteEnquiries'||generation!==enquiryListGeneration)return;
+      enquiryPage=data.page;
+      app.innerHTML=heading('Website enquiries','Homeowner, landlord and agency enquiries. Contact the customer to discuss the next step before creating a job.')+data.results.map(e=>`<article class="panel website-enquiry-card"><p class="muted"><strong>${esc(e.reference)}</strong> · ${esc(date(e.created_at))} · ${esc(e.status_label)}</p><h2>${esc(e.service)} · ${esc(e.address)}</h2><p><strong>${esc(e.name)}</strong> · ${esc(e.client_type)}</p><p><a href="mailto:${esc(e.email)}">${esc(e.email)}</a> · <a href="tel:${esc(e.phone.replace(/[^+0-9]/g,''))}">${esc(e.phone)}</a></p><div class="website-enquiry-details">${esc(e.details)}</div><form data-enquiry="${esc(e.id)}"><label>Status<select name="status">${[['new','New'],['contacted','Contacted'],['closed','Closed']].map(([value,label])=>`<option value="${value}" ${e.status===value?'selected':''}>${label}</option>`).join('')}</select></label><button type="submit" class="primary">Save status</button><p role="alert" hidden></p></form></article>`).join('')+(!data.results.length?'<section class="panel"><p>No website enquiries yet.</p></section>':'')+`<div class="toolbar"><button class="secondary" id="enquiryPrevious" ${data.has_previous?'':'disabled'}>← Previous</button><span>Page ${data.page} of ${data.pages}</span><button class="secondary" id="enquiryNext" ${data.has_next?'':'disabled'}>Next →</button></div>`;
+      app.querySelectorAll('[data-enquiry]').forEach(form=>{form.onsubmit=async event=>{
+        event.preventDefault();const button=form.querySelector('button'),error=form.querySelector('[role=alert]');button.disabled=true;error.hidden=true;
+        try{await api('website-enquiries/',{method:'POST',body:JSON.stringify({id:form.dataset.enquiry,status:form.elements.status.value})});form.removeAttribute('data-live-dirty');await websiteEnquiries();toast('Enquiry status saved.');}
+        catch(problem){if(form.isConnected){error.textContent=problem.message;error.hidden=false;button.disabled=false;}}
+      };});
+      $('#enquiryPrevious').onclick=()=>{enquiryPage--;websiteEnquiries();};$('#enquiryNext').onclick=()=>{enquiryPage++;websiteEnquiries();};
+      let last;
+      for(let offset=0;offset<data.unread_ids.length;offset+=200){
+        if(view!=='websiteEnquiries'||generation!==enquiryListGeneration)return;
+        last=await api('website-enquiries/read/',{method:'POST',body:JSON.stringify({ids:data.unread_ids.slice(offset,offset+200)})});
+      }
+      if(last){++enquiryCountGeneration;setWebsiteEnquiryCount(last.unread);}else await refreshWebsiteEnquiryCount();
+    }catch(problem){if(view==='websiteEnquiries'&&generation===enquiryListGeneration)app.innerHTML='<p class="notice" role="alert">'+esc(problem.message)+'</p>';}
+  }
   function shell() {
     document.body.dataset.portalRole=context.user.role;
     const pmItems=[['overview','◫','Overview'],['requests','☷','Repair jobs'],['properties','⌂','Properties'],['tenants','♙','Tenants'],...(context.user.role==='admin'?[['profile','⚙','Agency profile']]:[]),['report','＋','Request a repair'],['renovations','⌂','Refurbishments & Renovations'],['publicCalendar','▦','Maintenance calendar'],['updates','✉','Updates & reminders'],['accounts','R','Accounts & Payments'],['issues','⚑','Report Website Issue']];
     const tenantItems=[['overview','◫','Overview'],['requests','☷','My Repairs'],['report','＋','Request a repair'],['properties','⌂','My Property'],['publicCalendar','▦','Maintenance Calendar'],['updates','◷','Updates & Notifications'],['issues','⚑','Report Website Issue']];
-    const items = context.user.role==='tenant'?tenantItems:['pm','admin'].includes(context.user.role)?pmItems:[['overview','◫','Overview'],['quotePipeline','☷','Quotes'],['jobPipeline','☷','Jobs'],['requests','☷','Repair jobs'],...(context.user.role==='superadmin'?[['agencies','⌖','Agencies'],['websiteIssues','⚑','Website Issues']]:[]),...(context.can_schedule?[['calendar','▦','Weekly calendar']]:[]),...(context.can_supplier_payments?[['monday','R','Payments'],['regions','♙','Subcontractors']]:[])];
-    $('#nav').innerHTML=items.map(([key,icon,label])=>`<button data-view="${key}" class="${view===key?'active':''}" aria-current="${view===key?'page':'false'}"><span class="nav-icon" aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span><span>${label}</span></button>`).join('');
-    if(context.user.role==='superadmin'||context.can_schedule){$('#nav').insertAdjacentHTML('beforeend','<a href="/enquiries/" class="button">Website enquiries ↗</a>');}
+    const items = context.user.role==='tenant'?tenantItems:['pm','admin'].includes(context.user.role)?pmItems:[['overview','◫','Overview'],['quotePipeline','☷','Quotes'],['jobPipeline','☷','Jobs'],['requests','☷','Repair jobs'],...(context.user.role==='superadmin'?[['agencies','⌖','Agencies'],['websiteIssues','⚑','Website Issues']]:[]),...((context.user.role==='superadmin'||context.can_schedule)?[['websiteEnquiries','✉','Website enquiries']]:[]),...(context.can_schedule?[['calendar','▦','Weekly calendar']]:[]),...(context.can_supplier_payments?[['monday','R','Payments'],['regions','♙','Subcontractors']]:[])];
+    $('#nav').innerHTML=items.map(([key,icon,label])=>`<button data-view="${key}" class="${view===key?'active':''}" aria-current="${view===key?'page':'false'}"><span class="nav-icon" aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span><span class="nav-label">${label}</span></button>`).join('');
     $('.profile').innerHTML = `<span class="demo">SIGNED IN</span><span class="name">${esc(context.user.name)}<br><small>${esc({superadmin:'Sevlink Super Admin',operations:'Sevlink Operations',admin:'Agency administrator',pm:'Property manager',tenant:'Tenant'}[context.user.role])}</small></span>${context.user.role === 'superadmin' ? '<button class="secondary" id="notifications" aria-label="Operations notifications">🔔 Notifications</button>' : ''}<button class="secondary" id="logout">Sign out</button>`;
     if ($('#notifications')) { $('#notifications').onclick = () => notificationCentre(); notificationCount(); }
     if(['pm','admin','tenant'].includes(context.user.role)){
@@ -80,13 +114,13 @@
     }
     $('#phoneBar').innerHTML = '<a class="phone-brand" href="/maintenance/">SEVLINK<span>PROPERTY MAINTENANCE</span></a><button id="phoneMenuButton" aria-label="Open navigation menu" aria-expanded="false">☰ Menu</button>';
     $('#phoneNav').classList.toggle('customer-nav', ['admin','pm','tenant'].includes(context.user.role));
-    $('#phoneNav').innerHTML = items.map(([key, icon, label]) => `<button data-view="${key}" class="${view === key ? 'active' : ''}"><span aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span>${label}</button>`).join('');
-    if(context.user.role==='superadmin'||context.can_schedule){$('#phoneNav').insertAdjacentHTML('beforeend','<a href="/enquiries/" class="button">Website enquiries ↗</a>');}
+    $('#phoneNav').innerHTML = items.map(([key, icon, label]) => `<button data-view="${key}" class="${view === key ? 'active' : ''}"><span aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span><b class="nav-label">${label}</b></button>`).join('');
     $('#phoneMenuButton').onclick = () => {
       const open = document.body.classList.toggle('phone-menu-open');
       $('#phoneMenuButton').setAttribute('aria-expanded', String(open));
     };
     window.SevlinkWorkflowUI?.decorate();
+    setWebsiteEnquiryCount(websiteEnquiryUnread);refreshWebsiteEnquiryCount();
     $('#phoneShade').onclick = () => {
       document.body.classList.remove('phone-menu-open');
       $('#phoneMenuButton').setAttribute('aria-expanded', 'false');
@@ -136,6 +170,7 @@
     if(['quotePipeline','jobPipeline'].includes(view)&&['superadmin','operations'].includes(context.user.role)){
       if(!live)app.innerHTML='';return window.SevlinkWorkflowUI?.stages({api,app,showDetail,toast,context,pipeline:view==='quotePipeline'?'quotes':'jobs'});
     }
+    if(view==='websiteEnquiries')return websiteEnquiries();
     if(view==='agencies')return window.SevlinkWorkflowUI?.agencies({api,app,showDetail,toast});
     if(view==='regions')return regionalWorkspace();
     if(view==='calendar')return weeklyCalendar();
@@ -707,7 +742,9 @@
     app.innerHTML = '<div class="notice" role="status">Loading your maintenance workspace…</div>';
     try {
       context = await api('context/');
-      if(context.user.role==='superadmin' && new URLSearchParams(location.search).get('view')==='agencies')view='agencies';
+      const initialView=new URLSearchParams(location.search).get('view');
+      if(context.user.role==='superadmin'&&initialView==='agencies')view='agencies';
+      if((context.user.role==='superadmin'||context.can_schedule)&&initialView==='websiteEnquiries')view='websiteEnquiries';
       await loadJobs(); await render();
       if(!liveSync)liveSync=window.SevlinkLiveSync?.start({read:()=>api('live-revision/'),update:applyLiveUpdate});
       const linkedJob = new URLSearchParams(location.search).get('job');
@@ -724,7 +761,9 @@
   function hasLiveDraft(root){return !!root.querySelector('form[data-live-dirty]') || (root.contains(document.activeElement)&&document.activeElement.matches('input,textarea,select,[contenteditable="true"]'));}
   for(const type of ['input','change'])document.addEventListener(type,event=>{const form=event.target.closest('form');if(form)form.dataset.liveDirty='true';});
   async function applyLiveUpdate(){
-    if(!context||hasLiveDraft(app))return false;
+    if(!context)return false;
+    await refreshWebsiteEnquiryCount();
+    if(hasLiveDraft(app))return false;
     const active=view,position={x:scrollX,y:scrollY},table=app.querySelector('.stage-register-scroll'),tablePosition=table?{top:table.scrollTop,left:table.scrollLeft}:null;
     if(await loadJobs()===false||active!==view)return false;
     await render(true);

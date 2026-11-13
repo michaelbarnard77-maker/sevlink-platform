@@ -1054,3 +1054,12 @@ class JobInternalNoteRevision(AppendOnlyModel):
     class Meta:
         ordering = ['-version']
         constraints = [models.UniqueConstraint(fields=['request','version'], name='job_internal_note_version_unique')]
+
+
+class WebsiteEnquiryReadReceipt(models.Model):
+    enquiry = models.ForeignKey(WebsiteEnquiry,on_delete=models.CASCADE,related_name='read_receipts')
+    user = models.ForeignKey(User,on_delete=models.CASCADE,related_name='website_enquiry_reads')
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['enquiry','user'],name='website_enquiry_reader_unique')]

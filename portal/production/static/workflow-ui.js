@@ -72,6 +72,7 @@ window.SevlinkWorkflowUI = (() => {
     quotes:'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7m-7 4h4',
     accounts:'M3 7h18v14H3zM3 11h18M6 7V3h12v4m-3 12h3m-3-4h3M7 14v4',
     issues:'M4 21V3h14l-3 4 3 4H4m4 4h12v6H8z',
+    websiteEnquiries:'M3 5h18v14H3zM3 6l9 7 9-7',
     agencies:'M3 21V9h8v12m0-17h10v17M6 12h2m-2 4h2m6-9h4m-4 4h4m-4 4h4M1 21h22',
     regions:'M14 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0M2 21v-4a5 5 0 0 1 10 0v4m3-7 3-3 4 4-3 3-4-4m-3 7 4-4'
   };
