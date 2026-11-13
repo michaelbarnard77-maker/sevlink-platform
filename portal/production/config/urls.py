@@ -5,6 +5,7 @@ from portal import website_enquiries, live_updates, private_notifications, agenc
 from portal import workflow, completion_delivery, admin_controls, private_clients, internal_job_notes
 
 urlpatterns = [
+    path("accounts/<uuid:agency_id>/invite-pm/",agency_onboarding.invite_property_manager,name="owner_invite_pm"),
     path("api/maintenance/requests/<uuid:job_id>/internal-note/",internal_job_notes.note,name="job_internal_note"),
     path("agencies/new/",agency_onboarding.create,name="agency_new"),
     path("api/maintenance/private-clients/notifications/",private_notifications.notifications,name="private_client_notifications"),

@@ -64,3 +64,46 @@ class AgencyOnboardingTests(TestCase):
             with self.assertRaises(RuntimeError):self.client.post(self.url,self.data)
         self.assertFalse(Agency.objects.exists());self.assertEqual(User.objects.count(),1)
         self.assertFalse(MailQueue.objects.exists())
+
+    def test_sevlink_can_onboard_first_pm_without_an_agency_admin(self):
+        self.data['first_role']='pm'
+        result=self.client.post(self.url,self.data)
+        self.assertEqual(result.status_code,302)
+        agency=Agency.objects.get();invite=Invitation.objects.get()
+        self.assertEqual(invite.role,'pm')
+        self.assertFalse(Membership.objects.filter(agency=agency).exists())
+        self.assertFalse(User.objects.filter(email='agency@example.test').exists())
+        token=re.search(r'/invitation/([^/]+)/',MailQueue.objects.get().body).group(1)
+        pm_client=Client();password='Direct-agent-password-583!'
+        result=pm_client.post(reverse('accept_invitation',args=[token]),dict(new_password1=password,new_password2=password))
+        self.assertEqual(result.status_code,302)
+        pm=User.objects.get(email='agency@example.test');self.assertEqual(pm.membership.role,'pm')
+        self.assertEqual(pm.membership.agency,agency);self.assertFalse(pm.is_staff);self.assertFalse(pm.is_superuser)
+        self.assertFalse(Membership.objects.filter(agency=agency,role='admin').exists())
+        result=pm_client.post(reverse('property_new'),dict(name='Agent own property',address='Example Street, Pretoria',access_responsibility='sevlink'))
+        self.assertEqual(result.status_code,302)
+        from .models import Property
+        self.assertEqual(Property.objects.get().manager,pm)
+        self.assertEqual(pm_client.get(reverse('invite_pm')).status_code,403)
+        self.assertEqual(pm_client.get(reverse('owner_invite_pm',args=[agency.pk])).status_code,403)
+
+    def test_owner_can_invite_pm_directly_into_existing_agency_and_existing_accounts_are_protected(self):
+        agency=Agency.objects.create(name='Existing Agency',kind='agency')
+        url=reverse('owner_invite_pm',args=[agency.pk])
+        self.assertContains(self.client.get(reverse('agency_accounts',args=[agency.pk])),'Invite property manager / agent')
+        result=self.client.post(url,dict(name='New Agent',email='new-agent@example.test'))
+        self.assertRedirects(result,reverse('agency_accounts',args=[agency.pk]))
+        invitation=Invitation.objects.get();self.assertEqual(invitation.agency,agency);self.assertEqual(invitation.role,'pm')
+        self.assertEqual(User.objects.count(),1)
+        self.client.post(url,dict(name='Owner',email=self.owner.email))
+        self.assertEqual(Invitation.objects.count(),1)
+        self.assertEqual(self.client.get(reverse('owner_invite_pm',args=[Agency.objects.create(name='Private client',kind='private').pk])).status_code,404)
+        staff=User.objects.create_user(username='normal-staff',is_staff=True)
+        self.client.force_login(staff)
+        self.assertEqual(self.client.post(url,dict(name='Blocked',email='blocked@example.test')).status_code,403)
+        self.assertFalse(Invitation.objects.filter(email='blocked@example.test').exists())
+
+    def test_first_role_cannot_be_forged_to_privileged_access(self):
+        self.data['first_role']='superadmin'
+        self.assertEqual(self.client.post(self.url,self.data).status_code,200)
+        self.assertFalse(Agency.objects.exists());self.assertEqual(User.objects.count(),1)

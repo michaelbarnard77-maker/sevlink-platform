@@ -4,8 +4,8 @@
 <a href="{% url 'maintenance_workspace' %}?view=agencies">← Back to agencies</a>
 <span class="eyebrow">SEVLINK ONBOARDING</span>
 <h1>Add agency</h1>
-<p>Create the agency and invite its first administrator. They will choose their own password using an email link valid for 48 hours.</p>
+<p>Create the agency and invite either an administrator or a property manager directly. They choose their own password using an email link valid for 48 hours.</p>
 <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Create agency &amp; send invitation</button></form>
-<p>Once the administrator accepts, they can invite property managers, add properties and link tenants.</p>
+<p>An administrator can manage the agency and team. A property manager can add their own properties and link tenants; an administrator account is optional.</p>
 </section>
 {% endblock %}
