@@ -5,3 +5,53 @@
 @media(max-width:680px){html{scroll-padding-top:90px}.container{width:calc(100% - 36px)}.topline .container{min-height:30px;font-size:8px;letter-spacing:.5px}.topline a{font-size:9px}.topline a>span{display:none}.header-inner{height:78px;gap:10px}.logo img{width:110px;height:73px}.portal-link{font-size:9px;line-height:1.2;max-width:105px;padding:9px 10px;white-space:normal}.portal-link span{margin-left:3px}.menu-button{font-size:10px;padding:10px 11px;gap:7px}.header-inner nav{top:78px;padding:15px 18px}.hero{height:660px}.hero-image{object-position:60% center}.hero-shade{background:linear-gradient(90deg,#062441e6,#0624419c),linear-gradient(0deg,#062441a8,transparent)}.hero-copy{max-width:100%;padding:0}.hero .eyebrow{font-size:8px;letter-spacing:1.6px}.hero h1{font-size:57px;letter-spacing:-2.6px;margin:26px 0}.hero p{font-size:15px}.desktop{display:none}.hero-actions{flex-direction:column;align-items:flex-start;gap:23px}.hero-actions .button{font-size:12px;padding:15px 18px}.hero-bottom{font-size:10px;margin-top:34px}.service-ribbon .container{flex-direction:column;gap:13px;padding:20px 0}.service-ribbon span{font-size:11px}.service-ribbon i{width:24px;height:24px}.section{padding-top:65px;padding-bottom:65px}.section-heading{display:block;margin-bottom:32px}.section-heading>p{width:auto;max-width:460px;margin-top:22px;font-size:13px}.eyebrow{font-size:9px;margin-bottom:17px}h2{font-size:36px;letter-spacing:-1.4px}.service-grid{grid-template-columns:1fr;gap:14px}.service-card{padding:27px}.service-card h3{font-size:23px}.service-icon{margin-bottom:20px}.service-card p{font-size:13px;margin-bottom:22px}.below-services{display:block;text-align:center;font-size:12px}.below-services .plain-button{display:block;margin:8px auto;font-size:12px}.process-section{padding:65px 0}.steps{grid-template-columns:1fr;gap:22px;margin-top:30px}.steps article{padding-top:20px}.steps h3{margin-top:17px}.steps p{max-width:none}.agency-section,.about-grid,.areas-section,.faq-section,.contact-grid{grid-template-columns:1fr;gap:40px}.agency-section{padding-bottom:85px}.agency-copy .button{font-size:11px;padding:15px 18px}.portal-showcase{padding:18px}.mock-job{padding:18px}.mock-body{padding:23px 18px 0}.mock-tab{font-size:8px;padding:7px 8px}.floating-note{bottom:-20px;left:13px;right:13px;padding:14px 18px}.floating-note b{font-size:10px}.about-section{padding:55px 0 65px}.about-image{height:350px}.about-grid>div:last-child{padding-top:7px}.about-values>div{flex-direction:row;gap:12px;font-size:10px}.about-values b{font-size:12px}.area-list{gap:4px 20px}.area-list>span{font-size:12px}.area-list small{font-size:10px}.faq-section{gap:15px;padding-bottom:65px}.faq-list summary{font-size:12px;padding:22px 0}.contact-section{padding:65px 0}.contact-section h2{font-size:51px}.contact-phone{font-size:29px;margin-top:28px}.contact-grid>div>small{margin-top:25px;max-width:none}.enquiry-form{padding:25px 20px}.enquiry-form input,.enquiry-form textarea,.enquiry-form select{font-size:16px;min-height:45px}.enquiry-form label{font-size:11px}.form-row{grid-template-columns:1fr;gap:0}.enquiry-form .consent input{min-height:16px}.contact-grid{gap:40px}.footer-main{grid-template-columns:1fr 1fr;gap:20px}.footer-main>a{grid-column:1/-1}.footer-main>p{grid-column:1/-1;margin-top:0}.footer-main img{width:140px}.footer-main>div{font-size:10px;overflow-wrap:anywhere}.footer-bottom{flex-direction:column;gap:8px;padding-bottom:55px;font-size:8px}.whatsapp-float{bottom:15px;right:15px;padding:11px 14px}.whatsapp-float span{font-size:10px}dialog{padding:25px 21px;max-height:92dvh}.category-choices{grid-template-columns:1fr}.dialog-title{font-size:28px}.dialog-actions .button{flex:1;white-space:nowrap;font-size:11px;gap:15px}.enquiry-preview{max-height:42dvh;font-size:11px}.button{min-height:46px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
 @media(max-width:680px){.hero h1{font-size:clamp(42px,12vw,57px)}}@media(max-width:360px){.logo img{width:94px}.portal-link{max-width:91px;font-size:8px;padding:9px}.menu-button{padding:10px 9px;font-size:9px;gap:5px}.hero h1{font-size:40px}}
+
+
+/* Dark corporate Sevlink redesign — public site */
+:root{color-scheme:dark;--navy:#0d2235;--deep:#071522;--blue:#55b9c1;--aqua:#58d6cc;--ink:#e7eef4;--muted:#a5b6c4;--line:#263b4d;--paper:#0d1b29;--warm:#101f2e}
+body{background:#081522;color:#e7eef4}
+header{background:#0b1a28;border-color:#23384a}
+.header-inner nav{color:#c0cfda}
+.header-inner nav a:hover{color:#70d8d0}
+.portal-link{background:#122b40;border-color:#315064;color:#eaf3f7}
+.topline{background:#06111d;color:#b9cbd7}
+.service-ribbon{background:#0d1b29;border-color:#263b4d}
+.service-ribbon span{color:#dce7ee}
+.service-ribbon i{background:#102c3b;border-color:#315466;color:#6bd6cd}
+.section{background:#0a1724}
+.section-heading>p,.section p{color:#a7b8c6}
+.eyebrow{color:#72d5cd}
+.service-card,.enquiry-form,.mock-body,.mock-job,.floating-note{background:#102233;border-color:#294154;color:#e7eef4}
+.service-card h3,.mock-job h4,.mock-title h3,.enquiry-form h3{color:#f2f6f8}
+.service-card p,.service-card small,.mock-job p,.mock-timeline small{color:#a8bbc8}
+.service-icon{background:#153746;border-color:#285363;color:#74ddd2}
+.process-section{background:linear-gradient(125deg,#102b40,#0a1d2d 65%,#123c46)}
+.agency-section{background:#0a1724}
+.portal-showcase{background:#102536;border-color:#294456}
+.mock-browser{background:#061725;color:#dce8ee}
+.mock-tab{background:#142c3d;color:#b5c8d4}
+.mock-tab.selected{background:#173e43;color:#7de0d3}
+.mock-job{background:#0d1e2d}
+.mock-badge{background:#493b1d;color:#f1d28a}
+.about-section{background:#0d1c2a}
+.about-image{border:1px solid #294153}
+.about-values{border-color:#2b4051}
+.about-values b{color:#e8f1f5}
+.about-values span{color:#9fb2c0}
+.faq-section{background:#081522}
+.faq-list summary{border-color:#2a3e50;color:#e4edf2}
+.faq-list p{color:#a8bac7}
+.contact-section{background:linear-gradient(120deg,#102b40,#091b2a 65%,#123c46)}
+.enquiry-form label{color:#c1d1dc}
+.enquiry-form input,.enquiry-form textarea,.enquiry-form select{background:#0a1926;border-color:#31485b;color:#edf4f7}
+.enquiry-form input::placeholder,.enquiry-form textarea::placeholder{color:#8298a8}
+.enquiry-form .form-help,.enquiry-form .demo-note{color:#93a9b8}
+.enquiry-form .consent{color:#b9cbd6}
+footer{background:#071421;color:#c9d7e0}
+.footer-main>p,.footer-main>div a,.footer-bottom{color:#91a6b5}
+.footer-main>div b{color:#d9e5eb}
+.footer-bottom{border-color:#253a4c}
+dialog{background:#102233;color:#e8f0f4;border-color:#344a5b}
+.dialog-title{color:#eff5f7}
+@media(max-width:900px){.header-inner nav{background:#0b1a28;border-color:#263b4d}.header-inner nav a{color:#dbe6ec}}
+@media(max-width:680px){.service-ribbon{background:#0d1b29}.service-card{background:#102233}.enquiry-form{background:#102233}}
