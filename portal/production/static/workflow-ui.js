@@ -46,7 +46,7 @@ window.SevlinkWorkflowUI = (() => {
     properties:'m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7',
     tenants:'M16 21v-3a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v3m18 0v-3a4 4 0 0 0-3-4M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8m8 0a4 4 0 0 1 0 8',
     profile:'M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 8v-4h6v4',
-    report:'M14 4 7 11l-2 8 8-2 7-7zM13 5l6 6M3 3v6m-3-3h6',
+    report:categoryPaths['General maintenance'],
     calendar:'M4 5h16v16H4zM8 3v4m8-4v4M4 10h16m-12 4h2m4 0h2m-8 4h2',
     updates:'M5 17h14l-2-4V9A5 5 0 0 0 7 9v4zm5 3a2 2 0 0 0 4 0M12 2v2',
     quotes:'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7m-7 4h4',
@@ -120,7 +120,7 @@ window.SevlinkWorkflowUI = (() => {
       if(context?.user.role==='superadmin')app.querySelectorAll(':scope > .panel').forEach(p=>p.remove());
       const selectedStage=selectedStages.get(selectionKey)||(context?.user.role==='superadmin'?'new':null);
       if(selectedStage){const button=app.querySelector(`[data-stage="${selectedStage}"]`);if(button)await button.onclick();}
-      window.SevlinkCorporate?.dashboard({api,context,app,showDetail,toast});
+
     }catch(e){toast(e.message);}
   }
   let inboxGeneration=0;

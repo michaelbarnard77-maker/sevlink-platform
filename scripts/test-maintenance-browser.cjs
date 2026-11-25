@@ -20,12 +20,12 @@ process.stdin.on('end', async () => {
       page.on('response', response => {if (response.url().includes('/static/') && response.status() >= 400) failedAssets.push(response.url());});
       await page.goto(url + '/maintenance/');
       if(width<800)await page.locator('#phoneMenuButton').click();
-      await page.locator('#nav').getByRole('button', {name:role.startsWith('tenant')?'My Repairs':/Repair jobs/i, exact:false}).waitFor();
-      await page.locator(role.startsWith('tenant')?'#attention':'#workflowStages').waitFor();
+      await page.locator('#nav').getByRole('button', {name:role.startsWith('tenant')?'My Requests':/Repair jobs/i, exact:false}).waitFor();
+      await page.locator('.reference-welcome').waitFor();
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       assert.equal(await page.locator('#role').count(), 0, 'No simulated role picker');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No page overflow: '+JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(el=>el.getBoundingClientRect().right>innerWidth+2&&getComputedStyle(el).position!=='fixed').slice(0,8).map(el=>({tag:el.tagName,cls:el.className,right:el.getBoundingClientRect().right})))));
-      if(process.env.SEVLINK_SCREENSHOT_DIR && ['pm','superadmin','tenant'].includes(role)){const fs=require('node:fs');fs.mkdirSync(process.env.SEVLINK_SCREENSHOT_DIR,{recursive:true});if(role!=='tenant'){await page.locator('#workflowStages .stage-card').first().waitFor();assert.equal(await page.locator('#workflowStages .stage-card').count(),role==='pm'?8:13);}await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/'+role+'-'+width+'.png',fullPage:true});}
+      if(process.env.SEVLINK_SCREENSHOT_DIR && ['pm','superadmin','tenant'].includes(role)){const fs=require('node:fs');fs.mkdirSync(process.env.SEVLINK_SCREENSHOT_DIR,{recursive:true});assert.equal(await page.locator('.reference-stat').count(),role==='tenant'?3:4);await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/'+role+'-'+width+'.png',fullPage:true});}
       if(process.env.SEVLINK_SCREENSHOT_DIR && role==='pm'){const reference=await browser.newContext({viewport:{width:1440,height:950}});const referencePage=await reference.newPage();await referencePage.goto(url+'/static/maintenance-ui/index.html');await referencePage.getByRole('button',{name:'Create agency workspace →',exact:true}).click();for(const [name,value] of Object.entries({name:'Visual reference only',contact:'Test reviewer',email:'visual@example.test',phone:'test-only',area:'Synthetic visual test'}))await referencePage.locator('#modal [name='+name+']').fill(value);await referencePage.getByRole('button',{name:'Create agency workspace',exact:true}).click();await referencePage.locator('#role').selectOption('sevlink');await referencePage.locator('#nav button').first().waitFor();await referencePage.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/reference-demo-1440.png',fullPage:true});
         // Isolated source-demo context only: use its own synthetic examples to inspect tabs.
         await referencePage.evaluate(()=>{state.agencies.push(...structuredClone(seed.agencies));state.properties.push(...structuredClone(seed.properties));state.tenants.push(...structuredClone(seed.tenants));state.jobs=structuredClone(seed.jobs);normalise();render();});
@@ -78,7 +78,7 @@ process.stdin.on('end', async () => {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.getByRole('button', {name:'Close', exact:true}).click();
     await page.getByRole('button', {name:'Sign out', exact:true}).click();
-    await page.waitForURL('**/login/');
+    await page.waitForURL(u=>u.pathname==='/login/');
     await context.close();
 
     ({context, page} = await signedIn('pm'));
@@ -113,6 +113,8 @@ process.stdin.on('end', async () => {
     // session via the test-only Django fixture, never via a production backdoor.
     // Reuse a fresh browser with a second pre-created test login below.
     ({context, page} = await signedIn('tenantAgain', 390));
+    await page.locator('#phoneMenuButton').click();
+    await page.locator('#nav [data-view=requests]').click();
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#modal .badge').filter({hasText:'Reviewed'}).waitFor();
     assert.equal(await page.locator('#statusForm').count(), 0);

@@ -2,18 +2,19 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
 let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
  const {url,sessions,week}=JSON.parse(input);const browser=await chromium.launch({headless:true,...(process.env.SEVLINK_CHROMIUM_PATH?{executablePath:process.env.SEVLINK_CHROMIUM_PATH}:{}),args:['--no-sandbox']});const errors=[];
  try{
-  async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');await p.locator('#attention').waitFor();return {c,p};}
+  async function signed(role,width=1440){const c=await browser.newContext({viewport:{width,height:950}});await c.addCookies([{name:'sessionid',value:sessions[role],url}]);const p=await c.newPage();p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(url+'/maintenance/');await p.locator('.reference-welcome').waitFor();return {c,p};}
   let {c,p}=await signed('pm');
-  await p.locator('#workflowStages .stage-card').first().waitFor();
+  await p.locator('.reference-welcome').waitFor();
   assert.equal(await p.locator('#rows').count(),0,'PM overview omits the duplicate repair register');
   await p.locator('#nav [data-view=requests]').click();
   await p.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
   await p.locator('#rows [data-job]').first().waitFor();
   await p.locator('#nav [data-view=overview]').click();
+  await p.locator('[data-dashboard-stages]').click();
   await p.locator('#workflowStages .stage-card').first().waitFor();
   assert.equal(await p.locator('#rows').count(),0);
   assert.deepEqual(await p.locator('#workflowStages .stage-card b').allTextContents(),['Needs Your Attention','New Requests','Awaiting Quote Approval','Awaiting Deposit','Booked','Work Underway','Awaiting Final Payment','Closed']);
-  assert(await p.evaluate(()=>document.querySelector('#attention').compareDocumentPosition(document.querySelector('#workflowStages')) & Node.DOCUMENT_POSITION_FOLLOWING));
+
   const dashboard=await (await p.request.get(url+'/api/maintenance/workflow/stages/')).json();
   const attention=await (await p.request.get(url+'/api/maintenance/portal/attention/')).json();
   assert.equal(dashboard.stages[0].count,new Set(attention.items.map(a=>a.job)).size);
@@ -26,6 +27,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   }
   assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','report','renovations','publicCalendar','updates','accounts','issues']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
+  await p.locator('#nav [data-view=overview]').click();
   await p.locator('#attention .attention-card').filter({hasText:'Approve, reject or request quotation revision'}).filter({hasText:'GP repair'}).getByRole('button',{name:/Open quotation/}).click();
   assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'1');
   assert.equal(await p.locator('#job-tab-invoices .job-tab-count').textContent(),'1');

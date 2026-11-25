@@ -30,7 +30,7 @@ process.stdin.on('end',async()=>{
     await t.getByRole('button',{name:'Create my account'}).click();
     await t.getByText('Synthetic Cape Town address',{exact:true}).waitFor();
     await t.getByRole('link',{name:'Maintenance Requests'}).click();
-    await t.getByRole('button',{name:'My Repairs',exact:false}).waitFor();
+    await t.getByRole('button',{name:'My Requests',exact:false}).waitFor();
     assert.equal(await t.locator('#role').count(),0);
     await t.getByRole('button',{name:'Sign out',exact:true}).click();
     await t.waitForURL('**/login/');

@@ -90,9 +90,9 @@
   }
   function shell() {
     document.body.dataset.portalRole=context.user.role;
-    const pmItems=[['overview','◫','Overview'],['requests','☷','Repair jobs'],['properties','⌂','Properties'],['tenants','♙','Tenants'],...(context.user.role==='admin'?[['profile','⚙','Agency profile']]:[]),['report','＋','Request a repair'],['renovations','⌂','Refurbishments & Renovations'],['publicCalendar','▦','Maintenance calendar'],['updates','✉','Updates & reminders'],['accounts','R','Accounts & Payments'],['issues','⚑','Report Website Issue']];
-    const tenantItems=[['overview','◫','Overview'],['requests','☷','My Repairs'],['report','＋','Request a repair'],['properties','⌂','My Property'],['publicCalendar','▦','Maintenance Calendar'],['updates','◷','Updates & Notifications'],['issues','⚑','Report Website Issue']];
-    const items = context.user.role==='tenant'?tenantItems:['pm','admin'].includes(context.user.role)?pmItems:[['overview','◫','Overview'],['quotePipeline','☷','Quotes'],['jobPipeline','☷','Jobs'],['requests','☷','Repair jobs'],...(context.user.role==='superadmin'?[['agencies','⌖','Agencies'],['websiteIssues','⚑','Website Issues']]:[]),...((context.user.role==='superadmin'||context.can_schedule)?[['websiteEnquiries','✉','Website enquiries']]:[]),...(context.can_schedule?[['calendar','▦','Weekly calendar']]:[]),...(context.can_supplier_payments?[['monday','R','Payments'],['regions','♙','Subcontractors']]:[])];
+    const pmItems=[['overview','◫','Dashboard'],['requests','☷','Repair jobs'],['properties','⌂','Properties'],['tenants','♙','Tenants'],...(context.user.role==='admin'?[['profile','⚙','Agency profile']]:[]),['report','＋','Report a Repair'],['renovations','⌂','Refurbishments & Renovations'],['publicCalendar','▦','Maintenance calendar'],['updates','✉','Updates & reminders'],['accounts','R','Accounts & Payments'],['issues','⚑','Report Website Issue']];
+    const tenantItems=[['overview','◫','Dashboard'],['report','＋','Report a Repair'],['requests','☷','My Requests'],['publicCalendar','▦','Appointments'],['updates','◷','Messages & Updates'],['properties','⌂','My Property'],['issues','⚑','Report Website Issue']];
+    const items = context.user.role==='tenant'?tenantItems:['pm','admin'].includes(context.user.role)?pmItems:[['overview','◫','Dashboard'],['quotePipeline','☷','Quotes'],['jobPipeline','☷','Jobs'],['requests','☷','Repair jobs'],...(context.user.role==='superadmin'?[['agencies','⌖','Agencies'],['websiteIssues','⚑','Website Issues']]:[]),...((context.user.role==='superadmin'||context.can_schedule)?[['websiteEnquiries','✉','Website enquiries']]:[]),...(context.can_schedule?[['calendar','▦','Weekly calendar']]:[]),...(context.can_supplier_payments?[['monday','R','Payments'],['regions','♙','Subcontractors']]:[])];
     $('#nav').innerHTML=items.map(([key,icon,label])=>`<button data-view="${key}" class="${view===key?'active':''}" aria-current="${view===key?'page':'false'}"><span class="nav-icon" aria-hidden="true">${window.SevlinkWorkflowUI?.navIcon(key)||''}</span><span class="nav-label">${label}</span></button>`).join('');
     $('.profile').innerHTML = `<span class="demo">SIGNED IN</span><span class="name">${esc(context.user.name)}<br><small>${esc({superadmin:'Sevlink Super Admin',operations:'Sevlink Operations',admin:'Agency administrator',pm:'Property manager',tenant:'Tenant'}[context.user.role])}</small></span>${context.user.role === 'superadmin' ? '<button class="secondary" id="notifications" aria-label="Operations notifications">🔔 Notifications</button>' : ''}<button class="secondary" id="logout">Sign out</button>`;
     if ($('#notifications')) { $('#notifications').onclick = () => notificationCentre(); notificationCount(); }
@@ -109,6 +109,8 @@
     if(context.user.role==='superadmin'){const first=$('#nav [data-view=monday]');if(first)first.insertAdjacentHTML('beforebegin','<span class="nav-heading">FINANCE</span>');}
     window.SevlinkWorkflowUI?.decorate();
     $('#breadcrumb').textContent = items.find(item=>item[0]===view)?.[2] || 'Overview';
+    $('.profile .name').dataset.initials=context.user.name.split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase();
+    let quickSearch=$('#corporateQuickSearch');if(context.user.role==='superadmin'){if(!quickSearch){const wrap=document.createElement('form');wrap.className='reference-header-search';wrap.innerHTML='<input id="corporateQuickSearch" type="search" aria-label="Search jobs and properties" placeholder="Search jobs, properties or references…">';$('.crumb').after(wrap);wrap.onsubmit=e=>{e.preventDefault();registerFilters=defaultRegister();registerFilters.search=$('#corporateQuickSearch').value;view='requests';refresh(1);};}}
     if (!$('#phoneBar')) {
       document.body.insertAdjacentHTML('beforeend', '<div id="phoneBar"></div><nav id="phoneNav" aria-label="Phone navigation"></nav><button id="phoneShade" aria-label="Close navigation menu"></button>');
     }
@@ -163,7 +165,7 @@
   function reportLanding() {
     const direct=['pm','admin'].includes(context.user.role),renovation='Renovations & Refurbishments';
     const categories=[...new Set([...context.categories,renovation])];
-    app.innerHTML=`<section class="corporate-repair-banner"><h1>Report a Repair</h1><p>Let us know what needs attention at your property.</p></section><div class="corporate-repair-layout"><section class="panel"><span class="eyebrow">01 / SELECT ISSUE</span><h2>What type of issue is it?</h2><p>Choose the category that best describes the problem.</p><div class="categorygrid">${categories.map(c=>`<button class="category illustrated" ${c===renovation?direct?'data-renovation-request':'disabled aria-disabled="true"':`data-category="${esc(c)}"`}><span>${window.SevlinkWorkflowUI.categoryIcon(c)}</span><b>${esc(c)}</b><small>${c===renovation&&!direct?'PM / Agency Admin only':esc(window.SevlinkWorkflowUI.categoryDescription(c))}</small></button>`).join('')}</div></section><aside class="panel corporate-repair-tips"><h2>Your property care</h2><p>${context.properties.length===1?esc(context.properties[0].address):'Choose your linked property in the next step.'}</p><h3>Help us resolve it faster</h3><ul><li>Choose the most relevant category.</li><li>Describe what is wrong and where.</li><li>Add clear photos in the next step.</li><li>Include access instructions and pets.</li></ul><div class="notice"><b>Property emergency?</b><br>Call Sevlink immediately on <a href="tel:+27810285034">081 028 5034</a>. Do not wait for an online response.</div></aside></div>`;
+    app.innerHTML=`<section class="corporate-repair-banner"><h1>Report a Repair</h1><p>Let us know what needs attention at your property.</p></section><ol class="reference-repair-steps"><li class="current"><b>1</b>Select Issue</li><li><b>2</b>Add Details</li><li><b>3</b>Access & Availability</li><li><b>4</b>Review & Submit</li></ol><div class="corporate-repair-layout"><section class="panel"><span class="eyebrow">SELECT ISSUE</span><h2>1. What type of issue is it?</h2><p>Choose the category that best describes the problem.</p><div class="categorygrid">${categories.map(c=>`<button class="category illustrated" ${c===renovation?direct?'data-renovation-request':'disabled aria-disabled="true"':`data-category="${esc(c)}"`}><span>${window.SevlinkWorkflowUI.categoryIcon(c)}</span><b>${esc(c)}</b><small>${c===renovation&&!direct?'PM / Agency Admin only':esc(window.SevlinkWorkflowUI.categoryDescription(c))}</small></button>`).join('')}</div></section><aside class="corporate-repair-tips"><section class="panel reference-repair-property"><h2>Your Property</h2><span class="reference-property-image" role="img" aria-label="Illustrative apartment photograph"></span><p>${context.properties.length===1?esc(context.properties[0].address):'Choose your linked property in the next step.'}</p></section><section class="panel reference-repair-advice"><h3>Quick Tips for a Faster Resolution</h3><ul><li>Choose the most relevant category.</li><li>Describe what is wrong and where.</li><li>Add clear photos in the next step.</li><li>Include access instructions and pets.</li></ul><div class="notice"><b>Property emergency?</b><br>Call Sevlink immediately on <a href="tel:+27810285034">081 028 5034</a>. Do not wait for an online response.</div></section></aside></div>`;
     app.querySelector('[data-renovation-request]')?.addEventListener('click',()=>{view='renovations';render();});
   }
   async function render(live=false) {
@@ -179,10 +181,7 @@
     if(view==='calendar')return weeklyCalendar();
     if(view==='monday')return mondayPayments();
     if(['properties','tenants','quotes','accounts','publicCalendar','updates','profile','issues','websiteIssues'].includes(view))return customerPage();
-    if(view==='overview'){
-      if(customerRole())return customerOverview();
-      list();return window.SevlinkWorkflowUI?.stages({api,app,showDetail,toast,context});
-    }
+    if(view==='overview')return window.SevlinkCorporate.dashboard({api,context,app,showDetail,toast,attentionMarkup});
     return list();
   }
 
@@ -207,7 +206,7 @@
     };
   }
   function reportForm(category) {
-    window.SevlinkRepairWizard.open({category,context,modal,api,toast,onSaved:async direct=>{
+    window.SevlinkRepairWizard.open({category,context,modal,app,onCancel:reportLanding,api,toast,onSaved:async direct=>{
       view='requests';page=1;
       try{await loadJobs();await render();toast(direct?'Repair saved and sent directly to Sevlink.':'Report saved and sent for property manager review.');}
       catch{render();toast('Report saved. Refresh the list to see it.');}

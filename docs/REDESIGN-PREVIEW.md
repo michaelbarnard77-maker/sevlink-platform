@@ -60,6 +60,8 @@ not a static HTTP server, to inspect real permissions and workflows.
 
 ## What changed
 
+- Reference-style tenant and staff dashboards use live scoped counts, customer billing totals, appointments and activity. Generated architectural and tool photographs are illustrative assets; the original logo is unchanged.
+- The read-only dashboard projection reuses the register and public-appointment permission boundaries. Customer views never receive supplier costs. Detailed workflow stages remain available from the dashboard.
 - Corporate CSS shared by authenticated, account, private-client and public views.
 - Recent activity uses existing role-scoped feeds; opening the dashboard does not
   mark any notification read or grant access to another portfolio.
