@@ -13,7 +13,7 @@ if (!(Test-Path -LiteralPath $python)) {
   else { throw 'Install Python 3.12 or newer (python.org), including the Python launcher, then run this command again.' }
   if ($LASTEXITCODE -ne 0) { throw 'Could not create the preview Python environment.' }
 }
-& $python -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,12) else "Python 3.12 or newer is required.")'
+& $python (Join-Path $PSScriptRoot 'check-preview-python.py')
 if ($LASTEXITCODE -ne 0) { throw 'The preview needs Python 3.12+. Install it and recreate only the preview .venv if needed.' }
 $lock = Join-Path $repo 'portal\production\requirements.lock'
 $lockHash = (Get-FileHash -LiteralPath $lock -Algorithm SHA256).Hash
