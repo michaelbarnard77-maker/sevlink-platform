@@ -38,7 +38,7 @@ process.stdin.on('end', async () => {
     await page.locator('#regionContractor [name=cities]').selectOption([String(ids.cape),String(ids.joburg)]);
     await page.getByRole('button',{name:'Save service areas'}).click();
     await page.locator('td').filter({hasText:'Browser dual-region partner'}).waitFor();
-    await page.locator(`[data-supplier="${ids.partner}"]`).click();
+    await page.locator(`[data-supplier="${ids.partner}"]`).filter({hasText:"Profile & teams"}).click();
     await page.locator('#supplierProfileForm [name=contact_person]').fill('Synthetic browser contact');
     await page.locator('#supplierProfileForm [name=email]').fill('synthetic-browser@example.test');
     await page.locator('#supplierProfileForm [name=internal_notes]').fill('PRIVATE browser supplier note');
@@ -70,7 +70,7 @@ process.stdin.on('end', async () => {
     await page.getByRole('button',{name:'Record assignment',exact:true}).click();
     await page.locator('#modal p').filter({hasText:'Team A'}).waitFor();
     await page.getByRole('button',{name:'Close',exact:true}).click();
-    await page.locator(`[data-supplier="${ids.partner}"]`).click();
+    await page.locator(`[data-supplier="${ids.partner}"]`).filter({hasText:"Profile & teams"}).click();
     const profile=await(await page.request.get(url+`/api/maintenance/operations/subcontractors/${ids.partner}/`)).json();
     const assignment=profile.assignments.find(a=>a.current&&a.team_id===teams[0].id);
     const booked=await apiPost(`operations/subcontractors/${ids.partner}/appointments/`,{assignment:assignment.id,starts_at:appointmentDay+'T10:00:00+02:00',ends_at:appointmentDay+'T11:00:00+02:00'});assert.equal(booked.status(),201);

@@ -1,24 +1,4 @@
-const repairIconPaths={
- 'Plumbing':'<path d="M4 10h16v5h-5v6h-6v-6H4zM12 10V5m-4 0h8M3 10v5m18-5v5"/>',
- 'Electrical':'<path d="m13 2-9 12h7l-1 8 10-13h-7z"/>',
- 'Doors & locks':'<path d="M5 22V3h14v19M9 22V7h6v15M12 14h.01M3 22h18"/>',
- 'Painting':'<path d="M4 3h14v7H4zM18 6h3v8h-9v3m-2 0h4v5h-4z"/>',
- 'Tiling':'<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
- 'General maintenance':'<path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7"/>',
- 'Roofing':'<path d="m2 11 10-8 10 8M4 10v10h16V10M7 7V3h3m-4 9 6-5 6 5"/>',
- 'Gutters & Downpipes':'<path d="M3 5h15v5H3zM18 7h3v10a4 4 0 0 1-4 4h-2v-4h2V10M6 2v3m5-3v3"/>',
- 'Damp & Waterproofing':'<path d="m12 2 8 3v6c0 5-4 9-8 11-4-2-8-6-8-11V5zM12 7s-3 4-3 6a3 3 0 0 0 6 0c0-2-3-6-3-6Z"/>',
- 'Ceilings & Drywall':'<path d="M3 4h18v16H3zM3 9h18M8 9v11M16 9v11M10 4v5"/>',
- 'Carpentry & Cupboards':'<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M12 3v18M9 10v4m6-4v4M4 17h16"/>',
- 'Windows & Glass':'<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 3v18M3 12h18m12-5 2-2m-2 5 3-3"/>',
- 'Gates & Garage Doors':'<path d="m2 8 10-5 10 5M4 8v13h16V8M7 21V10h10v11M7 14h10M7 18h10"/>',
- 'Appliances':'<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 7h14M8 4.5h.01M11 4.5h.01"/><circle cx="12" cy="14" r="4"/>',
- 'Air Conditioning & Ventilation':'<rect x="2" y="3" width="20" height="8" rx="2"/><path d="M5 8h14M7 14v4m5-4v7m5-7v4"/>',
- 'Gardens & Outdoor Areas':'<path d="M12 21v-9M12 15C4 15 3 10 3 5c6 0 9 4 9 10Zm0-3c0-6 3-9 9-9 0 6-3 9-9 9ZM6 21h12"/>',
- 'Pest Control':'<path d="m8 5-2-3m10 3 2-3M8 9H3m18 0h-5M8 14H2m20 0h-6M8 18l-4 4m12-4 4 4M12 7v13"/><rect x="8" y="5" width="8" height="15" rx="4"/>',
- 'Cleaning & Waste Removal':'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
- 'Renovations & Refurbishments':'<path d="m2 10 10-8 10 8M5 10v11h7M9 21v-7h4m3-2 5 5-5 5-3-3 5-5M15 13l2-2"/>'
-};
+const repairIconPaths={"Plumbing": "<path d=\"M3 15v-3a4 4 0 0 1 4-4h3V5H7V3h10v2h-3v3h3a4 4 0 0 1 4 4v3h-4v-3H7v3ZM20 17s-2 2-2 3a2 2 0 0 0 4 0c0-1-2-3-2-3Z\"/>", "Electrical": "<path d=\"m9 2-7 10h6l-1 7 8-11H9zM15 13h7v9h-9v-7M18 16h.01M16 19h.01M20 19h.01\"/>", "Doors & locks": "<path d=\"M5 22V2h13v20M8 22V5h7v17M12 12h3M3 22h18\"/>", "Painting": "<path d=\"M3 3h14v6H3zM17 5h4v8H11v4M9 17h4v5H9z\"/>", "Tiling": "<path d=\"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z\"/>", "General maintenance": "<path d=\"M14 3a6 6 0 0 0-7 7L2 18l4 4 8-8a6 6 0 0 0 7-7l-4 4-4-4zM3 2l4 2 1 4 12 12-2 2L6 10 2 7z\"/>", "Roofing": "<path d=\"m2 15 9-10 11 11H11L6 11M12 6h6v5M11 16v5M4 14v7M16 2h3v5M11 8l4 4m0-5 4 4\"/>", "Gutters & Downpipes": "<path d=\"M2 5h20v3a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3zM16 11v5l-4 3v3h4v-2l4-3v-6\"/>", "Damp & Waterproofing": "<path d=\"M8 2S2 10 2 14a6 6 0 0 0 9 5M14 11l5-2 4 2v5c0 3-4 6-4 6s-5-3-5-6zM17 15l2 2 3-4\"/>", "Ceilings & Drywall": "<path d=\"M2 3l7 4h13M9 7v15M16 7v5M12 16a4 4 0 0 1 8 0zM13 19l-1 2m4-2v3m3-3 1 2\"/>", "Carpentry & Cupboards": "<path d=\"M3 4h18v16H3zM12 4v16M9 10v5m6-5v5M5 20v2m14-2v2\"/>", "Windows & Glass": "<path d=\"M5 2h14v18H5zM3 20h18v2H3zM12 2v18M5 11h14M8 8l2-2m5 11 2-2\"/>", "Gates & Garage Doors": "<path d=\"m2 8 10-6 10 6M4 7v15h16V7M7 11h10v11H7zM7 15h10M7 18h10\"/>", "Appliances": "<path d=\"M4 2h16v20H4zM4 7h16M14 4h.01M17 4h.01M8 4h2M12 10a4 4 0 1 0 0 8 4 4 0 0 0 0-8\"/>", "Air Conditioning & Ventilation": "<path d=\"M2 4h20v10H2zM5 11h14M8 17c-2 2 2 3 0 5m8-5c-2 2 2 3 0 5\"/>", "Gardens & Outdoor Areas": "<path d=\"M9 22V11M9 15C2 15 2 7 2 7s7 0 7 8m0-3c0-7 7-7 7-7s0 7-7 7M20 3v9M17 12h6v4l-3 4-3-4z\"/>", "Pest Control": "<path d=\"M8 8h8l2 4v6a6 6 0 0 1-12 0v-6zM9 8V5h6v3M12 8v15M8 3l-2-2m10 2 2-2M2 11l4 2m12 0 4-2M2 17h4m12 0h4M4 23l3-3m10 0 3 3\"/>", "Cleaning & Waste Removal": "<path d=\"M3 12h9l-1 10H4zM3 12c0-4 9-4 9 0M18 2v14M16 16h4l3 6H13zM17 18l-1 4m3-4 1 4\"/>", "Renovations & Refurbishments": "<path d=\"m2 11 10-9 10 9M5 9v13h14V9M14 11a4 4 0 0 0-5 5l-3 4 2 2 4-4a4 4 0 0 0 5-5l-3 3-2-2z\"/>"};
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function icon(category){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${repairIconPaths[category]||repairIconPaths['General maintenance']}</svg>`}
 const categories=Object.keys(repairIconPaths);

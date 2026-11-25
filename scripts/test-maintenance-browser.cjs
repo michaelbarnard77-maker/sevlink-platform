@@ -19,9 +19,12 @@ process.stdin.on('end', async () => {
       page.on('pageerror', error => errors.push(error.message));
       page.on('response', response => {if (response.url().includes('/static/') && response.status() >= 400) failedAssets.push(response.url());});
       await page.goto(url + '/maintenance/');
-      await page.locator(width<800?'#phoneNav':'#nav').getByRole('button', {name:role.startsWith('tenant')?'My Repairs':/Repair jobs/i, exact:false}).waitFor();
+      if(width<800)await page.locator('#phoneMenuButton').click();
+      await page.locator('#nav').getByRole('button', {name:role.startsWith('tenant')?'My Repairs':/Repair jobs/i, exact:false}).waitFor();
+      await page.locator(role.startsWith('tenant')?'#attention':'#workflowStages').waitFor();
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       assert.equal(await page.locator('#role').count(), 0, 'No simulated role picker');
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No page overflow');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No page overflow: '+JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(el=>el.getBoundingClientRect().right>innerWidth+2&&getComputedStyle(el).position!=='fixed').slice(0,8).map(el=>({tag:el.tagName,cls:el.className,right:el.getBoundingClientRect().right})))));
       if(process.env.SEVLINK_SCREENSHOT_DIR && ['pm','superadmin','tenant'].includes(role)){const fs=require('node:fs');fs.mkdirSync(process.env.SEVLINK_SCREENSHOT_DIR,{recursive:true});if(role!=='tenant'){await page.locator('#workflowStages .stage-card').first().waitFor();assert.equal(await page.locator('#workflowStages .stage-card').count(),role==='pm'?8:13);}await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/'+role+'-'+width+'.png',fullPage:true});}
       if(process.env.SEVLINK_SCREENSHOT_DIR && role==='pm'){const reference=await browser.newContext({viewport:{width:1440,height:950}});const referencePage=await reference.newPage();await referencePage.goto(url+'/static/maintenance-ui/index.html');await referencePage.getByRole('button',{name:'Create agency workspace →',exact:true}).click();for(const [name,value] of Object.entries({name:'Visual reference only',contact:'Test reviewer',email:'visual@example.test',phone:'test-only',area:'Synthetic visual test'}))await referencePage.locator('#modal [name='+name+']').fill(value);await referencePage.getByRole('button',{name:'Create agency workspace',exact:true}).click();await referencePage.locator('#role').selectOption('sevlink');await referencePage.locator('#nav button').first().waitFor();await referencePage.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/reference-demo-1440.png',fullPage:true});
         // Isolated source-demo context only: use its own synthetic examples to inspect tabs.
@@ -36,17 +39,27 @@ process.stdin.on('end', async () => {
         }
         referenceStyles=await referencePage.evaluate(()=>({tabBackground:getComputedStyle(document.querySelector('#modal .tabs button.selected')).backgroundColor,modalWidth:document.querySelector('#modal').getBoundingClientRect().width,headingSize:getComputedStyle(document.querySelector('.job-property-address')).fontSize}));
         await reference.close();}
+      if(width<800)await page.locator('#phoneMenuButton').click();
       return {context, page};
     }
     let {context, page} = await signedIn('tenant', 390);
-    await page.locator('#phoneNav [data-view=report]').click();
-    assert.equal(await page.locator('.categorygrid svg').count(),18);
-    assert.equal(new Set(await page.locator('.categorygrid svg').evaluateAll(nodes=>nodes.map(n=>n.innerHTML))).size,18);
+    await page.locator('#phoneMenuButton').click();
+    await page.locator('#nav [data-view=report]').click();
+    assert.equal(await page.locator('.categorygrid svg').count(),19);
+    assert.equal(new Set(await page.locator('.categorygrid svg').evaluateAll(nodes=>nodes.map(n=>n.innerHTML))).size,19);
     if(process.env.SEVLINK_SCREENSHOT_DIR)await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/tenant-categories-390.png',fullPage:true});
     await page.locator('[data-category="Plumbing"]').click();
     await page.locator('[name=title]').fill('Kitchen tap leaking');
     await page.locator('[name=description]').fill('The kitchen tap drips after it is turned off.');
     await page.locator('#reportForm [name=attachments]').setInputFiles({name:'repair.png', mimeType:'image/png', buffer:image});
+    await page.locator('#repairNext').click();
+    await page.locator('#reportForm [name=access_information]').fill('Please call before visiting; dog in the garden.');
+    await page.locator('#repairNext').click();
+    await page.locator('#repairReview').getByText('Kitchen tap leaking',{exact:true}).waitFor();
+    assert.equal((await(await page.request.get(url+'/api/maintenance/requests/')).json()).results.length,0,'Review must not create a repair');
+    await page.locator('#repairBack').click();
+    assert.equal(await page.locator('#reportForm [name=attachments]').evaluate(el=>el.files.length),1,'Files survive backward navigation');
+    await page.locator('#repairNext').click();
     await page.getByRole('button', {name:'Send report to property manager'}).click();
     await page.getByRole('button', {name:'Open job'}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
@@ -54,7 +67,7 @@ process.stdin.on('end', async () => {
     await page.locator('#jobcontent').getByText('Awaiting property manager review').waitFor();
     assert.match((await (await page.request.get(url+'/api/maintenance/requests/')).json()).results[0].reference,/^REQ-\d{4,}$/);
     await page.getByRole('tab',{name:'Before & After Report',exact:true}).click();
-    downloadUrl = await page.locator('#modal .file a').first().getAttribute('href');
+    downloadUrl = await page.locator('#job-panel-reports .file a').first().getAttribute('href');
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 200);
     await page.getByRole('tab',{name:'Comments',exact:true}).click();
     await page.locator('#commentForm [name=text]').fill('Please call before visiting.');
@@ -77,16 +90,17 @@ process.stdin.on('end', async () => {
     await page.locator('#job-tab-comments .job-tab-count').waitFor({state:'detached'});
     const persistedTabs=await (await page.request.get(url+'/api/maintenance/requests/'+(await page.locator('#modal').getAttribute('data-job'))+'/')).json();
     assert.equal(persistedTabs.tab_attention.counts.comments,0,'Comment read state persists in Django');
-    const downloadEvent = page.waitForEvent('download');
     await page.getByRole('tab',{name:'Before & After Report',exact:true}).click();
-    await page.locator('#modal .file a').first().click();
-    const downloaded = await downloadEvent;
+    const [downloaded]=await Promise.all([page.waitForEvent('download'),page.locator('#job-panel-reports .file a[download]').first().click()]);
     assert.equal(downloaded.suggestedFilename(), 'repair.png');
     assert.equal(await downloaded.failure(), null);
     await page.locator('#attachmentForm [name=attachments]').setInputFiles({name:'followup.png', mimeType:'image/png', buffer:image});
+    const uploadedAttachment=page.waitForResponse(r=>r.url().includes('/attachments/')&&r.request().method()==='POST');
     await page.getByRole('button', {name:'Upload attachments', exact:true}).click();
+    const attachmentResponse=await uploadedAttachment;assert.equal(attachmentResponse.status(),201,await attachmentResponse.text());
+    await page.locator('#job-panel-reports .file').filter({hasText:'followup.png'}).waitFor({state:'attached'});
     await page.getByRole('tab',{name:'Before & After Report',exact:true}).click();
-    await page.locator('#modal .file').nth(1).waitFor();
+    await page.locator('#job-panel-reports .file').filter({hasText:'followup.png'}).waitFor();
     await page.getByRole('tab',{name:'Overview',exact:true}).click();
     await page.locator('#workflowReview [name=job_type]').selectOption('quoted');
     await page.locator('#workflowReview [name=urgency]').selectOption('normal');
@@ -107,7 +121,7 @@ process.stdin.on('end', async () => {
 
     ({context, page} = await signedIn('foreign'));
     assert.equal((await page.request.get(new URL(downloadUrl, url).href)).status(), 404);
-    assert.equal(await page.locator('#modal .file').count(), 0);
+    assert.equal(await page.locator('#job-panel-reports .file').count(), 0);
     await context.close();
 
     ({context, page} = await signedIn('superadmin'));
@@ -119,10 +133,11 @@ process.stdin.on('end', async () => {
     if(process.env.SEVLINK_SCREENSHOT_DIR)await page.screenshot({path:process.env.SEVLINK_SCREENSHOT_DIR+'/live-register-1440.png',fullPage:true});
     await page.getByRole('button', {name:'Open job'}).click();
     await page.locator('#modal .badge').filter({hasText:'Reviewed'}).waitFor();
-    assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs=>tabs.map(t=>t.getAttribute('aria-label'))),['Overview','Comments','Attendance','Quotes','Invoices','Timeline','Before & After Report','Private Costs']);
+    assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs=>tabs.map(t=>t.getAttribute('aria-label'))),['Overview','Comments','Quotes','Invoices','Attendance','Timeline','Before & After Report','Private Costs']);
     assert.equal(await page.locator('.job-summary .job-property-address').textContent(),'12 Test Road');
     assert.equal(await page.locator('.job-summary .professional-next-step').count(),1);
-    if(referenceStyles)assert.deepEqual(await page.evaluate(()=>({tabBackground:getComputedStyle(document.querySelector('#modal .tabs button.selected')).backgroundColor,modalWidth:document.querySelector('#modal').getBoundingClientRect().width,headingSize:getComputedStyle(document.querySelector('.job-property-address')).fontSize})),referenceStyles,'Live tabs, modal and job heading reuse the original demo styles');
+    assert.equal(await page.locator('#modal .corporate-job-header').count(),1);
+    assert.equal(await page.locator('#modal .corporate-progress').count(),1);
     for(const name of ['Comments','Attendance','Quotes','Invoices','Timeline','Before & After Report']){
       await page.getByRole('tab',{name,exact:true}).click();
       assert.equal(await page.getByRole('tabpanel').filter({visible:true}).count(),1);
@@ -158,8 +173,11 @@ process.stdin.on('end', async () => {
     await page.getByRole('button', {name:'Close', exact:true}).click();
     await page.getByRole('button', {name:'Operations notifications', exact:true}).click();
     await page.getByRole('heading', {name:'Operations notifications', exact:true}).waitFor();
+    const readItem=await page.locator('#modal .notificationRead').first().getAttribute('data-id');
     await page.getByRole('button', {name:'Mark read', exact:true}).first().click();
-    await page.getByRole('button', {name:'Mark unread', exact:true}).first().waitFor();
+    await page.locator(`[data-notification-item="${readItem}"]`).waitFor({state:'detached'});
+    const inboxHistory=await(await page.request.get(url+'/api/maintenance/notifications/')).json();
+    assert.equal(inboxHistory.items.find(item=>String(item.id)===readItem).read,true,'Read state persists while the unread-only view hides the item');
     await page.locator('#modal').getByRole('button', {name:'Open job', exact:true}).first().click();
     await page.getByRole('tab',{name:'Comments',exact:true}).click();
     await page.locator('#commentForm').waitFor();
@@ -199,6 +217,9 @@ process.stdin.on('end', async () => {
     await page.locator('#nav [data-view=requests]').click();
     await page.getByRole('heading',{name:'Repair job register.',exact:true}).waitFor();
     await page.getByRole('button', {name:'Open job'}).click();
+    await page.getByRole('tab',{name:'Overview',exact:true}).click();
+    await page.getByRole('button',{name:'Send 50% deposit invoice',exact:true}).click();
+    await page.locator('.job-payment-route').first().waitFor({state:'detached'});
     await page.getByRole('tab',{name:'Invoices',exact:true}).click();
     await page.getByRole('button',{name:'＋ Upload invoice',exact:true}).click();
     await page.locator('#invoiceForm [name=visibility]').selectOption('shared');

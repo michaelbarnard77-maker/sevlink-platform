@@ -193,10 +193,10 @@ class MaintenanceTests(TestCase):
             detail = self.client.get(self.detail_url)
             data = detail.json()
             self.assertEqual(set(data), {'workflow', 'tab_attention', 'client_type', 'id', 'reference', 'legacy_reference', 'request_reference', 'official_job_reference', 'historical_reference', 'urgency', 'property', 'title', 'description', 'category',
-                                        'status', 'status_label', 'version', 'created_at', 'updated_at', 'allowed_statuses', 'history', 'attachments', 'comments', 'quotations', 'activity', 'tenant_comments_allowed', 'invoices'})
+                                        'status', 'status_label', 'version', 'created_at', 'updated_at', 'allowed_statuses', 'history', 'attachments', 'comments', 'quotations', 'activity', 'tenant_comments_allowed', 'invoices'} | ({'can_edit_internal_notes'} if user.is_superuser else set()))
             for url in [self.detail_url, self.collection, self.context_url]:
                 content = self.client.get(url).content.decode()
-                for secret in ['PRIVATE SUBCONTRACTOR', 'PRIVATE ACCESS CODE', 'internal_notes', 'reported_by', 'actor_id']:
+                for secret in ['PRIVATE SUBCONTRACTOR', 'PRIVATE ACCESS CODE', '"internal_notes"', 'reported_by', 'actor_id']:
                     self.assertNotIn(secret, content)
                 if url != self.context_url:
                     self.assertNotIn(self.tenant.email, content)

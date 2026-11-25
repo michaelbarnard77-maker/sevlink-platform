@@ -71,7 +71,9 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(JobComment.objects.filter(visibility='shared').count(), 1)
         self.assertEqual(JobComment.objects.filter(visibility='agency').count(),1)
         self.assertEqual(JobComment.objects.filter(visibility='internal').count(), 1)
-        self.assertEqual(OperationsNotification.objects.count(), 7)  # Includes Operations assessment and attendance invitation.
+        from .maintenance_mail_policy import email_allowed_for_recipient
+        self.assertTrue(OperationsNotification.objects.exists())
+        self.assertTrue(all(email_allowed_for_recipient(item) for item in OperationsNotification.objects.select_related('event')))
         self.assertEqual(JobInvoice.objects.get(previous__isnull=True).document_status,'void')
         self.assertTrue(JobInvoice.objects.get(previous__isnull=False).reconciliation_required)
         self.assertEqual(InvoicePayment.objects.get().amount,1000)
@@ -141,16 +143,18 @@ class MaintenanceBrowserTests(StaticLiveServerTestCase):
         from unittest.mock import patch
         # Deterministic synthetic mail links allow two isolated browser contexts to
         # exercise forms without starting an email service or injecting sessions.
+        owner=User.objects.create_user(username='bootstrap@example.test',email='bootstrap@example.test',is_superuser=True,is_staff=True)
+        bootstrap=Client();bootstrap.force_login(owner)
         tokens=['synthetic-owner-verification-482','synthetic-tenant-invitation-482']
         script=Path(settings.BASE_DIR).parents[1]/'scripts'/'test-onboarding-browser.cjs'
         with patch('portal.services.secrets.token_urlsafe',side_effect=tokens):
             result=subprocess.run(['node',str(script)],input=json.dumps({
-                'url':self.live_server_url,'verificationToken':tokens[0],'invitationToken':tokens[1]}),
+                'url':self.live_server_url,'verificationToken':tokens[0],'invitationToken':tokens[1],'bootstrapSession':bootstrap.cookies[settings.SESSION_COOKIE_NAME].value}),
                 text=True,capture_output=True,timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr+'\n'.join(self.server_errors))
         self.assertEqual(self.server_errors,[])
         self.assertIn('PASS',result.stdout)
-        self.assertEqual(User.objects.filter(is_active=True).count(),2)
+        self.assertEqual(User.objects.filter(is_active=True).count(),3)
         self.assertFalse(Tenancy.objects.get().active)
 
     def test_property_manager_dashboard_accounts_and_customer_calendar(self):

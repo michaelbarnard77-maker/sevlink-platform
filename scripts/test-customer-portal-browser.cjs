@@ -18,13 +18,13 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   const attention=await (await p.request.get(url+'/api/maintenance/portal/attention/')).json();
   assert.equal(dashboard.stages[0].count,new Set(attention.items.map(a=>a.job)).size);
   await p.locator('[data-stage=attention]').click();
-  await p.locator('#stageJobs > .panel > h2').waitFor();
+  await p.locator('#stageJobs .panelhead h2').waitFor();
   assert.equal(await p.locator('#stageJobs [data-stage-job]').count(),dashboard.stages[0].count);
   for(const item of attention.items){
    const card=p.locator(`#stageJobs .job-card[data-stage-job="${item.job}"]`);
-   assert((await card.locator('.job-attention-reasons').innerText()).includes(item.action));
+   assert((await card.locator('.stage-actions').innerText()).includes(item.action));
   }
-  assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','profile','report','renovations','publicCalendar','updates','accounts','issues']);
+  assert.deepEqual(await p.locator('#nav button').evaluateAll(buttons=>buttons.map(b=>b.dataset.view)),['overview','requests','properties','tenants','report','renovations','publicCalendar','updates','accounts','issues']);
   assert.equal(await p.getByText('Account & properties',{exact:true}).count(),0);
   await p.locator('#attention .attention-card').filter({hasText:'Approve, reject or request quotation revision'}).filter({hasText:'GP repair'}).getByRole('button',{name:/Open quotation/}).click();
   assert.equal(await p.locator('#job-tab-quotes .job-tab-count').textContent(),'1');
@@ -56,12 +56,12 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   await p.locator('#nav [data-view=publicCalendar]').click();await p.locator('#customerWeek').fill(week);await p.locator('#customerWeek').dispatchEvent('change');await p.locator('.customer-week .attention-card').waitFor();
   const calendar=await p.locator('.customer-week').textContent();assert(calendar.includes('scheduled'));for(const privateValue of ['PRIVATE','Team A','commission','subcontractor'])assert(!calendar.includes(privateValue));
   await p.locator('#nav [data-view=properties]').click();await p.locator('#app').getByText('Original Gauteng address',{exact:true}).waitFor();
-  await p.locator('#nav [data-view=tenants]').click();await p.locator('#app').getByRole('heading',{name:'Test tenant'}).waitFor();
-  await p.locator('#nav [data-view=profile]').click();await p.locator('#app').getByRole('heading',{name:'Regional agency'}).waitFor();
+  await p.locator('#nav [data-view=tenants]').click();await p.locator('.job-document-folder summary').first().click();await p.locator('#app').getByRole('heading',{name:'Test tenant'}).waitFor();
+  assert.equal(await p.locator('#nav [data-view=profile]').count(),0);assert.equal((await p.request.get(url+'/api/maintenance/portal/profile/')).status(),403);
   await p.locator('#nav [data-view=updates]').click();await p.getByRole('heading',{name:'Updates & Notifications'}).waitFor();
   await p.locator('#nav [data-view=issues]').click();await p.locator('#websiteIssue [name=subject]').fill('Synthetic portal issue');await p.locator('#websiteIssue [name=description]').fill('Synthetic screenshot-free report');await p.locator('#websiteIssue button').click();await p.locator('#app').getByRole('heading',{name:'Synthetic portal issue'}).waitFor();await c.close();
   ({c,p}=await signed('tenant',390));assert.equal(await p.locator('#nav [data-view=accounts]').count(),0);assert.equal(await p.locator('#nav [data-view=quotes]').count(),0);
-  await p.locator('#phoneNav [data-view=publicCalendar]').click();await p.locator('#customerWeek').fill(week);await p.locator('#customerWeek').dispatchEvent('change');await p.locator('.customer-week .attention-card').waitFor();
+  await p.locator('#phoneMenuButton').click();await p.locator('#nav [data-view=publicCalendar]').click();await p.locator('#customerWeek').fill(week);await p.locator('#customerWeek').dispatchEvent('change');await p.locator('.customer-week .attention-card').waitFor();
   assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   assert.equal((await p.request.get(url+'/api/maintenance/portal/accounts/')).status(),403);
   assert.equal((await p.request.get(url+'/api/maintenance/operations/monday-payments/')).status(),403);

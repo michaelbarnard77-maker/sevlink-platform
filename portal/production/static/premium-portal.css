@@ -151,34 +151,3 @@
 .stage-register-table .stage-attendance{min-width:145px}.stage-attendance-status{display:inline-block;border-radius:6px;padding:5px 8px;background:#f1f4f7;color:#526a7d;font-size:10px;line-height:1.5}.stage-attendance-status.date-received{background:#e5f3f0;color:#246e63}
 
 .sevlink-workspace #modal .attendance-card .attendance-date{font-size:32px;line-height:1.25;letter-spacing:-.5px;margin:16px 0;color:#173b50}@media(max-width:760px){.sevlink-workspace #modal .attendance-card .attendance-date{font-size:26px}}
-
-
-/* Dark corporate Sevlink redesign — authenticated workspace */
-:root{color-scheme:dark;--premium-navy:#102b40;--premium-deep:#071522;--premium-aqua:#5bd3ca;--premium-ink:#e6eef3;--premium-muted:#9fb2c0;--premium-line:#293f51;--premium-paper:#091724;--premium-shadow:0 10px 28px #00000022}
-.sevlink-workspace,.sevlink-account{background:#091724!important;color:#e6eef3!important;--ink:#e6eef3;--muted:#9fb2c0;--line:#293f51;--bg:#091724}
-.sevlink-workspace>aside{background:linear-gradient(165deg,#102b40 0%,#0a1d2d 60%,#06121e 100%);border-color:#263d50}
-.sevlink-workspace>main>header{background:#091724;border-color:#293f51}
-.sevlink-workspace .crumb,.sevlink-workspace .profile .name small{color:#91a7b6}
-.sevlink-workspace .crumb b,.sevlink-workspace .profile .name{color:#e5edf2}
-.sevlink-workspace .panel,.sevlink-workspace .card,.sevlink-workspace .stat,.sevlink-workspace .stage-card:not(.ops-pod),.sevlink-workspace .ops-pod,.sevlink-workspace .attention-card,.sevlink-workspace .job-card{background:#102233!important;border-color:#2b4356!important;color:#e6eef3;box-shadow:var(--premium-shadow)}
-.sevlink-workspace .panel h2,.sevlink-workspace .panel h3,.sevlink-workspace .card h2,.sevlink-workspace .card h3,.sevlink-workspace .stat strong,.sevlink-workspace .stage-card b,.sevlink-workspace .stage-card strong,.sevlink-workspace td strong{color:#e8f0f4}
-.sevlink-workspace .panel p,.sevlink-workspace .card p,.sevlink-workspace .stat small,.sevlink-workspace .stat label,.sevlink-workspace .stage-card small,.sevlink-workspace .job-card p{color:#a3b7c5}
-.sevlink-workspace .stage-card:not(.ops-pod).selected{background:#14313d!important;border-color:#4bbdb8!important}
-.sevlink-workspace .stage-icon{background:#163847;border-color:#2c5662;color:#75ddd3}
-.sevlink-workspace .ops-pod.selected{background:#164252!important;border-color:#39717b!important}
-.sevlink-workspace .ops-pod.selected b,.sevlink-workspace .ops-pod.selected span{color:#f2f7f9}
-.sevlink-workspace th{background:#14293a;color:#a9bfcc;border-color:#2a4052}
-.sevlink-workspace td{border-color:#293f51;color:#dce7ed}
-.sevlink-workspace tbody tr:hover{background:#142b3c}
-.sevlink-workspace :is(input,select,textarea){background:#0a1b29;color:#e6eef3;border-color:#344c5e}
-.sevlink-workspace label{color:#bfd0da}
-.sevlink-workspace [readonly]{background:#142536}
-.sevlink-workspace .secondary{background:#142b3c;color:#dce8ee;border-color:#365064}
-.sevlink-workspace .notice,.sevlink-workspace .professional-next-step{background:#14323d;border-color:#367a7c;color:#d6e8e9}
-.sevlink-workspace .professional-next-step p{color:#c1d7dc}
-.sevlink-workspace .job-attention-reasons{background:#142b3a;color:#d8e6eb}
-.sevlink-account>header,.sevlink-account>main,.sevlink-account>footer{background:#091724;color:#e6eef3;border-color:#293f51}
-.sevlink-account .panel,.sevlink-account form,.sevlink-account article{background:#102233;border-color:#2b4356;color:#e6eef3}
-.sevlink-account input,.sevlink-account select,.sevlink-account textarea{background:#0a1b29;color:#e6eef3;border-color:#344c5e}
-.sevlink-account h1,.sevlink-account h2,.sevlink-account h3{color:#e8f0f4}
-.sevlink-account p,.sevlink-account label{color:#a9bdca}

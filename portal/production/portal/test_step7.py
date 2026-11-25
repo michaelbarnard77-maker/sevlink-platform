@@ -131,7 +131,7 @@ class Step7Tests(TestCase):
         old = self.sent()
         decision = self.decide(old,'revision_requested')
         self.assertEqual(decision.status_code,200,decision.content)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),1)
+        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),0)  # No routine revision emails.
         self.client.force_login(self.ops)
         revised = self.client.post(reverse('maintenance_quote_action',args=[self.job.pk,old['id'],'revise']), {'version':decision.json()['version'],'reference':'Q-STEP7-R2','amount':'281.40','attachments':fixtures.document(name='revised.pdf')},HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         self.assertEqual(revised.status_code,201,revised.content)
@@ -321,15 +321,15 @@ class Step7Tests(TestCase):
         self.client.force_login(self.pm)
         for version,status in enumerate(('reviewed','in_progress','completed'),1):
             self.assertEqual(self.client.patch(self.detail_url,json.dumps(dict(status=status,version=version)),content_type='application/json').status_code,200)
-        self.assertEqual(deliver(),6)  # three decisions + comment + cancelled + completed
-        self.assertEqual(len(mail.outbox),6)
+        self.assertEqual(deliver(),2)  # Approved quote + customer comment; routine events remain in the inbox.
+        self.assertEqual(len(mail.outbox),2)
         for message in mail.outbox:
             self.assertIn('SEVLINK',message.alternatives[0].content)
             self.assertNotIn('PRIVATE',message.body)
             self.assertNotIn('PRIVATE',message.alternatives[0].content)
             self.assertEqual(message.to,['maintenance@sevlink.co.za'])
         self.assertEqual(OperationsInboxItem.objects.count(),6)
-        self.assertEqual(OperationsNotification.objects.filter(state='sent').count(),6)
+        self.assertEqual(OperationsNotification.objects.filter(state='sent').count(),2)
         self.assertEqual(deliver(),0)
 
     def test_audit_comments_and_decision_history_are_append_only(self):

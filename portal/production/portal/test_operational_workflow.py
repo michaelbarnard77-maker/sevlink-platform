@@ -169,7 +169,7 @@ class OperationalWorkflowTests(TestCase):
         invoice=uploaded.json();self.assertEqual(invoice['purpose'],'deposit')
         self.client.force_login(self.pm)
         attention=self.client.get(reverse('workflow_stages'),{'stage':'attention'}).json()['results'][0]
-        self.assertIn('Deposit required before scheduling',[a['action'] for a in attention['attention_actions']])
+        self.assertTrue(any(a['action'] in ('Deposit required before scheduling','Overdue invoice: payment required') for a in attention['attention_actions']),attention['attention_actions'])  # An overdue deposit can take priority over the generic deposit action.
         self.assertEqual(self.payment(invoice,amount='500').status_code,403)
         self.assertEqual(self.act('verify-deposit',user=self.ops,confirmation='VERIFY').status_code,400)
         self.client.force_login(self.ops);r=self.payment(invoice,amount='500');self.assertEqual(r.status_code,201,r.content)

@@ -1,20 +1,20 @@
-/* A real password-based first-account journey; no injected authenticated sessions. */
+/* Owner-authorised onboarding, followed by real admin and tenant password setup. */
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 let input='';process.stdin.on('data',chunk=>input+=chunk);
 process.stdin.on('end',async()=>{
-  const {url,verificationToken,invitationToken}=JSON.parse(input);
+  const {url,verificationToken,invitationToken,bootstrapSession}=JSON.parse(input);
   const browser=await chromium.launch({headless:true,...(process.env.SEVLINK_CHROMIUM_PATH?{executablePath:process.env.SEVLINK_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
   try {
     const owner=await browser.newContext(), tenant=await browser.newContext();
     const p=await owner.newPage(), t=await tenant.newPage();
     const password='Browser-acceptance-password-482!';
-    await p.goto(url+'/register/');
-    for(const [name,value] of Object.entries({agency_name:'Acceptance Agency',first_name:'Agency Owner',email:'browser-owner@example.test',phone:'0000000000',area:'Gauteng and Cape Town',password1:password,password2:password})) await p.locator(`[name=${name}]`).fill(value);
-    await p.getByRole('button',{name:'Save & continue'}).click();
-    await p.getByRole('heading',{name:'Verify your email'}).waitFor({timeout:5000}).catch(async error=>{throw new Error(error.message+'\nPage: '+await p.locator('body').innerText());});
-    // Synthetic local tokens are supplied by the Python test, never a live mailbox.
+    const bootstrap=await browser.newContext();await bootstrap.addCookies([{name:'sessionid',value:bootstrapSession,url}]);const b=await bootstrap.newPage();
+    await b.goto(url+'/agencies/new/');
+    for(const [name,value] of Object.entries({agency_name:'Acceptance Agency',admin_name:'Agency Owner',admin_email:'browser-owner@example.test',phone:'0000000000',area:'Gauteng and Cape Town'}))await b.locator(`[name=${name}]`).fill(value);
+    await b.getByRole('button',{name:'Create agency & send invitation'}).click();await bootstrap.close();
     await p.goto(url+'/invitation/'+verificationToken+'/');
+    await p.locator('[name=new_password1]').fill(password);await p.locator('[name=new_password2]').fill(password);
     await p.getByRole('button',{name:'Verify & open workspace'}).click();
     await p.locator('#nav [data-view=properties]').click();
     await p.getByRole('link',{name:'Add Property',exact:false}).click();
@@ -45,6 +45,6 @@ process.stdin.on('end',async()=>{
     await p.getByRole('button',{name:'Save & continue'}).click();
     await t.reload();assert.equal(await t.getByText('Synthetic Cape Town address',{exact:true}).count(),0);
     await owner.close();await tenant.close();
-    process.stdout.write('PASS: fresh registration, verification, invitation, tenant password login and audited move-out.\n');
+    process.stdout.write('PASS: owner onboarding, verification, invitation, tenant password login and audited move-out.\n');
   } finally {await browser.close();}
 });

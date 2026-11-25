@@ -95,6 +95,9 @@ def email_text(enquiry, recipient):
 
 
 def email_bodies(enquiry, recipient):
+    if enquiry.service=='Subcontractor application':
+        from .partner_enquiries import email_bodies as partner_email_bodies
+        return partner_email_bodies(enquiry,recipient)
     if enquiry.service=='Agency consultation':
         from .agency_enquiries import email_bodies as agency_email_bodies
         return agency_email_bodies(enquiry,recipient)

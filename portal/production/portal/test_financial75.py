@@ -250,8 +250,8 @@ class Financial75Tests(TestCase):
         decided=self.approve(self.send(revised),'revision_requested')
         self.assertEqual(decided.status_code,200,decided.content)
         self.assertEqual(QuoteApprovalReplacement.objects.count(),0)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_rejected').count(),1)
-        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),1)
+        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_rejected').count(),0)  # Routine declines stay in the portal.
+        self.assertEqual(OperationsNotification.objects.filter(event__kind='quote_revision_requested').count(),0)  # Revision requests remain in the portal inbox.
         self.assertTrue(self.body(self.pm)['quotations'][0]['approval_valid'])
 
     def test_amendment_agency_boundaries_and_required_uploaded_reason(self):

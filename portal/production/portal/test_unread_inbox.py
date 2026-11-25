@@ -30,7 +30,7 @@ class UnreadInboxTests(TestCase):
         self.assertEqual(result['unread_count'],initial['unread_count']-1)
         self.assertIn(self.item.pk,[item['id'] for item in self.client.get(self.feed).json()['items']])
         self.job.refresh_from_db();self.assertEqual((self.job.version,self.job.status),before)
-        other=User.objects.create_user(username='second-inbox@example.test',is_staff=True,is_superuser=True)
+        other=User.objects.create_user(username='second-inbox@example.test',email='second-inbox@example.test',is_staff=True,is_superuser=True)
         self.client.force_login(other)
         self.assertIn(self.item.pk,[item['id'] for item in self.client.get(self.feed,{'unread':'1'}).json()['items']])
 

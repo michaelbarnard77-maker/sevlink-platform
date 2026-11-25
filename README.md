@@ -1,3 +1,5 @@
+> Corporate redesign review: on `redesign/dark-corporate`, run `Preview-Redesign.cmd` for an isolated local preview with four demo roles. [Windows CMD instructions and data isolation](docs/REDESIGN-PREVIEW.md). This does not deploy or use existing application records.
+
 > PM/tenant workspace update: [dashboard, accounts and customer calendar](docs/PM-DASHBOARD-AND-CUSTOMER-CALENDAR.md) now use scoped Django data. [Safe Windows update instructions](docs/WINDOWS-PM-DASHBOARD-UPDATE.md) preserve existing local records and private files. Numeric SV job references retain legacy UUID links; customer appointments require explicit sharing.
 
 > Controlled-launch preparation: see [current readiness and acceptance gates](docs/CONTROLLED-LAUNCH-READINESS.md). Account lifecycle controls, privileged MFA, fail-closed scanner integration, account-email queue readiness and fresh-account browser coverage extend the existing platform. CK Properties (80–100 properties) is the proposed pilot; launch, live email and deployment remain unapproved.

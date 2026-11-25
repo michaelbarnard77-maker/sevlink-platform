@@ -19,8 +19,19 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   await p.locator('#calendarBooking [name=team]').selectOption(ids.b);await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.waitForFunction(()=>document.querySelectorAll('.week-booking').length===3);
   await p.locator(`[data-appointment="${first}"]`).click();await p.locator('#calendarReschedule').click();await p.locator('#calendarBooking [name=start]').fill('14:00');await p.locator('#calendarBooking [name=end]').fill('15:00');await p.locator('#calendarBooking [name=reason]').fill('Synthetic tenant reschedule');await p.getByRole('button',{name:'Save appointment',exact:true}).click();await p.locator('.week-booking[data-left="62.5"][data-width="12.5"]').waitFor();
   const moved=await p.locator('.week-booking[data-left="62.5"]').getAttribute('data-appointment');await p.locator(`[data-appointment="${moved}"]`).click();await p.locator('#calendarCancel [name=reason]').fill('Synthetic cancellation');await p.getByRole('button',{name:'Cancel appointment',exact:true}).click();await p.getByText('Cancelled: Synthetic cancellation',{exact:false}).waitFor();
-  await p.locator('#calendarOpenJob').click();
-  for(const status of ['reviewed','scheduled','on_site','completed']){await p.locator('#calendarProgress [name=status]').selectOption(status);const response=p.waitForResponse(r=>r.url().includes('/progress/')&&r.request().method()==='POST');await p.getByRole('button',{name:'Save public status',exact:true}).click();assert.equal((await response).status(),200);await p.locator('#modal p').filter({hasText:({reviewed:'Reviewed',scheduled:'Scheduled',on_site:'On Site',attended:'Attended',completed:'Completed'})[status]}).first().waitFor();}
+  // Progress belongs to a live appointment. A cancelled final booking must remain
+  // reviewed instead of being forced complete through a stale generic status form.
+  await p.getByRole('button',{name:'Close',exact:true}).click();
+  const weekData=await(await p.request.get(url+'/api/maintenance/operations/calendar/')).json();
+  const live=weekData.appointments.find(a=>a.job===ids.jobs[2]&&!a.cancelled);assert(live);
+  await p.locator(`[data-appointment="${live.id}"]`).click();
+  for(const status of ['on_site','completed']){
+    await p.locator('#appointmentProgress [name=status]').selectOption(status);
+    const previous=await p.locator('#appointmentProgress').elementHandle();
+    const response=p.waitForResponse(r=>r.url().includes('/status/')&&r.request().method()==='POST');
+    await p.getByRole('button',{name:'Save appointment status',exact:true}).click();assert.equal((await response).status(),200);
+    await p.waitForFunction(old=>!old.isConnected,previous);
+  }
   await p.getByRole('button',{name:'Close',exact:true}).click();
   await p.locator('#calendarFilters [name=city]').selectOption(String(ids.cape));await p.getByRole('button',{name:'Filter calendar',exact:true}).click();await p.waitForFunction(()=>document.querySelectorAll('.week-booking').length===1);
   assert.equal((await p.request.get(url+'/api/maintenance/operations/monday-payments/')).status(),403);
@@ -42,7 +53,7 @@ let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()
   const pdf=await p.locator('#mondayInvoices a').first().getAttribute('href');assert.equal((await p.request.get(url+pdf)).status(),200);
   for(const amount of ['200.00','300.00']){await p.locator('#mondayInvoices .supplierPayment [name=amount]').fill(amount);await p.locator('#mondayInvoices .supplierPayment [name=paid_on]').fill(new Date().toISOString().slice(0,10));await p.locator('#mondayInvoices .supplierPayment [name=reference]').fill('EXTERNAL-MONDAY-'+amount);await p.getByRole('button',{name:'Record payment / Mark as Paid',exact:true}).click();if(amount==='200.00')await p.getByText('Outstanding 300.00',{exact:false}).waitFor().catch(async error=>{throw Error(error.message+'\nPayment screen: '+await p.locator('#app').innerText()+'\nMessage: '+await p.locator('#toast').innerText());});else await p.getByText('No outstanding invoices in this filter.',{exact:true}).waitFor();}
   assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),200);await c.close();
-  ({c,p}=await signed('tenant'));assert.equal(await p.locator('[data-view=calendar]').count(),0);assert.equal(await p.locator('[data-view=monday]').count(),0);const pub=await (await p.request.get(url+`/api/maintenance/requests/${ids.jobs[0]}/`)).json();assert.equal(pub.status,'completed');const text=JSON.stringify(pub);for(const secret of ['PRIVATE multi-region partner','Team A','appointment_changed','EXTERNAL-MONDAY'])assert(!text.includes(secret));assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),403);await c.close();
+  ({c,p}=await signed('tenant'));assert.equal(await p.locator('[data-view=calendar]').count(),0);assert.equal(await p.locator('[data-view=monday]').count(),0);const pub=await (await p.request.get(url+`/api/maintenance/requests/${ids.jobs[2]}/`)).json();assert.equal(pub.status,'completed');assert(pub.history.some(h=>h.status==='completed'),'Attendance progress is retained in the public history');const text=JSON.stringify(pub);for(const secret of ['PRIVATE multi-region partner','Team A','appointment_changed','EXTERNAL-MONDAY'])assert(!text.includes(secret));assert.equal((await p.request.get(url+'/api/maintenance/operations/calendar/')).status(),403);await c.close();
   assert.deepEqual(errors,[]);console.log('PASS: weekly navigation/proportional multi-job timelines, conflicts, team separation, atomic reschedule/cancel, audited Super Admin exception, public progress, mobile day layout, Monday partial/full manual payments and staff/tenant isolation.');
  }finally{await browser.close();}
 });

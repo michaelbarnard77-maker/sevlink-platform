@@ -161,7 +161,10 @@
   }
   const icons = {'Plumbing':'🚰','Electrical':'💡','Doors & locks':'🚪','Painting':'🖌','Tiling':'▦'};
   function reportLanding() {
-    app.innerHTML = heading('What needs attention?', (['pm','admin'].includes(context.user.role)?'Report a repair directly to Sevlink.':'A few clear details help your property manager review the repair.')) + '<div class="reportwrap"><div class="panel"><div class="step-label">01 / SELECT A REPAIR CATEGORY</div><div class="categorygrid">' + context.categories.filter(c=>c!=='Renovations & Refurbishments').map(c => `<button class="category illustrated" data-category="${esc(c)}"><span>${window.SevlinkWorkflowUI?.categoryIcon(c) || ''}</span><b>${esc(c)}</b><small>${esc(window.SevlinkWorkflowUI?.categoryDescription(c)||'Repairs and maintenance')}</small></button>`).join('') + '</div><div class="notice">Property emergency? Call Sevlink immediately on <a href="tel:+27810285034">081 028 5034</a>. Do not wait for an online response.</div></div></div>';
+    const direct=['pm','admin'].includes(context.user.role),renovation='Renovations & Refurbishments';
+    const categories=[...new Set([...context.categories,renovation])];
+    app.innerHTML=`<section class="corporate-repair-banner"><h1>Report a Repair</h1><p>Let us know what needs attention at your property.</p></section><div class="corporate-repair-layout"><section class="panel"><span class="eyebrow">01 / SELECT ISSUE</span><h2>What type of issue is it?</h2><p>Choose the category that best describes the problem.</p><div class="categorygrid">${categories.map(c=>`<button class="category illustrated" ${c===renovation?direct?'data-renovation-request':'disabled aria-disabled="true"':`data-category="${esc(c)}"`}><span>${window.SevlinkWorkflowUI.categoryIcon(c)}</span><b>${esc(c)}</b><small>${c===renovation&&!direct?'PM / Agency Admin only':esc(window.SevlinkWorkflowUI.categoryDescription(c))}</small></button>`).join('')}</div></section><aside class="panel corporate-repair-tips"><h2>Your property care</h2><p>${context.properties.length===1?esc(context.properties[0].address):'Choose your linked property in the next step.'}</p><h3>Help us resolve it faster</h3><ul><li>Choose the most relevant category.</li><li>Describe what is wrong and where.</li><li>Add clear photos in the next step.</li><li>Include access instructions and pets.</li></ul><div class="notice"><b>Property emergency?</b><br>Call Sevlink immediately on <a href="tel:+27810285034">081 028 5034</a>. Do not wait for an online response.</div></aside></div>`;
+    app.querySelector('[data-renovation-request]')?.addEventListener('click',()=>{view='renovations';render();});
   }
   async function render(live=false) {
     shell();
@@ -204,27 +207,11 @@
     };
   }
   function reportForm(category) {
-    const direct=['pm','admin'].includes(context.user.role);
-    if (!context.properties.length) { toast('Your account needs an active property link. Contact your property manager.'); return; }
-    modal.innerHTML = `<button class="close" data-close aria-label="Close">×</button><span class="eyebrow">${esc(category)}</span><h1>Report a problem.</h1><div class="notice"><strong>Property emergency?</strong> Call Sevlink immediately on <a href="tel:+27810285034">081 028 5034</a>. Do not wait for an online response.</div><form id="reportForm"><label>Your property</label><select name="property" required>${context.properties.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.address)}</option>`).join('')}</select><label>What is the problem?</label><input name="title" required maxlength="180"><label>Tell us what happened</label><textarea name="description" required rows="4" maxlength="2500" placeholder="Where is the issue, when did it start, and what can you see?"></textarea>${direct?'<label>Work authorisation</label><select name="job_type"><option value="quoted">Request a quotation</option><option value="callout">Authorise a call-out</option></select><div class="callout-limit" style="display:none"><label>Call-out spending limit (ZAR, required for a call-out)</label><input name="limit" type="number" min="0.01" step="0.01"></div><label>Who arranges access?</label><select name="access_responsibility"><option value="pm">Property manager</option><option value="sevlink">Sevlink</option></select>':''}${direct?'<p class="muted">If Sevlink arranges access, we use the tenant contact details linked to this address under Properties. Please keep those details up to date.</p>':''}<label>Relevant access information</label><textarea name="access_information" maxlength="2500"></textarea><label>Photos or documents (optional)</label><input name="attachments" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"><small>Multiple photos or documents, 5 MB each and 25 MB total · JPEG, PNG, WebP or PDF.</small><div class="notice">${direct?'Your repair goes directly to Sevlink. Quoted work still requires quotation approval before scheduling.':'Your report goes to your property manager for review. Attachments are shared with your property manager and Sevlink.'}</div><p id="formError" role="alert" hidden></p><div class="actions"><button class="primary" type="submit">${direct?'Send repair to Sevlink':'Send report to property manager'}</button></div></form>`;
-    modal.showModal();
-    window.SevlinkWorkflowUI?.photoPicker($('#reportForm [name=attachments]'));
-    if(direct){const form=$('#reportForm'),toggleLimit=()=>{const active=form.elements.job_type.value==='callout';form.querySelector('.callout-limit').style.display=active?'':'none';form.elements.limit.disabled=!active;form.elements.limit.required=active;};form.elements.job_type.addEventListener('change',toggleLimit);toggleLimit();}
-    const submissionKey = crypto.randomUUID();
-    $('#reportForm').onsubmit = async event => {
-      event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
-      try {
-        const data = new FormData(event.target); data.set('category', category);
-        for (const file of data.getAll('attachments')) { if (file.size > 5 * 1024 * 1024) throw Error('Each file must be at most 5 MB.'); }
-        if (data.getAll('attachments').reduce((n,f)=>n+f.size,0)>25*1024*1024)throw Error('The total photo selection must be 25 MB or less.');
-        if (!data.getAll('attachments').some(file => file.size)) data.delete('attachments');
-        await api('requests/', {method:'POST', body:data, headers:{'Idempotency-Key':submissionKey}});
-        modal.close(); view = 'requests'; page = 1;
-        try { await loadJobs(); render(); toast(direct?'Repair saved and sent directly to Sevlink.':'Report saved and sent for property manager review.'); }
-        catch { render(); toast('Report saved. Refresh the list to see it.'); }
-      } catch (error) { $('#formError').hidden = false; $('#formError').textContent = error.message; }
-      finally { if (button.isConnected) button.disabled = false; }
-    };
+    window.SevlinkRepairWizard.open({category,context,modal,api,toast,onSaved:async direct=>{
+      view='requests';page=1;
+      try{await loadJobs();await render();toast(direct?'Repair saved and sent directly to Sevlink.':'Report saved and sent for property manager review.');}
+      catch{render();toast('Report saved. Refresh the list to see it.');}
+    }});
   }
   function quoteFields(q = {}, upload = true) {
     return `<label>Quotation reference printed on uploaded PDF (entered manually — verify it matches the PDF)</label><input name="reference" required maxlength="80" value="${esc(q.reference || '')}"><label>Recorded total (ZAR)</label><input name="amount" required type="number" min="0.01" max="9999999999.99" step="0.01" value="${esc(q.amount || '')}"><label>Title</label><input name="title" required maxlength="180" value="${esc(q.title || '')}"><label>Scope shared with the agency</label><textarea name="scope" maxlength="3000">${esc(q.scope || '')}</textarea>${upload ? '<label>Externally prepared quotation PDF</label><input name="attachments" type="file" required accept="application/pdf"><small>One PDF, up to 5 MB. Upload only the agency-facing Sevlink quotation. Keep subcontractor documents in Operations-only notes.</small>' : '<small>The uploaded PDF cannot be replaced. Upload a new revision to change the document.</small>'}`;
@@ -698,6 +685,7 @@
     try {const data=await api('portal/attention/');if(view!=='overview' || request!==customerRequest)return;
       app.insertAdjacentHTML('afterbegin',attentionMarkup(data.items));
       $('#attentionRefresh').onclick=customerOverview;
+      if(context.user.role==='tenant')window.SevlinkCorporate?.dashboard({api,context,app,showDetail,toast});
     } catch(error){if(view==='overview' && request===customerRequest)app.insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error.message)}</p>`);}
   }
   async function customerPage() {
