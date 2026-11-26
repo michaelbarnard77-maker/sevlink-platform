@@ -422,13 +422,13 @@ def workspace(request):
     from django.templatetags.static import static
     html = html.replace('<head>', '<head><base href="' + static('maintenance-ui/') + '">', 1)
     html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+(static('workflow.css')+'?v=corporate-reference-20261125')+'"><link rel="stylesheet" href="'+(static('premium-portal.css')+'?v=weekday-attendance-20261106-9')+'"></head>')
+    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('calendar.css')+'"><link rel="stylesheet" href="'+(static('workflow.css')+'?v=corporate-contrast-20261126')+'"><link rel="stylesheet" href="'+(static('premium-portal.css')+'?v=weekday-attendance-20261106-9')+'"></head>')
     html = html.replace('src="sevlink-logo.png"', 'src="'+static('landing/assets/sevlink-logo.png')+'"')
     html = html.replace('<body>', '<body class="sevlink-workspace">', 1)
     html = html.replace('content="#101c31"', 'content="#102e46"')
-    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('corporate.css')+'?v=corporate-reference-20261125"><script src="'+static('corporate-ui.js')+'?v=corporate-reference-20261125"></script><script src="'+static('repair-wizard.js')+'?v=corporate-reference-20261125"></script></head>')
+    html = html.replace('</head>', '<link rel="stylesheet" href="'+static('corporate.css')+'?v=corporate-contrast-20261126"><script src="'+static('corporate-ui.js')+'?v=corporate-contrast-20261126"></script><script src="'+static('repair-wizard.js')+'?v=corporate-contrast-20261126"></script></head>')
     html = html.replace('</head>', '<script src="'+static('live-sync.js')+'?v=live-pots-20261109"></script></head>')
-    html = html.replace('</body>', '<script src="'+static('internal-job-notes.js')+'?v=20261113"></script><script src="'+(static('workflow-ui.js')+'?v=corporate-reference-20261125')+'"></script><script src="' + (static('maintenance.js')+'?v=corporate-reference-20261125') + '"></script></body>')
+    html = html.replace('</body>', '<script src="'+static('internal-job-notes.js')+'?v=20261113"></script><script src="'+(static('workflow-ui.js')+'?v=corporate-contrast-20261126')+'"></script><script src="' + (static('maintenance.js')+'?v=corporate-contrast-20261126') + '"></script></body>')
     # Avoid exposing the sample identity/demo labels in the first server response.
     html = re.sub(r'<div class="profile">.*?</header>', '<div class="profile"></div></header>', html, flags=re.DOTALL)
     html = re.sub(r'<nav id="nav">.*?</nav>', '<nav id="nav"></nav>', html, flags=re.DOTALL)
